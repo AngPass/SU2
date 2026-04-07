@@ -1492,7 +1492,8 @@ enum ENUM_HYBRIDRANSLES {
   SA_DES   = 1,          /*!< \brief Kind of Hybrid RANS/LES (SA - Detached Eddy Simulation (DES)). */
   SA_DDES  = 2,          /*!< \brief Kind of Hybrid RANS/LES (SA - Delayed DES (DDES) with Delta_max SGS ). */
   SA_ZDES  = 3,          /*!< \brief Kind of Hybrid RANS/LES (SA - Delayed DES (DDES) with Vorticity based SGS like Zonal DES). */
-  SA_EDDES = 4           /*!< \brief Kind of Hybrid RANS/LES (SA - Delayed DES (DDES) with Shear Layer Adapted SGS: Enhanced DDES). */
+  SA_EDDES = 4,          /*!< \brief Kind of Hybrid RANS/LES (SA - Delayed DES (DDES) with Shear Layer Adapted SGS: Enhanced DDES). */
+  SA_WMLES = 5           /*!< \brief Kind of Hybrid RANS/LES (SA - Wall-Modeled LES (WMLES) with RANS-LES layering). */
 };
 static const MapType<std::string, ENUM_HYBRIDRANSLES> HybridRANSLES_Map = {
   MakePair("NONE", NO_HYBRIDRANSLES)
@@ -1500,6 +1501,7 @@ static const MapType<std::string, ENUM_HYBRIDRANSLES> HybridRANSLES_Map = {
   MakePair("SA_DDES", SA_DDES)
   MakePair("SA_ZDES", SA_ZDES)
   MakePair("SA_EDDES", SA_EDDES)
+  MakePair("SA_WMLES", SA_WMLES)
 };
 
 /*!

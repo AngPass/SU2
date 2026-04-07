@@ -47,6 +47,7 @@ private:
   MatrixType stochSourceOld;
   VectorType Vortex_Tilting;
   VectorType besselIntegral;
+  VectorType plusWallDistance;
 
 public:
   /*!
@@ -110,6 +111,19 @@ public:
    * \param[in] val_stochSource_old - Old value of the source term for the stochastic equations.
    */
   inline void SetLangevinSourceTermsOld(unsigned long iPoint, unsigned short iDim, su2double val_stochSource_old) override { stochSourceOld(iPoint, iDim) = val_stochSource_old; }
+
+  /*!
+   * \brief Get the wall distance in plus units.
+   * \param[in] iPoint - Point index.
+   */
+  inline su2double GetPlusWallDistance(unsigned long iPoint) const override { return plusWallDistance(iPoint); }
+
+  /*!
+   * \brief Set the wall distance in plus units.
+   * \param[in] iPoint - Point index.
+   * \param[in] val_plusWallDist - Wall distance in plus units.
+   */
+  inline void SetPlusWallDistance(unsigned long iPoint, su2double val_plusWallDist) override { plusWallDistance(iPoint) = val_plusWallDist; }
 
  /*!
    * \brief Get if the Stochastic Backscatter Model must be applied only in a confined box.

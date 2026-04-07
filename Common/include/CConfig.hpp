@@ -1101,6 +1101,8 @@ private:
   WINDOW_FUNCTION Kind_WindowFct;      /*!< \brief Type of window (weight) function for objective functional. */
   unsigned short Kind_HybridRANSLES;   /*!< \brief Kind of Hybrid RANS/LES. */
   unsigned short Kind_RoeLowDiss;      /*!< \brief Kind of Roe scheme with low dissipation for unsteady flows. */
+  bool HybridRANSLESInBox;             /*!< \brief Option for activating the Hybrid RANS/LES method only in a bounded box. */
+  su2double HybridRANSLESBoxBounds[6]; /*!< \brief Bounds of the box where the Hybrid RANS/LES is active. */
   struct CStochBackScatParam {
     bool StochasticBackscatter;             /*!< \brief Option to include Stochastic Backscatter Model. */
     su2double SBS_Cdelta;                   /*!< \brief Stochastic Backscatter Model lengthscale coefficient. */
@@ -1114,6 +1116,11 @@ private:
     su2double stochFdThreshold;             /*!< \brief Shielding function lower threshold for application of Stochastic Backscatter Model. */
     su2double stochSourceRelax;             /*!< \brief Relaxation factor for stochastic source term generation (Stochastic Backscatter Model). */
   } SBSParam;
+  struct CWallModLESParam {
+    su2double wallLayerThick;    /*!< \brief Wall-layer thickness (WMLES). */
+    bool WMLESInBox;             /*!< \brief Option to activate WMLES only in a bounded box. */
+    su2double WMLESBoxBounds[6]; /*!< \brief Bounds of the box where WMLES is active. */
+  } WMLESParam;
   bool enforceLES;                          /*!< \brief Option to enforce LES mode in hybrid RANS-LES simulations. */
   su2double LES_FilterWidth;                /*!< \brief LES filter width for hybrid RANS-LES simulations. */
 
@@ -9647,6 +9654,19 @@ public:
   unsigned short GetKind_HybridRANSLES(void) const { return Kind_HybridRANSLES; }
 
   /*!
+   * \brief Get if the Hybrid RANS/LES method must be applied only in a bounded box.
+   * \return TRUE if Hybrid RANS/LES method is applied only in a bounded box.
+   */
+  bool GetHybridRANSLESInBox(void) const { return HybridRANSLESInBox; }
+
+  /*!
+   * \brief Get the box bounds where the RANS/LES method must be applied.
+   * \param[in] ind - Index of the box bound (from 0 to 5, representing x_min, x_max, etc.)
+   * \return Box bounds.
+   */
+  su2double GetHybridRANSLESBoxBounds(unsigned short ind) const { return HybridRANSLESBoxBounds[ind]; }
+
+  /*!
    * \brief Get if the LES mode must be enforced.
    * \return TRUE if LES is enforced.
    */
@@ -9669,6 +9689,12 @@ public:
    * \return SBS model parameters.
    */
   const CStochBackScatParam& GetSBSParam(void) const { return SBSParam; }
+
+  /*!
+   * \brief Get Wall-Modeled LES (WMLES) parameters.
+   * \return WMLES parameters.
+   */
+  const CWallModLESParam& GetWMLESParam(void) const { return WMLESParam; }
 
   /*!
    * \brief Get the DES Constant.

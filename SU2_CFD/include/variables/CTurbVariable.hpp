@@ -112,7 +112,7 @@ public:
    */
   void RegisterEddyViscosity(bool input);
 
-    /*!
+  /*!
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
    * \param[in] iDim - Dimension index.
@@ -126,6 +126,19 @@ public:
    * \param[in] val_stochSource_old - Old value of source term in Langevin equations.
    */
   inline virtual void SetLangevinSourceTermsOld(unsigned long iPoint, unsigned short iDim, su2double val_stochSource_old) {}
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   */
+  inline virtual su2double GetPlusWallDistance(unsigned long iPoint) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] val_pluswalldist - Wall distance in plus units.
+   */
+  inline virtual void SetPlusWallDistance(unsigned long iPoint, su2double val_pluswalldist) {}
 
   /*!
    * \brief A virtual member.

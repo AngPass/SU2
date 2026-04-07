@@ -2976,6 +2976,12 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Specify Hybrid RANS/LES model */
   addEnumOption("HYBRID_RANSLES", Kind_HybridRANSLES, HybridRANSLES_Map, NO_HYBRIDRANSLES);
 
+  /* DESCRIPTION: Apply Hybrid RANS/LES model only in a bounded box */
+  addBoolOption("HYBRID_RANSLES_IN_BOX", HybridRANSLESInBox, false);
+
+  /* DESCRIPTION: Specify extents of box where Stochastic Backscatter Model is active */
+  addDoubleArrayOption("HYBRID_RANSLES_BOX_BOUNDS", 6, false, HybridRANSLESBoxBounds);
+
   /* DESCRIPTION: Specify if the Stochastic Backscatter Model must be activated */
   addBoolOption("STOCHASTIC_BACKSCATTER", SBSParam.StochasticBackscatter, false);
 
@@ -2999,6 +3005,15 @@ void CConfig::SetConfig_Options() {
 
   /* DESCRIPTION: Shielding function lower threshold for application of Stochastic Backscatter Model */
   addDoubleOption("SBS_FD_LOWER_THRESHOLD", SBSParam.stochFdThreshold, 0.9);
+
+  /* DESCRIPTION: Relaxation factor for the stochastic source term (Stochastic Backscatter Model) */
+  addDoubleOption("WMLES_LAYER_THICKNESS", WMLESParam.wallLayerThick, 150.0);
+
+  /* DESCRIPTION: Apply WMLES only in a bounded box */
+  addBoolOption("WMLES_IN_BOX", WMLESParam.WMLESInBox, false);
+
+  /* DESCRIPTION: Specify extents of box where WMLES is active */
+  addDoubleArrayOption("WMLES_BOX_BOUNDS", 6, false, WMLESParam.WMLESBoxBounds);
 
   /* DESCRIPTION: Filter width for LES (if negative, it is computed based on the local cell size) */
   addDoubleOption("LES_FILTER_WIDTH", LES_FilterWidth, -1.0);
@@ -6558,14 +6573,38 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
           case SA_DDES:  cout << "Delayed Detached Eddy Simulation (DDES) with Standard SGS" << endl; break;
           case SA_ZDES:  cout << "Delayed Detached Eddy Simulation (DDES) with Vorticity-based SGS" << endl; break;
           case SA_EDDES: cout << "Delayed Detached Eddy Simulation (DDES) with Shear-layer Adapted SGS" << endl; break;
+          case SA_WMLES: 
+            cout << "Wall-Modeled LES (WMLES) with RANS-LES layering" << endl;
+            if (GetnDim(GetMesh_FileName(), Mesh_FileFormat) < 3)
+              SU2_MPI::Error("Wall-Modeled LES available for 3D flow simulations only.", CURRENT_FUNCTION);
+            cout << "Wall-layer thickness (in plus units): " << WMLESParam.wallLayerThick << endl;
+            if (WMLESParam.wallLayerThick <= 0.0) SU2_MPI::Error("The wall-layer thickness must be non-negative.", CURRENT_FUNCTION);
+            if (WMLESParam.WMLESInBox) {
+              cout << "WMLES applied in a bounded box:" << endl;
+              cout << "  X: " << setw(10) << fixed << setprecision(4) << WMLESParam.WMLESBoxBounds[0] << " , "
+                              << setw(10) << fixed << setprecision(4) << WMLESParam.WMLESBoxBounds[1] << endl;
+              cout << "  Y: " << setw(10) << fixed << setprecision(4) << WMLESParam.WMLESBoxBounds[2] << " , "
+                              << setw(10) << fixed << setprecision(4) << WMLESParam.WMLESBoxBounds[3] << endl;
+              cout << "  Z: " << setw(10) << fixed << setprecision(4) << WMLESParam.WMLESBoxBounds[4] << " , "
+                              << setw(10) << fixed << setprecision(4) << WMLESParam.WMLESBoxBounds[5] << endl;
+            }
+            break;
         }
         if (Kind_HybridRANSLES != NO_HYBRIDRANSLES) {
           if (LES_FilterWidth > 0.0) cout << "User-specified LES filter width: " << LES_FilterWidth << endl;
+          if (HybridRANSLESInBox) {
+            cout << "Hybrid RANS/LES applied only in a bounded box." << endl;
+            cout << "Box bounds: " << endl;
+            cout << "  X: " << setw(10) << fixed << setprecision(4) << HybridRANSLESBoxBounds[0] << " , "
+                            << setw(10) << fixed << setprecision(4) << HybridRANSLESBoxBounds[1] << endl;
+            cout << "  Y: " << setw(10) << fixed << setprecision(4) << HybridRANSLESBoxBounds[2] << " , "
+                            << setw(10) << fixed << setprecision(4) << HybridRANSLESBoxBounds[3] << endl;
+            cout << "  Z: " << setw(10) << fixed << setprecision(4) << HybridRANSLESBoxBounds[4] << " , "
+                            << setw(10) << fixed << setprecision(4) << HybridRANSLESBoxBounds[5] << endl;
+          }
           cout << "Stochastic Backscatter: ";
           if (SBSParam.StochasticBackscatter) {
             cout << "ON" << endl;
-            if (Kind_HybridRANSLES == NO_HYBRIDRANSLES)
-              SU2_MPI::Error("Stochastic Backscatter can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);
             if (GetnDim(GetMesh_FileName(), Mesh_FileFormat) < 3)
               SU2_MPI::Error("Stochastic Backscatter Model available for 3D flow simulations only.", CURRENT_FUNCTION);
             cout << "Backscatter intensity coefficient: " << SBSParam.SBS_Cmag << endl;
@@ -6601,14 +6640,17 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
               cout << "  Z: " << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[4] << " , "
                               << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[5] << endl;
             }
-            if (Kind_HybridRANSLES != SA_DES)
+            if (Kind_HybridRANSLES != SA_DES && Kind_HybridRANSLES != SA_WMLES)
               cout << "Stochastic source terms suppressed where the shielding function is lower than: " << setw(5) << setprecision(3) << SBSParam.stochFdThreshold << endl;
           } else {
+            SBSParam.stochFdThreshold = 0.9;
             cout << "OFF" << endl;
           }
         }
+        if (Kind_HybridRANSLES == NO_HYBRIDRANSLES && SBSParam.StochasticBackscatter)
+          SU2_MPI::Error("Stochastic Backscatter can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);
         if (enforceLES) {
-          if (Kind_HybridRANSLES == NO_HYBRIDRANSLES)
+          if (Kind_HybridRANSLES == NO_HYBRIDRANSLES || Kind_HybridRANSLES == SA_WMLES)
             SU2_MPI::Error("ENFORCE_LES can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);
           else
             cout << "LES enforced in the whole computational domain." << endl;
