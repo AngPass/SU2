@@ -427,7 +427,6 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
         for (unsigned short iDim = 0; iDim < nDim; iDim++)
           numerics->SetStochSource(nodes->GetLangevinSourceTerms(iPoint, iDim), iDim);
         numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), 0.0);
-        numerics->SetSbsInBoxSensor(nodes->GetSbsInBox(iPoint), 0);
       }
 
     }
@@ -1646,7 +1645,9 @@ void CTurbSASolver::SetBackscatterInBox(CConfig *config, CGeometry *geometry) {
     bool outOfBoxY = (coord[1]<sbsBoxBounds[2] || coord[1]>sbsBoxBounds[3]);
     bool outOfBoxZ = (coord[2]<sbsBoxBounds[4] || coord[2]>sbsBoxBounds[5]);
     bool outOfBox  = (outOfBoxX || outOfBoxY || outOfBoxZ);
-    nodes->SetSbsInBox(iPoint, outOfBox ? 0 : 1);
+    su2double sbsInBox = outOfBox ? 0.0 : 1.0;
+    su2double lesSensor = nodes->GetLES_Mode(iPoint);
+    nodes->SetLES_Mode(iPoint, lesSensor * sbsInBox);
   }
   END_SU2_OMP_FOR
 
@@ -1663,9 +1664,7 @@ void CTurbSASolver::SetLangevinSourceTerms(CConfig *config, CGeometry* geometry)
     unsigned long iPointGlobal = geometry->nodes->GetGlobalIndex(iPoint);
     for (unsigned short iDim = 0; iDim < nDim; iDim++){
       su2double lesSensor = nodes->GetLES_Mode(iPoint);
-      su2double inBoxSensor = nodes->GetSbsInBox(iPoint);
-      bool insideBox = (inBoxSensor == 1);
-      if (lesSensor>threshold && insideBox) {
+      if (lesSensor>threshold) {
         su2double rnd = RandomToolbox::GetNormal(iPointGlobal, iDim, timeIter);
         nodes->SetLangevinSourceTermsOld(iPoint, iDim, rnd);
         nodes->SetLangevinSourceTerms(iPoint, iDim, rnd);

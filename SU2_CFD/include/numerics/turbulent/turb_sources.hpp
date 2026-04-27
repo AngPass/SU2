@@ -163,9 +163,8 @@ class CSourceBase_TurbSA : public CNumerics {
     su2double threshold = config->GetSBSParam().stochFdThreshold;
 
     su2double nut = ScalarVar_i[0] * var.fv1;
-    su2double tke = 0.0;
     const su2double limiter = 5.0;
-    if (lesMode_i > threshold) tke = pow(nut/dist_i, 2);
+    su2double tke = pow(nut/dist_i, 2);
 
     su2double R12 = - Cmag * tke * ScalarVar_i[3];
     su2double R13 = + Cmag * tke * ScalarVar_i[2];
@@ -177,7 +176,6 @@ class CSourceBase_TurbSA : public CNumerics {
     su2double Dfv1Dnut = 3.0 * var.fv1 * var.cv1_3 / (var.cv1_3 + Ji_3);
     su2double fac = 1.0 / (var.fv1 + ScalarVar_i[0]*Dfv1Dnut);
     su2double stochProdNut = RGradU * dist_i*dist_i/(2.0*ScalarVar_i[0]) * fac;
-    stochProdNut *= sbsInBox_i;
     stochProdNut = max(-limiter*prod, min(limiter*prod, stochProdNut));
 
     prod += stochProdNut;
@@ -246,7 +244,7 @@ class CSourceBase_TurbSA : public CNumerics {
       const su2double Ji_2 = pow(var.Ji, 2);
       const su2double Ji_3 = Ji_2 * var.Ji;
 
-      if (config->GetSBSParam().StochasticBackscatter && lesMode_i > config->GetSBSParam().stochFdThreshold) {
+      if (config->GetSBSParam().StochasticBackscatter && lesMode_i>config->GetSBSParam().stochFdThreshold) {
         var.fv1 = 1.0;
         var.d_fv1 = 0.0;
       } else {
@@ -256,7 +254,7 @@ class CSourceBase_TurbSA : public CNumerics {
 
       /*--- Using a modified relation so as to not change the Shat that depends on fv2.
        * From NASA turb modeling resource and 2003 paper. ---*/
-      if (config->GetSBSParam().StochasticBackscatter && lesMode_i > config->GetSBSParam().stochFdThreshold) {
+      if (config->GetSBSParam().StochasticBackscatter && lesMode_i>config->GetSBSParam().stochFdThreshold) {
         var.fv2 = 0.0;
         var.d_fv2 = 0.0;
       } else {
@@ -286,7 +284,7 @@ class CSourceBase_TurbSA : public CNumerics {
       /*--- Compute auxiliary function r ---*/
       rFunc::get(ScalarVar_i[0], var);
 
-      if (config->GetSBSParam().StochasticBackscatter && lesMode_i > config->GetSBSParam().stochFdThreshold) {
+      if (config->GetSBSParam().StochasticBackscatter && lesMode_i>config->GetSBSParam().stochFdThreshold) {
         var.fw = 0.0;
         var.d_fw = 0.0;
       } else {
@@ -340,7 +338,7 @@ class CSourceBase_TurbSA : public CNumerics {
       su2double Production = 0.0, Destruction = 0.0;
       SourceTerms::get(ScalarVar_i[0], var, Production, Destruction, Jacobian_i[0][0]);
 
-      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceNu)
+      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceNu && lesMode_i>config->GetSBSParam().stochFdThreshold)
         AddStochSource(config, var, Production);
 
       Residual[0] = (Production - Destruction) * Volume;
