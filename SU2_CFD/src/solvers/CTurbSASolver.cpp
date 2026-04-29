@@ -226,18 +226,20 @@ void CTurbSASolver::Preprocessing(CGeometry *geometry, CSolver **solver_containe
 
     SetDES_LengthScale(solver_container, geometry, config);
 
+    bool backscatter = config->GetSBSParam().StochasticBackscatter;
+    bool backscatterInBox = config->GetSBSParam().StochBackscatterInBox;
+    if (backscatter && backscatterInBox) SetBackscatterInBox(config, geometry);
+
     InitiateComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
     CompleteComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
 
+    InitiateComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
+    CompleteComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
+
     /*--- Compute source terms for Langevin equations ---*/
 
-    bool backscatter = config->GetSBSParam().StochasticBackscatter;
     unsigned long innerIter = config->GetInnerIter();
     if (backscatter && innerIter==0) {
-      bool backscatterInBox = config->GetSBSParam().StochBackscatterInBox;
-      unsigned long timeIter = config->GetTimeIter();
-      unsigned long restartIter = config->GetRestart_Iter();
-      if (backscatterInBox && timeIter==restartIter) SetBackscatterInBox(config, geometry);
       SetLangevinSourceTerms(config, geometry);
       const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
       if (maxIter > 0) SmoothLangevinSourceTerms(config, geometry);
@@ -1701,7 +1703,7 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
   const su2double cDelta = config->GetSBSParam().SBS_Cdelta;
   const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
   const su2double tol = -5.0;
-  const su2double sourceLim = 3.0;
+  const su2double sourceLim = 5.0;
   const su2double omega = 0.8;
   unsigned long timeIter = config->GetTimeIter();
   unsigned long restartIter = config->GetRestart_Iter();

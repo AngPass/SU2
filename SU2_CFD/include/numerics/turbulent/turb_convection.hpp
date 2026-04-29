@@ -47,6 +47,7 @@ private:
   using Base::Jacobian_j;
   using Base::ScalarVar_i;
   using Base::ScalarVar_j;
+  using Base::lesSensor;
   using Base::bounded_scalar;
   using Base::V_i;
   using Base::V_j;
@@ -65,9 +66,10 @@ private:
   void FinishResidualCalc(const CConfig* config) override {
     if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) {
       for (unsigned short iVar = 1; iVar < nVar; iVar++) {
-        Flux[iVar] = (a0 + a1) * 0.5 * (ScalarVar_i[iVar] + ScalarVar_j[iVar]);
-        Jacobian_i[iVar][iVar] = 0.5 * (a0+a1);
-        Jacobian_j[iVar][iVar] = 0.5 * (a0+a1);
+        Flux[iVar] = (a0 + a1) * 0.5 * (ScalarVar_i[iVar] + ScalarVar_j[iVar]) * lesSensor +
+                     (1.0-lesSensor) * (a0*ScalarVar_i[iVar] + a1*ScalarVar_j[iVar]);
+        Jacobian_i[iVar][iVar] = 0.5 * (a0+a1) * lesSensor + (1.0-lesSensor) * a0;
+        Jacobian_j[iVar][iVar] = 0.5 * (a0+a1) * lesSensor + (1.0-lesSensor) * a1;
       }
     }
     Flux[0] = a0*ScalarVar_i[0] + a1*ScalarVar_j[0];

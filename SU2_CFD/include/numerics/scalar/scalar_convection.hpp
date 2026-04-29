@@ -52,6 +52,7 @@ class CUpwScalar : public CNumerics {
   const FlowIndices idx;            /*!< \brief Object to manage the access to the flow primitives. */
   su2double a0 = 0.0;               /*!< \brief The maximum of the face-normal velocity and 0. */
   su2double a1 = 0.0;               /*!< \brief The minimum of the face-normal velocity and 0. */
+  su2double lesSensor = 0.0;        /*!< \brief Reconstruction of the LES sensor on the cell face. */
   su2double Flux[MAXNVAR];          /*!< \brief Final result, diffusive flux/residual. */
   su2double* Jacobian_i[MAXNVAR];   /*!< \brief Flux Jacobian w.r.t. node i. */
   su2double* Jacobian_j[MAXNVAR];   /*!< \brief Flux Jacobian w.r.t. node j. */
@@ -117,6 +118,10 @@ class CUpwScalar : public CNumerics {
     AD::SetPreaccIn(V_i[idx.Density()]);
     AD::SetPreaccIn(V_j[idx.Density()]);
     AD::SetPreaccIn(MassFlux);
+    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau>0.0) {
+      AD::SetPreaccIn(lesMode_i);
+      AD::SetPreaccIn(lesMode_j);
+    }
 
     ExtraADPreaccIn();
 
@@ -138,6 +143,10 @@ class CUpwScalar : public CNumerics {
       }
       a0 = fmax(0.0, q_ij);
       a1 = fmin(0.0, q_ij);
+    }
+
+    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau>0.0) {
+      lesSensor = min(0.95, 0.5*(lesMode_i + lesMode_j));
     }
 
     FinishResidualCalc(config);

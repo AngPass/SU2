@@ -1377,6 +1377,10 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       COUNT_PER_POINT  = 1;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
+    case MPI_QUANTITIES::LES_SENSOR:
+      COUNT_PER_POINT  = 1;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      break;
     case MPI_QUANTITIES::SOLUTION_FEA:
       if (config->GetTime_Domain())
         COUNT_PER_POINT  = nVar*3;
@@ -1511,6 +1515,9 @@ void CSolver::InitiateComms(CGeometry *geometry,
             break;
           case MPI_QUANTITIES::DES_LENGTHSCALE:
             bufDSend[buf_offset] = base_nodes->GetDES_LengthScale(iPoint);
+            break;
+          case MPI_QUANTITIES::LES_SENSOR:
+            bufDSend[buf_offset] = base_nodes->GetLES_Mode(iPoint);
             break;
           case MPI_QUANTITIES::UNDIVIDED_LAPLACIAN:
             for (iVar = 0; iVar < nVar; iVar++)
@@ -1667,6 +1674,9 @@ void CSolver::CompleteComms(CGeometry *geometry,
             break;
           case MPI_QUANTITIES::DES_LENGTHSCALE:
             base_nodes->SetDES_LengthScale(iPoint, bufDRecv[buf_offset]);
+            break;
+          case MPI_QUANTITIES::LES_SENSOR:
+            base_nodes->SetLES_Mode(iPoint, bufDRecv[buf_offset]);
             break;
           case MPI_QUANTITIES::UNDIVIDED_LAPLACIAN:
             for (iVar = 0; iVar < nVar; iVar++)
