@@ -115,14 +115,13 @@ class CSourceBase_TurbSA : public CNumerics {
   /*!
    * \brief Include source-term residuals for Langevin equations (Stochastic Backscatter Model) 
    */
-  inline void ResidualStochEquations(su2double timeStep, const su2double ct, 
-                                     su2double lengthScale, su2double DES_const,
+  inline void ResidualStochEquations(su2double timeStep, const su2double ct, su2double lengthScale,
                                      const CSAVariables& var, TIME_MARCHING time_marching,
                                      su2double threshold) {
 
     const su2double& nue = ScalarVar_i[0];
     const su2double nut = max(nue*var.fv1, 1e-10);
-    const su2double delta = lengthScale/DES_const;
+    const su2double delta = lengthScale;
 
     if (delta > 1e-10) {
 
@@ -350,8 +349,7 @@ class CSourceBase_TurbSA : public CNumerics {
       /*--- Compute residual for Langevin equations (Stochastic Backscatter Model). ---*/
 
       if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) {
-        const su2double DES_const = config->GetConst_DES();
-        ResidualStochEquations(config->GetDelta_UnstTime(), config->GetSBSParam().SBS_Ctau, dist_i, DES_const,
+        ResidualStochEquations(config->GetDelta_UnstTime(), config->GetSBSParam().SBS_Ctau, dist_i,
                                var, config->GetTime_Marching(), config->GetSBSParam().stochFdThreshold);
       }
     }
