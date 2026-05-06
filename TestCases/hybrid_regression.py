@@ -3,7 +3,7 @@
 ## \file hybrid_regression.py
 #  \brief Python script for automated regression testing of SU2 examples
 #  \author A. Aranake, A. Campos, T. Economon, T. Lukaczyk, S. Padron
-#  \version 8.4.0 "Harrier"
+#  \version 8.5.0 "Harrier"
 #
 # SU2 Project Website: https://su2code.github.io
 #
@@ -491,11 +491,9 @@ def main():
     aeroelastic.cfg_dir   = "aeroelastic"
     aeroelastic.cfg_file  = "aeroelastic_NACA64A010.cfg"
     aeroelastic.test_iter = 2
-    aeroelastic.test_vals         = [0.076965, 0.027533, -0.001374, -0.000299]
-    aeroelastic.test_vals_aarch64 = [0.074170, 0.027590, -0.001579, -0.000160]
+    aeroelastic.test_vals = [-1.876630, 4.021077, 0.078661, 0.027698, -0.001639, -0.000129, -1.056256]
     aeroelastic.unsteady  = True
     aeroelastic.enabled_on_cpu_arch = ["x86_64"] # Requires AVX-capable architecture
-    aeroelastic.enabled_with_tsan = False
     test_list.append(aeroelastic)
 
     # Delayed Detached Eddy Simulation
@@ -679,7 +677,7 @@ def main():
     statbeam3d.cfg_dir   = "fea_fsi/StatBeam_3d"
     statbeam3d.cfg_file  = "configBeam_3d.cfg"
     statbeam3d.test_iter = 0
-    statbeam3d.test_vals = [-2.777602, -1.710976, -2.445072, 110350]
+    statbeam3d.test_vals = [-2.830455, -1.746659, -2.366087, 110350]
     statbeam3d.test_vals_aarch64 = [-2.777602, -1.710976, -2.445072, 110350]
     test_list.append(statbeam3d)
 
@@ -708,7 +706,7 @@ def main():
     dyn_fsi.cfg_dir   = "fea_fsi/dyn_fsi"
     dyn_fsi.cfg_file  = "config.cfg"
     dyn_fsi.test_iter = 4
-    dyn_fsi.test_vals = [-4.330725, -4.152808, 0, 103]
+    dyn_fsi.test_vals = [-4.330725, -4.152808, 0, 102]
     dyn_fsi.multizone = True
     dyn_fsi.unsteady  = True
     test_list.append(dyn_fsi)

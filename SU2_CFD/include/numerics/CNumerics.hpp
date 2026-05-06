@@ -3,7 +3,7 @@
  * \brief Declaration of the base numerics class, the
  *        implementation is in the CNumerics.cpp file.
  * \author F. Palacios, T. Economon
- * \version 8.4.0 "Harrier"
+ * \version 8.5.0 "Harrier"
  *
  * SU2 Project Website: https://su2code.github.io
  *
@@ -661,12 +661,12 @@ public:
    * \param[out] stochReynStress - Stochastic tensor (to be added to the Reynolds stress tensor).
    */
   template<class Vec, class Mat>
-  inline void ComputeStochReynStress(su2double density, su2double tke, const Vec& rndVec, 
+  inline void ComputeStochReynStress(su2double density, su2double tke, const Vec& rndVec,
                                      su2double Cmag, Mat& stochReynStress) {
 
     /* --- Calculate stochastic tensor --- */
 
-    su2double stochLim = 3.0; 
+    su2double stochLim = 3.0;
 
     stochReynStress[0][0] =   0.0;
     stochReynStress[1][1] =   0.0;
