@@ -157,10 +157,8 @@ void CAvgGrad_Base::SetStochReynStress(const CConfig* config) {
   for (unsigned short iDim = 0; iDim < nDim; iDim++)
     Mean_StochVar[iDim] = 0.5*(stochVar_i[iDim] + stochVar_j[iDim]);
   su2double tkeEstim_i = 0.0, tkeEstim_j = 0.0;
-  if (max(lesMode_i, lesMode_j) > config->GetSBSParam().stochFdThreshold) {
-    tkeEstim_i = pow(Eddy_Viscosity_i/dist_i, 2);
-    tkeEstim_j = pow(Eddy_Viscosity_j/dist_j, 2);
-  }
+  if (lesMode_i > config->GetSBSParam().stochFdThreshold) tkeEstim_i = pow(Eddy_Viscosity_i/dist_i, 2);
+  if (lesMode_j > config->GetSBSParam().stochFdThreshold) tkeEstim_j = pow(Eddy_Viscosity_j/dist_j, 2);
   su2double Mean_turb_ke_estim = 0.5*(tkeEstim_i + tkeEstim_j);
   su2double intensityCoeff = ComputeStochRelaxFactor(config);
   ComputeStochReynStress(Mean_PrimVar[nDim+2], Mean_turb_ke_estim,

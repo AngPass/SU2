@@ -243,7 +243,7 @@ class CSourceBase_TurbSA : public CNumerics {
       const su2double Ji_2 = pow(var.Ji, 2);
       const su2double Ji_3 = Ji_2 * var.Ji;
 
-      if (config->GetSBSParam().StochasticBackscatter && lesMode_i>config->GetSBSParam().stochFdThreshold) {
+      if (config->GetSBSParam().StochasticBackscatter && lesMode_i>config->GetSBSParam().stochFdThreshold && !config->GetSBSParam().StochBackscatterInBox) {
         var.fv1 = 1.0;
         var.d_fv1 = 0.0;
       } else {
@@ -253,7 +253,7 @@ class CSourceBase_TurbSA : public CNumerics {
 
       /*--- Using a modified relation so as to not change the Shat that depends on fv2.
        * From NASA turb modeling resource and 2003 paper. ---*/
-      if (config->GetSBSParam().StochasticBackscatter && lesMode_i>config->GetSBSParam().stochFdThreshold) {
+      if (config->GetSBSParam().StochasticBackscatter && lesMode_i>config->GetSBSParam().stochFdThreshold && !config->GetSBSParam().StochBackscatterInBox) {
         var.fv2 = 0.0;
         var.d_fv2 = 0.0;
       } else {
@@ -283,7 +283,7 @@ class CSourceBase_TurbSA : public CNumerics {
       /*--- Compute auxiliary function r ---*/
       rFunc::get(ScalarVar_i[0], var);
 
-      if (config->GetSBSParam().StochasticBackscatter && lesMode_i>config->GetSBSParam().stochFdThreshold) {
+      if (config->GetSBSParam().StochasticBackscatter && lesMode_i>config->GetSBSParam().stochFdThreshold && !config->GetSBSParam().StochBackscatterInBox) {
         var.fw = 0.0;
         var.d_fw = 0.0;
       } else {
