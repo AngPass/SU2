@@ -1110,6 +1110,11 @@ private:
     su2double stochFdThreshold;             /*!< \brief Shielding function lower threshold for application of Stochastic Backscatter Model. */
     su2double stochSourceRelax;             /*!< \brief Relaxation factor for stochastic source term generation (Stochastic Backscatter Model). */
   } SBSParam;
+  struct CWallModLESParam {
+    su2double wallLayerThick;    /*!< \brief Wall-layer thickness (WMLES). */
+    bool WMLESInBox;             /*!< \brief Option to activate WMLES only in a bounded box. */
+    su2double WMLESBoxBounds[6]; /*!< \brief Bounds of the box where WMLES is active. */
+  } WMLESParam;
   bool enforceLES;                          /*!< \brief Option to enforce LES mode in hybrid RANS-LES simulations. */
   su2double LES_FilterWidth;                /*!< \brief LES filter width for hybrid RANS-LES simulations. */
 
@@ -9642,6 +9647,12 @@ public:
    * \return SBS model parameters.
    */
   const CStochBackScatParam& GetSBSParam(void) const { return SBSParam; }
+
+  /*!
+   * \brief Get Wall-Modeled LES (WMLES) parameters.
+   * \return WMLES parameters.
+   */
+  const CWallModLESParam& GetWMLESParam(void) const { return WMLESParam; }
 
   /*!
    * \brief Get the DES Constant.

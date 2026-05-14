@@ -65,6 +65,7 @@ CTurbSAVariable::CTurbSAVariable(su2double val_nu_tilde, su2double val_muT, unsi
       stochSource.resize(nPoint, nDim) = su2double(0.0);
       stochSourceOld.resize(nPoint, nDim) = su2double(0.0);
       besselIntegral.resize(nPoint) = su2double(0.0);
+      plusWallDistance.resize(nPoint) = su2double(0.0);
     }
   }
 
