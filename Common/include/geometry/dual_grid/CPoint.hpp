@@ -485,27 +485,6 @@ class CPoint {
   inline void SetWall_Distance(unsigned long iPoint, su2double distance) { Wall_Distance(iPoint) = distance; }
 
   /*!
-   * \brief Get the index of the closest wall element.
-   * \param[in] iPoint - Index of the point.
-   * \return Index of the closest wall element.
-   */
-  inline su2double GetClosestWall_Element(unsigned long iPoint) const { return ClosestWall_Elem(iPoint); }
-
-  /*!
-   * \brief Get the marker index of the closest wall element.
-   * \param[in] iPoint - Index of the point.
-   * \return Marker index of the closest wall element.
-   */
-  inline su2double GetClosestWall_Marker(unsigned long iPoint) const { return ClosestWall_Marker(iPoint); }
-
-  /*!
-   * \brief Get the rank of the process holding the closest wall element.
-   * \param[in] iPoint - Index of the point.
-   * \return Rank of the process holding the closest wall element.
-   */
-  inline su2double GetClosestWall_Rank(unsigned long iPoint) const { return ClosestWall_Rank(iPoint); }
-
-  /*!
    * \brief Get the value of the distance to the nearest wall.
    * \param[in] iPoint - Index of the point.
    * \return Value of the distance to the nearest wall.

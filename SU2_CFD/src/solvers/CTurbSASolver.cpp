@@ -245,60 +245,6 @@ void CTurbSASolver::Preprocessing(CGeometry *geometry, CSolver **solver_containe
       if (maxIter > 0) SmoothLangevinSourceTerms(config, geometry);
     }
 
-    if (kind_hybridRANSLES == SA_WMLES) {
-      auto* flowNodes = su2staticcast_p<CFlowVariable*>(solver_container[FLOW_SOL]->GetNodes());
-
-      for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-        int wallRank = geometry->nodes->GetClosestWall_Rank(iPoint);
-        su2double yPlus = 0.0;
-        if (rank == wallRank) {
-          unsigned short wallMarker = geometry->nodes->GetClosestWall_Marker(iPoint);
-          unsigned long wallElement = geometry->nodes->GetClosestWall_Element(iPoint);
-          unsigned short nWallNodes = geometry->bound[wallMarker][wallElement]->GetnNodes();
-          for (unsigned short wallNode = 0; wallNode < nWallNodes; wallNode++) {
-            unsigned long wallPoint = geometry->bound[wallMarker][wallElement]->GetNode(wallNode);
-            unsigned long wallVertex;
-            for (unsigned long iVertex = 0; iVertex < geometry->nVertex[wallMarker]; iVertex++) {
-              if (geometry->vertex[wallMarker][iVertex]->GetNode() == wallPoint) {
-                wallVertex = iVertex;
-                break;
-              }
-            }
-            const auto Normal = geometry->vertex[wallMarker][wallVertex]->GetNormal();
-            const su2double Area = GeometryToolbox::Norm(nDim, Normal);
-            su2double unitNormal[MAXNDIM] = {0.0};
-            for (unsigned short iDim = 0; iDim < nDim; iDim++)
-              unitNormal[iDim] = -Normal[iDim]/Area;
-            const su2double wallVis = flowNodes->GetLaminarViscosity(wallPoint);
-            su2double tau[MAXNDIM][MAXNDIM] = {{0.0}};
-            const auto velGrad = flowNodes->GetVelocityGradient(wallPoint);
-            su2double divVel = 0.0;
-            for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-              divVel += velGrad[iDim][iDim];
-            }
-            su2double pTerm = 2./3. * divVel * wallVis;
-            for (unsigned short iDim = 0; iDim < nDim; iDim++){
-              for (unsigned short jDim = 0; jDim < nDim; jDim++){
-                tau[iDim][jDim] = wallVis * (velGrad[iDim][jDim]+velGrad[jDim][iDim]);
-              }
-              tau[iDim][iDim] -= pTerm;
-            }
-            su2double tauTangent[MAXNDIM] = {0.0};
-            GeometryToolbox::TangentProjection(nDim, tau, unitNormal, tauTangent);
-            su2double wallShearStress = GeometryToolbox::Norm(int(MAXNDIM), tauTangent);
-            const su2double density = flowNodes->GetDensity(wallPoint);
-            const su2double wallKinVis = wallVis / density;
-            su2double uTau = sqrt(wallShearStress/density);
-            yPlus += uTau * geometry->nodes->GetWall_Distance(iPoint) / wallKinVis; 
-          }
-          yPlus /= nWallNodes;
-        } else {
-          yPlus = 1e3;
-        }
-        nodes->SetPlusWallDistance(iPoint, yPlus);
-      }
-    }
-
   }
 
 }
@@ -1532,8 +1478,9 @@ void CTurbSASolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, CC
         ---*/
 
         su2double maxDelta = geometry->nodes->GetMaxLength(iPoint);
-        if (LES_FilterWidth > 0.0) maxDelta = LES_FilterWidth;
-
+        if (LES_FilterWidth > 0.0){
+          maxDelta = LES_FilterWidth;
+        }
         const su2double distDES = constDES * maxDelta;
         lengthScale = min(distDES,wallDistance);
         lesSensor = (wallDistance<=distDES) ? 0.0 : 1.0;
@@ -1552,7 +1499,9 @@ void CTurbSASolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, CC
          ---*/
 
         su2double maxDelta = geometry->nodes->GetMaxLength(iPoint);
-        if (LES_FilterWidth > 0.0) maxDelta = LES_FilterWidth;
+        if (LES_FilterWidth > 0.0){
+          maxDelta = LES_FilterWidth;
+        }
 
         const su2double r_d = (kinematicViscosityTurb+kinematicViscosity)/(uijuij*k2*pow(wallDistance, 2.0));
         const su2double f_d = 1.0-tanh(pow(8.0*r_d,3.0));
@@ -1603,7 +1552,9 @@ void CTurbSASolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, CC
           maxDelta = deltaDDES;
         }
 
-        if (LES_FilterWidth > 0.0) maxDelta = LES_FilterWidth;
+        if (LES_FilterWidth > 0.0){
+          maxDelta = LES_FilterWidth;
+        }
         const su2double distDES = constDES * maxDelta;
         lengthScale = wallDistance-f_d*max(0.0,(wallDistance-distDES));
         lesSensor = (wallDistance<=distDES) ? 0.0 : f_d;
@@ -1662,7 +1613,9 @@ void CTurbSASolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, CC
           maxDelta = deltaDDES;
         }
 
-        if (LES_FilterWidth > 0.0) maxDelta = LES_FilterWidth;
+        if (LES_FilterWidth > 0.0){
+          maxDelta = LES_FilterWidth;
+        }
         const su2double distDES = constDES * maxDelta;
         lengthScale = wallDistance-f_d*max(0.0,(wallDistance-distDES));
         lesSensor = (wallDistance<=distDES) ? 0.0 : f_d;
@@ -1671,27 +1624,6 @@ void CTurbSASolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, CC
           lengthScale = distDES;
           lesSensor = 1.0;
         }
-
-        break;
-      }
-      case SA_WMLES: {
-        /*--- Wall-modeled LES with RANS-LES layering. ---*/
-
-        const su2double maxDelta = (LES_FilterWidth > 0.0) ? LES_FilterWidth : geometry->nodes->GetMaxLength(iPoint);
-        const su2double distDES = constDES * maxDelta;
-
-        bool insideBox = true;
-        if (config->GetSBSParam().StochBackscatterInBox) {
-          const auto WMLESBoxBounds = config->GetWMLESParam().WMLESBoxBounds;
-          bool insideBoxX = (coord_i[0]>=WMLESBoxBounds[0] && coord_i[0]<=WMLESBoxBounds[1]);
-          bool insideBoxY = (coord_i[1]>=WMLESBoxBounds[2] && coord_i[1]<=WMLESBoxBounds[3]);
-          bool insideBoxZ = (coord_i[2]>=WMLESBoxBounds[4] && coord_i[2]<=WMLESBoxBounds[5]);
-          bool insideBox  = (insideBoxX && insideBoxY && insideBoxZ);
-        }
-
-        const su2double plusWallDist = nodes->GetPlusWallDistance(iPoint);
-        lengthScale = (wallDistance <= config->GetWMLESParam().wallLayerThick && insideBox) ? wallDistance : distDES;
-        lesSensor = (wallDistance <= config->GetWMLESParam().wallLayerThick && insideBox) ? 0.0 : 1.0;
 
         break;
       }
