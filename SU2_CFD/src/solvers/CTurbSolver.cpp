@@ -143,7 +143,10 @@ void CTurbSolver::LoadRestart(CGeometry** geometry, CSolver*** solver, CConfig* 
     /*--- Compute how many turbulence variables are present in the restart file. ---*/
 
     unsigned short nVarInRestart = Restart_Vars[1] - skipVars;
-    if (nVarInRestart > nVar) nVarInRestart = nVar;
+    nVarInRestart = min(nVarInRestart, nVar);
+    if (config->GetSBSParam().StochasticBackscatter && !config->GetSBSParam().restartStochField) {
+      nVarInRestart = min(nVarInRestart, (unsigned short)1);
+    }
 
     /*--- Load data from the restart into correct containers. ---*/
 

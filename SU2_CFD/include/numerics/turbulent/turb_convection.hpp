@@ -70,6 +70,9 @@ private:
                      (1.0-lesSensor) * (a0*ScalarVar_i[iVar] + a1*ScalarVar_j[iVar]);
         Jacobian_i[iVar][iVar] = 0.5 * (a0+a1) * lesSensor + (1.0-lesSensor) * a0;
         Jacobian_j[iVar][iVar] = 0.5 * (a0+a1) * lesSensor + (1.0-lesSensor) * a1;
+        Flux[iVar] *= config->GetVelocity_Ref();
+        Jacobian_i[iVar][iVar] *= config->GetVelocity_Ref();
+        Jacobian_j[iVar][iVar] *= config->GetVelocity_Ref();
       }
     }
     Flux[0] = a0*ScalarVar_i[0] + a1*ScalarVar_j[0];

@@ -68,6 +68,13 @@ private:
   void SetLangevinSourceTerms(CConfig *config, CGeometry* geometry);
 
   /*!
+   * \brief Compute Ornstein-Uhlenbeck process (Stochastic Backscatter Model).
+   * \param[in] config - Definition of the particular problem.
+   * \param[in] geometry - Geometrical definition.
+   */
+  void ComputeOU_Process(CSolver** solver, CConfig* config, CGeometry* geometry);
+
+  /*!
    * \brief Apply Laplacian smoothing to the source terms in Langevin equations (Stochastic Backscatter Model).
    * \param[in] config - Definition of the particular problem.
    * \param[in] geometry - Geometrical definition.

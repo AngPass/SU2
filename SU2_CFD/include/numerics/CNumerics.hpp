@@ -106,6 +106,12 @@ protected:
   su2double
   dist_i,  /*!< \brief Distance of point i to the nearest wall. */
   dist_j;  /*!< \brief Distance of point j to the nearest wall. */
+  su2double
+  wallDist_i,  /*!< \brief Distance of point i to the nearest wall (auxiliary variable for Backscatter Model). */
+  wallDist_j;  /*!< \brief Distance of point j to the nearest wall (auxiliary variable for Backscatter Model). */
+  su2double
+  maxDelta_i,  /*!< \brief Maximum cell size at point i (LES filter width). */
+  maxDelta_j; /*!< \brief Maximum cell size at point j (LES filter width). */
   const su2double
   *Und_Lapl_i,  /*!< \brief Undivided laplacians at point i. */
   *Und_Lapl_j;  /*!< \brief Undivided laplacians at point j. */
@@ -184,7 +190,7 @@ protected:
   roughness_j = 0.0;                       /*!< \brief Roughness of the wall nearest to point j. */
 
   su2double MeanPerturbedRSM[3][3];   /*!< \brief Perturbed Reynolds stress tensor  */
-  su2double stochReynStress[3][3] = {{0.0}}; /*!< \brief Stochastic contribution to Reynolds stress tensor for Backscatter Model. */
+  su2double stochSourceMom[3] = {0.0}; /*!< \brief Stochastic source term in momentum equations (Backscatter Model). */
   su2double stochSource[3] = {0.0}; /*!< \brief Source term for Langevin equations in Stochastic Backscatter Model. */
   su2double
   stochVar_i[3] = {0.0}, /*!< \brief Stochastic variables at point i for Stochastic Backscatter Model. */
@@ -648,61 +654,6 @@ public:
       }
     }
   }
-  
-  /*!
-   * \brief Compute a random contribution to the Reynolds stress tensor (Stochastic Backscatter Model).
-   * \details See: Kok, Johan C. "A stochastic backscatter model for grey-area mitigation in detached
-   * eddy simulations." Flow, Turbulence and Combustion 99.1 (2017): 119-150.
-   * \param[in] nDim - Dimension of the flow problem, 2 or 3.
-   * \param[in] density - Density.
-   * \param[in] tke - Turbulent kinetic energy.
-   * \param[in] rndVec - Vector of stochastic variables from Langevin equations.
-   * \param[in] Cmag - Stochastic backscatter intensity coefficient.
-   * \param[out] stochReynStress - Stochastic tensor (to be added to the Reynolds stress tensor).
-   */
-  template<class Vec, class Mat>
-  inline void ComputeStochReynStress(su2double density, su2double tke, const Vec& rndVec,
-                                     su2double Cmag, Mat& stochReynStress) {
-
-    /* --- Calculate stochastic tensor --- */
-
-    su2double stochLim = 3.0;
-
-    stochReynStress[0][0] =   0.0;
-    stochReynStress[1][1] =   0.0;
-    stochReynStress[2][2] =   0.0;
-    stochReynStress[0][1] = - Cmag * density * tke * max(-stochLim, min(stochLim, rndVec[2]));
-    stochReynStress[0][2] = + Cmag * density * tke * max(-stochLim, min(stochLim, rndVec[1]));
-    stochReynStress[1][2] = - Cmag * density * tke * max(-stochLim, min(stochLim, rndVec[0]));
-    stochReynStress[1][0] = - stochReynStress[0][1];
-    stochReynStress[2][0] = - stochReynStress[0][2];
-    stochReynStress[2][1] = - stochReynStress[1][2];
-
-  }
-
-  /*!
-   * \brief Compute relaxation factor for stochastic source term in momentum equations (Stochastic Backscatter Model).
-   * \param[in] config - Definition of the particular problem.
-   * \param[out] intensityCoeff - Relaxation factor for backscatter intensity.
-   */
-  inline su2double ComputeStochRelaxFactor(const CConfig* config) {
-
-    su2double SBS_Cmag = config->GetSBSParam().SBS_Cmag;
-    su2double intensityCoeff = SBS_Cmag;
-    su2double SBS_RelaxFactor = config->GetSBSParam().stochSourceRelax;
-    if (SBS_RelaxFactor > 0.0) {
-      su2double FS_Vel = config->GetModVel_FreeStream();
-      su2double ReynoldsLength = config->GetLength_Reynolds();
-      su2double timeScale = ReynoldsLength / FS_Vel;
-      unsigned long timeIter = config->GetTimeIter();
-      unsigned long restartIter = config->GetRestart_Iter();
-      su2double timeStep = config->GetTime_Step();
-      su2double currentTime = (timeIter - restartIter) * timeStep;
-      intensityCoeff = SBS_Cmag * (1.0 - exp(- currentTime / (timeScale*SBS_RelaxFactor)));
-    }
-    return intensityCoeff;
-
-  }
 
   /*!
    * \brief Project average gradient onto normal (with or w/o correction) for viscous fluxes of scalar quantities.
@@ -930,6 +881,26 @@ public:
   void SetDistance(su2double val_dist_i, su2double val_dist_j) {
     dist_i = val_dist_i;
     dist_j = val_dist_j;
+  }
+
+  /*!
+   * \brief Set the value of the distance from the nearest wall (auxiliary variable for Backscatter Model).
+   * \param[in] val_dist_i - Value of of the distance from point i to the nearest wall.
+   * \param[in] val_dist_j - Value of of the distance from point j to the nearest wall.
+   */
+  void SetWallDistance(su2double val_dist_i, su2double val_dist_j) {
+    wallDist_i = val_dist_i;
+    wallDist_j = val_dist_j;
+  }
+
+  /*!
+   * \brief Set the value of the maximum cell size.
+   * \param[in] val_dist_i - Value of of the distance from point i to the nearest wall.
+   * \param[in] val_dist_j - Value of of the distance from point j to the nearest wall.
+   */
+  void SetMaxDelta(su2double val_maxDelta_i, su2double val_maxDelta_j) {
+    maxDelta_i = val_maxDelta_i;
+    maxDelta_j = val_maxDelta_j;
   }
 
   /*!

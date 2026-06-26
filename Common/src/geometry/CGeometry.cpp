@@ -4578,11 +4578,11 @@ void CGeometry::ComputeWallDistance(const CConfig* const* config_container, CGeo
       }
     }
 
-    /*--- If there are no viscous walls in the entire domain, set distances to zero ---*/
+    /*--- If there are no viscous walls in the entire domain, set distances to the numerical limit ---*/
     if (allEmpty) {
       for (int iZone = 0; iZone < nZone; iZone++) {
         CGeometry* geometry = geometry_container[iZone][iInst][MESH_0];
-        geometry->SetWallDistance(0.0);
+        geometry->SetWallDistance(numeric_limits<su2double>::max());
       }
       continue;
     }

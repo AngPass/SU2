@@ -146,7 +146,8 @@ class CUpwScalar : public CNumerics {
     }
 
     if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau>0.0) {
-      lesSensor = min(0.95, 0.5*(lesMode_i + lesMode_j));
+      const su2double dissipFactor = 0.99;
+      lesSensor = (config->GetSBSParam().langevinUpwBlend) ? min(dissipFactor, 0.5*(lesMode_i + lesMode_j)) : dissipFactor;
     }
 
     FinishResidualCalc(config);

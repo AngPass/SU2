@@ -2742,6 +2742,7 @@ enum class MPI_QUANTITIES {
   STOCH_SOURCE_LANG    ,  /*!< \brief Stochastic source term for Langevin equations communication. */
   DES_LENGTHSCALE      ,  /*!< \brief DES length scale communication. */
   LES_SENSOR           ,  /*!< \brief LES sensor communication. */
+  OU_PROCESS           ,  /*!< \brief Ornstein-Uhlenbeck process. */
   SOLUTION_MATRIX      ,  /*!< \brief Matrix solution communication. */
   SOLUTION_MATRIXTRANS ,  /*!< \brief Matrix transposed solution communication. */
   NEIGHBORS            ,  /*!< \brief Neighbor point count communication (for JST). */

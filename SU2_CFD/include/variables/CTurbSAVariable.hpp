@@ -43,6 +43,8 @@ private:
   VectorType lesMode;
   MatrixType stochSource;
   MatrixType stochSourceOld;
+  MatrixType OU_Process;
+  VectorType sbsInBox;
   VectorType Vortex_Tilting;
   VectorType besselIntegral;
 
@@ -109,6 +111,23 @@ public:
    */
   inline void SetLangevinSourceTermsOld(unsigned long iPoint, unsigned short iDim, su2double val_stochSource_old) override { stochSourceOld(iPoint, iDim) = val_stochSource_old; }
 
+
+  /*!
+   * \brief Get the value of the stochastic variable resulting from the Ornstein-Uhlenbeck process.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   * \return Value of the stochastic variable resulting from Ornstein-Uhlenbeck process.
+   */
+  inline su2double GetOU_Process(unsigned long iPoint, unsigned short iDim) const override { return OU_Process(iPoint, iDim); }
+
+  /*!
+   * \brief Set the value of the stochastic variable resulting from the Ornstein-Uhlenbeck process.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   * \param[in] val_OU - Value of the stochastic variable resulting from Ornstein-Uhlenbeck process.
+   */
+  inline void SetOU_Process(unsigned long iPoint, unsigned short iDim, su2double val_OU) override { OU_Process(iPoint, iDim) = val_OU; }
+
   /*!
    * \brief Set the LES sensor.
    */
@@ -119,6 +138,17 @@ public:
    * \return Value of the LES sensor.
    */
   inline su2double GetLES_Mode(unsigned long iPoint) const override { return lesMode(iPoint); }
+
+  /*!
+   * \brief Mark the points where the Stochastic Backscatter Model is active.
+   */
+  inline void SetSBSInBox(unsigned long iPoint, su2double val_sbsInBox) override { sbsInBox(iPoint) = val_sbsInBox; }
+
+  /*!
+   * \brief Get the the points where the Stochastic Backscatter Model is active.
+   * \return One if the Stochastic Backscatter Model is active.
+   */
+  inline su2double GetSBSInBox(unsigned long iPoint) const override { return sbsInBox(iPoint); }
 
   /*!
    * \brief Set the vortex tilting measure for computation of the EDDES length scale

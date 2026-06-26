@@ -1354,7 +1354,7 @@ void CFlowOutput::SetVolumeOutputFieldsScalarSolution(const CConfig* config){
   switch (TurbModelFamily(config->GetKind_Turb_Model())) {
     case TURB_FAMILY::SA:
       AddVolumeOutput("NU_TILDE", "Nu_Tilde", "SOLUTION", "Spalart-Allmaras variable");
-      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) {
+      if (config->GetSBSParam().StochasticBackscatter) {
         AddVolumeOutput("STOCHVAR_X", "StochVar_x", "SOLUTION", "x-component of the stochastic vector potential");
         AddVolumeOutput("STOCHVAR_Y", "StochVar_y", "SOLUTION", "y-component of the stochastic vector potential");
         AddVolumeOutput("STOCHVAR_Z", "StochVar_z", "SOLUTION", "z-component of the stochastic vector potential");
@@ -1601,7 +1601,6 @@ void CFlowOutput::SetVolumeOutputFieldsScalarMisc(const CConfig* config) {
       AddVolumeOutput("STOCHSOURCE_X", "StochSource_x", "BACKSCATTER", "x-component of the stochastic source vector");
       AddVolumeOutput("STOCHSOURCE_Y", "StochSource_y", "BACKSCATTER", "y-component of the stochastic source vector");
       AddVolumeOutput("STOCHSOURCE_Z", "StochSource_z", "BACKSCATTER", "z-component of the stochastic source vector");
-      AddVolumeOutput("ENERGY_BACKSCATTER_RATIO", "Energy_Backscatter_Ratio", "BACKSCATTER", "Energy backscatter from unresolved to resolved scales (divided by the turbulent dissipation of resolved kinetic energy)");
     }
   }
 
@@ -1711,11 +1710,14 @@ void CFlowOutput::LoadVolumeDataScalar(const CConfig* config, const CSolver* con
         SetVolumeOutputValue("RES_STOCHVAR_X", iPoint, turb_solver->LinSysRes(iPoint, 1));
         SetVolumeOutputValue("RES_STOCHVAR_Y", iPoint, turb_solver->LinSysRes(iPoint, 2));
         SetVolumeOutputValue("RES_STOCHVAR_Z", iPoint, turb_solver->LinSysRes(iPoint, 3));
+      } else {
+        SetVolumeOutputValue("STOCHVAR_X", iPoint, Node_Turb->GetOU_Process(iPoint, 0));
+        SetVolumeOutputValue("STOCHVAR_Y", iPoint, Node_Turb->GetOU_Process(iPoint, 1));
+        SetVolumeOutputValue("STOCHVAR_Z", iPoint, Node_Turb->GetOU_Process(iPoint, 2));
       }
       SetVolumeOutputValue("STOCHSOURCE_X", iPoint, Node_Turb->GetLangevinSourceTerms(iPoint, 0));
       SetVolumeOutputValue("STOCHSOURCE_Y", iPoint, Node_Turb->GetLangevinSourceTerms(iPoint, 1));
       SetVolumeOutputValue("STOCHSOURCE_Z", iPoint, Node_Turb->GetLangevinSourceTerms(iPoint, 2));
-      SetVolumeOutputValue("ENERGY_BACKSCATTER_RATIO", iPoint, GetEnergyBackscatterRatio(iPoint, config, Node_Flow, Node_Turb));
     }
   }
 
@@ -4144,16 +4146,22 @@ void CFlowOutput::SetTimeAveragedFields(const CConfig *config) {
       AddVolumeOutput("MODELED_REYNOLDS_STRESS_XZ", "ModeledReynoldsStress_XZ", "TIME_AVERAGE", "Modeled Reynolds stress xz-component");
       AddVolumeOutput("MODELED_REYNOLDS_STRESS_YZ", "ModeledReynoldsStress_YZ", "TIME_AVERAGE", "Modeled Reynolds stress yz-component");
     }
+    AddVolumeOutput("MEAN_TURBULENT_PRODUCTION", "MeanTurbulentProduction", "TIME_AVERAGE", "Mean production of turbulent kinetic energy");
 
     if (config->GetSBSParam().StochasticBackscatter) {
-      AddVolumeOutput("STOCHASTIC_REYNOLDS_STRESS_XY", "StochasticReynoldsStress_XY", "TIME_AVERAGE", "Stochastic Reynolds stress xy-component");
-      AddVolumeOutput("STOCHASTIC_REYNOLDS_STRESS_XZ", "StochasticReynoldsStress_XZ", "TIME_AVERAGE", "Stochastic Reynolds stress xz-component");
-      AddVolumeOutput("STOCHASTIC_REYNOLDS_STRESS_YZ", "StochasticReynoldsStress_YZ", "TIME_AVERAGE", "Stochastic Reynolds stress yz-component");
+      AddVolumeOutput("MEAN_STOCHASTIC_POWER", "MeanStochasticPower", "BACKSCATTER", "Mean stochastic power");
+      AddVolumeOutput("MEAN_ENERGY_BACKSCATTER", "MeanEnergyBackscatter", "BACKSCATTER", "Mean energy backscatter");
+      AddVolumeOutput("MEAN_BACKSCATTER_INTENSITY-X", "MeanBackscatterIntensity_x", "BACKSCATTER", "Mean intensity of the stochastic source term in x-momentum equation");
+      AddVolumeOutput("MEAN_BACKSCATTER_INTENSITY-Y", "MeanBackscatterIntensity_y", "BACKSCATTER", "Mean intensity of the stochastic source term in y-momentum equation");
+      AddVolumeOutput("MEAN_BACKSCATTER_INTENSITY-Z", "MeanBackscatterIntensity_z", "BACKSCATTER", "Mean intensity of the stochastic source term in z-momentum equation");
+      AddVolumeOutput("MEAN_SOURCE_LANGEVIN-X", "MeanSourceLangevin_x", "BACKSCATTER", "Mean stochastic source term in x-Langevin equation");
+      AddVolumeOutput("MEAN_SOURCE_LANGEVIN-Y", "MeanSourceLangevin_y", "BACKSCATTER", "Mean stochastic source term in y-Langevin equation");
+      AddVolumeOutput("MEAN_SOURCE_LANGEVIN-Z", "MeanSourceLangevin_z", "BACKSCATTER", "Mean stochastic source term in z-Langevin equation");
     }
   }
 }
 
-void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, const CVariable *Node_Flow, const CVariable *Node_Turb, const CConfig *config){
+void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, const CVariable *Node_Flow, const CVariable *Node_Turb, const CConfig *config, const CGeometry *geometry){
   SetAvgVolumeOutputValue("MEAN_DENSITY", iPoint, Node_Flow->GetDensity(iPoint));
   SetAvgVolumeOutputValue("MEAN_VELOCITY-X", iPoint, Node_Flow->GetVelocity(iPoint,0));
   SetAvgVolumeOutputValue("MEAN_VELOCITY-Y", iPoint, Node_Flow->GetVelocity(iPoint,1));
@@ -4212,23 +4220,37 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, const CVariable *No
       SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_XZ", iPoint, -tau_xz);
       SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_YZ", iPoint, -tau_yz);
     }
+    const su2double strainMag = Node_Flow->GetStrainMag(iPoint);
+    SetAvgVolumeOutputValue("MEAN_TURBULENT_PRODUCTION", iPoint, nu_t*strainMag*strainMag);
 
     if (config->GetSBSParam().StochasticBackscatter) {
-      const su2double DES_lengthscale = max(Node_Flow->GetDES_LengthScale(iPoint), 1e-10);
       const su2double lesSensor = Node_Flow->GetLES_Mode(iPoint);
       const su2double mag = config->GetSBSParam().SBS_Cmag;
       const su2double threshold = config->GetSBSParam().stochFdThreshold;
       su2double tke_estim = 0.0;
-      if (lesSensor > threshold) tke_estim = pow(nu_t/DES_lengthscale, 2);
-      const su2double csi_x = Node_Turb->GetSolution(iPoint, 1);
-      const su2double csi_y = Node_Turb->GetSolution(iPoint, 2);
-      const su2double csi_z = Node_Turb->GetSolution(iPoint, 3);
-      const su2double R_xy = - mag * tke_estim * csi_z;
-      const su2double R_xz = + mag * tke_estim * csi_y;
-      const su2double R_yz = - mag * tke_estim * csi_x;
-      SetAvgVolumeOutputValue("STOCHASTIC_REYNOLDS_STRESS_XY", iPoint, -R_xy);
-      SetAvgVolumeOutputValue("STOCHASTIC_REYNOLDS_STRESS_XY", iPoint, -R_xz);
-      SetAvgVolumeOutputValue("STOCHASTIC_REYNOLDS_STRESS_YZ", iPoint, -R_yz);
+      const su2double lengthscale = Node_Flow->GetDES_LengthScale(iPoint);
+      if (lesSensor > threshold) tke_estim = pow(nu_t/lengthscale, 2);
+      su2double csi_x, csi_y, csi_z;
+      if (config->GetSBSParam().SBS_Ctau > 0.0) {
+        csi_x = Node_Turb->GetSolution(iPoint, 1);
+        csi_y = Node_Turb->GetSolution(iPoint, 2);
+        csi_z = Node_Turb->GetSolution(iPoint, 3);
+      } else {
+        csi_x = Node_Turb->GetOU_Process(iPoint, 0);
+        csi_y = Node_Turb->GetOU_Process(iPoint, 1);
+        csi_z = Node_Turb->GetOU_Process(iPoint, 2);
+      }
+      su2double stochSource_x = mag * tke_estim * csi_x;
+      su2double stochSource_y = mag * tke_estim * csi_y;
+      su2double stochSource_z = mag * tke_estim * csi_z;
+      SetAvgVolumeOutputValue("MEAN_BACKSCATTER_INTENSITY-X", iPoint, stochSource_x);
+      SetAvgVolumeOutputValue("MEAN_BACKSCATTER_INTENSITY-Y", iPoint, stochSource_y);
+      SetAvgVolumeOutputValue("MEAN_BACKSCATTER_INTENSITY-Z", iPoint, stochSource_z);
+      SetAvgVolumeOutputValue("MEAN_SOURCE_LANGEVIN-X", iPoint, Node_Turb->GetLangevinSourceTerms(iPoint, 0));
+      SetAvgVolumeOutputValue("MEAN_SOURCE_LANGEVIN-Y", iPoint, Node_Turb->GetLangevinSourceTerms(iPoint, 1));
+      SetAvgVolumeOutputValue("MEAN_SOURCE_LANGEVIN-Z", iPoint, Node_Turb->GetLangevinSourceTerms(iPoint, 2));
+      SetAvgVolumeOutputValue("MEAN_STOCHASTIC_POWER", iPoint, GetPowerStochForcing(iPoint, config, Node_Flow, Node_Turb, geometry));
+      SetAvgVolumeOutputValue("MEAN_ENERGY_BACKSCATTER", iPoint, GetEnergyBackscatter(iPoint, config, Node_Flow, Node_Turb, geometry));
     }
   }
 }

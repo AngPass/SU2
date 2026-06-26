@@ -61,7 +61,6 @@ protected:
   Mean_Cp,                                /*!< \brief Mean value of the specific heat capacity at constant pressure. */
   Mean_turb_ke,                           /*!< \brief Mean value of the turbulent kinetic energy. */
   Mean_TauWall,                           /*!< \brief Mean wall shear stress (wall functions). */
-  Mean_StochVar[3] = {0.0},               /*!< \brief Mean stochastic variables (Stochastic Backscatter Model). */
   TauWall_i, TauWall_j,                   /*!< \brief Wall shear stress at point i and j (wall functions). */
   dist_ij_2,                              /*!< \brief Length of the edge and face, squared */
   Edge_Vector[MAXNDIM] = {0.0};           /*!< \brief Vector from point i to point j. */
@@ -117,6 +116,14 @@ protected:
                          su2double val_eddy_viscosity,
                          su2double val_dist_ij,
                          const su2double *val_normal);
+
+  /*!
+   * \brief Compute the projection of the stochastic fluxes into a direction
+   * \param[in] val_gradprimvar - Gradient of the primitive variables.
+   * \param[in] val_normal - Normal vector, the norm of the vector is the area of the face.
+   * \param[in] incompressible - Incompressible flow.
+   */
+  void GetStochasticIncProjFlux(const su2double *val_normal, const bool incompressible);
 
   /*!
    * \brief Compute the projection of the viscous fluxes into a direction.
@@ -213,7 +220,7 @@ public:
    * \brief Calculate the stochastic contribution to the subgrid stress tensor (Stochastic Backscatter Model)
    * \param[in] config - Definition of the particular problem.
    */
-  void SetStochReynStress(const CConfig* config);
+  void SetStochSourceMom(const CConfig* config);
 
   /*!
    * \brief Get a component of the viscous stress tensor.

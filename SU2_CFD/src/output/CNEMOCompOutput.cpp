@@ -387,7 +387,7 @@ void CNEMOCompOutput::LoadVolumeData(CConfig *config, CGeometry *geometry, CSolv
   LoadCommonFVMOutputs(config, geometry, iPoint);
 
   if (config->GetTime_Domain()) {
-    LoadTimeAveragedData(iPoint, Node_Flow, Node_Turb, config);
+    LoadTimeAveragedData(iPoint, Node_Flow, Node_Turb, config, geometry);
   }
 }
 

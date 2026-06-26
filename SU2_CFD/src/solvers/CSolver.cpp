@@ -1377,6 +1377,9 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       COUNT_PER_POINT  = 1;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
+    case MPI_QUANTITIES::OU_PROCESS:
+      COUNT_PER_POINT  = nDim;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
     case MPI_QUANTITIES::LES_SENSOR:
       COUNT_PER_POINT  = 1;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
@@ -1515,6 +1518,10 @@ void CSolver::InitiateComms(CGeometry *geometry,
             break;
           case MPI_QUANTITIES::DES_LENGTHSCALE:
             bufDSend[buf_offset] = base_nodes->GetDES_LengthScale(iPoint);
+            break;
+          case MPI_QUANTITIES::OU_PROCESS:
+            for (iDim = 0; iDim < nDim; iDim++)
+              bufDSend[buf_offset+iDim] = base_nodes->GetOU_Process(iPoint, iDim);
             break;
           case MPI_QUANTITIES::LES_SENSOR:
             bufDSend[buf_offset] = base_nodes->GetLES_Mode(iPoint);
@@ -1674,6 +1681,10 @@ void CSolver::CompleteComms(CGeometry *geometry,
             break;
           case MPI_QUANTITIES::DES_LENGTHSCALE:
             base_nodes->SetDES_LengthScale(iPoint, bufDRecv[buf_offset]);
+            break;
+          case MPI_QUANTITIES::OU_PROCESS:
+            for (iDim = 0; iDim < nDim; iDim++)
+              base_nodes->SetOU_Process(iPoint, iDim, bufDRecv[buf_offset+iDim]);
             break;
           case MPI_QUANTITIES::LES_SENSOR:
             base_nodes->SetLES_Mode(iPoint, bufDRecv[buf_offset]);

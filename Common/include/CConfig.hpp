@@ -1109,6 +1109,9 @@ private:
     su2double StochBackscatterBoxBounds[6]; /*!< \brief Bounds of the box where the Stochastic Backscatter Model is active. */
     su2double stochFdThreshold;             /*!< \brief Shielding function lower threshold for application of Stochastic Backscatter Model. */
     su2double stochSourceRelax;             /*!< \brief Relaxation factor for stochastic source term generation (Stochastic Backscatter Model). */
+    bool restartStochField;                 /*!< \brief Option for restarting the stochastic field (read from restart file if stochastic variables are present). */
+    bool langevinUpwBlend;                  /*!< \brief Option for employing a hybrid central-upwind scheme in Langevin equations. */
+    bool besselScaleFactor;                 /*!< \brief Option for scaling the stochastic source term in Langevin equations using bessel integral. */
   } SBSParam;
   bool enforceLES;                          /*!< \brief Option to enforce LES mode in hybrid RANS-LES simulations. */
   su2double LES_FilterWidth;                /*!< \brief LES filter width for hybrid RANS-LES simulations. */

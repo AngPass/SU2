@@ -496,15 +496,11 @@ void CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsigned long iEdge, CGeome
                                     turbNodes->GetSolution(jPoint, iDim+1));
     } else {
       for (unsigned short iDim = 0; iDim < nDim; iDim++)
-        numerics->SetStochVar(iDim, turbNodes->GetLangevinSourceTerms(iPoint, iDim),
-                                    turbNodes->GetLangevinSourceTerms(jPoint, iDim));
+        numerics->SetStochVar(iDim, turbNodes->GetOU_Process(iPoint, iDim),
+                                    turbNodes->GetOU_Process(jPoint, iDim));
     }
-    su2double DES_length_i = max(turbNodes->GetDES_LengthScale(iPoint), 1e-10);
-    su2double DES_length_j = max(turbNodes->GetDES_LengthScale(jPoint), 1e-10);
-    su2double lesMode_i = turbNodes->GetLES_Mode(iPoint);
-    su2double lesMode_j = turbNodes->GetLES_Mode(jPoint);
-    numerics->SetDistance(DES_length_i, DES_length_j);
-    numerics->SetLES_Mode(lesMode_i, lesMode_j);
+    numerics->SetMaxDelta(geometry->nodes->GetMaxLength(iPoint), geometry->nodes->GetMaxLength(jPoint));
+    numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), nodes->GetLES_Mode(jPoint));
   }
 
   /*--- Wall shear stress values (wall functions) ---*/

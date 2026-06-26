@@ -79,8 +79,10 @@ inline double HashToUniform(uint64_t x) {
  * \return Standard normal random number (mean=0, stddev=1).
  */
 inline double HashToNormal(uint64_t x) {
-  double u = HashToUniform(x);   // first uniform
-  double v = HashToUniform(~x);  // second uniform (bitwise NOT)
+  uint64_t h1 = splitmix64(x);
+  uint64_t h2 = splitmix64(x + 0x9e3779b97f4a7c15ULL);
+  double u = HashToUniform(h1);
+  double v = HashToUniform(h2);
   double r = sqrt(-2.0 * log(u));
   double theta = 2.0 * PI_NUMBER * v;
   return r * cos(theta);  // one normal sample
@@ -148,21 +150,38 @@ inline T GetBesselIntegral(const T& beta_x, const T& beta_y, const T& beta_z) {
   const T By = 2 * beta_y;
   const T Bz = 2 * beta_z;
 
-  const int N = 4000;
-  const T t_max = 20.0;
-  const T dt = t_max / N;
+  const int N_max = 50000;
+  const T t_max = 50.0;
+  const T dt = t_max / N_max;
 
   T sum = T(0.0);
+  const T tol = 1e-5;
+  const int i_min = 500;
+  const int window = 100;
+  std::vector<T> buffer;
+  buffer.reserve(window);
 
-  for (int i = 1; i <= N; i++) {
+  for (int i = 1; i <= N_max; i++) {
     T t = i * dt;
 
     T lin = log(t) - A * t + GetBesselZero(T(Bx * t)) + GetBesselZero(T(By * t)) + GetBesselZero(T(Bz * t));
 
     T integrand = exp(lin);
 
-    T weight = (i == N) ? 0.5 : 1.0;
-    sum += integrand * weight;
+    sum += integrand;
+
+    buffer.push_back(sum);
+    if (buffer.size() > window)
+      buffer.erase(buffer.begin());
+
+    if (i >= i_min && buffer.size() == window) {
+      T sum_old = buffer.front();
+      T variation = abs(sum - sum_old) / max(sum, T(1e-10));
+      if (variation < tol) {
+        sum -= 0.5 * integrand;
+        break;
+      }
+    }
   }
 
   return sum * dt;

@@ -3005,9 +3005,6 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Enable diagnostics of the stochastic source term in Langevin equation. */
   addBoolOption("SBS_SOURCE_DIAGNOSTICS", SBSParam.stochSourceDiagnostics, false);
 
-  /* DESCRIPTION: Relaxation factor for the stochastic source term (Stochastic Backscatter Model) */
-  addDoubleOption("SBS_RELAXATION_FACTOR", SBSParam.stochSourceRelax, 0.0);
-
   /* DESCRIPTION: Apply Stochastic Backscatter Model only in a bounded box */
   addBoolOption("SBS_IN_BOX", SBSParam.StochBackscatterInBox, false);
 
@@ -3016,6 +3013,15 @@ void CConfig::SetConfig_Options() {
 
   /* DESCRIPTION: Shielding function lower threshold for application of Stochastic Backscatter Model */
   addDoubleOption("SBS_FD_LOWER_THRESHOLD", SBSParam.stochFdThreshold, 0.9);
+
+  /* DESCRIPTION: Restart stochastic field (read from restart file if present) */
+  addBoolOption("SBS_RESTART", SBSParam.restartStochField, true);
+
+  /* DESCRIPTION: Employ a hybrid central-upwind scheme in Langevin equations */
+  addBoolOption("SBS_LANGEVIN_UPW_BLEND", SBSParam.langevinUpwBlend, true);
+
+  /* DESCRIPTION: Employ a hybrid central-upwind scheme in Langevin equations */
+  addBoolOption("SBS_BESSEL_SCALING", SBSParam.besselScaleFactor, false);
 
   /* DESCRIPTION: Filter width for LES (if negative, it is computed based on the local cell size) */
   addDoubleOption("LES_FILTER_WIDTH", LES_FilterWidth, -1.0);
@@ -6528,18 +6534,33 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
             cout << "Backscatter intensity coefficient: " << SBSParam.SBS_Cmag << endl;
             if (SBSParam.SBS_Cmag < 0.0)
               SU2_MPI::Error("Backscatter intensity coefficient must be non-negative.", CURRENT_FUNCTION);
-            if (SBSParam.SBS_Ctau > 0.0)
-              cout << "Backscatter timescale coefficient: " << SBSParam.SBS_Ctau << endl;
-            else
-              cout << "Langevin equations not integrated (temporally uncorrelated stochastic field)." << endl;
+            cout << "Backscatter timescale coefficient: " << fabs(SBSParam.SBS_Ctau) << endl;
+            if (fabs(SBSParam.SBS_Ctau) < 1e-10)
+              SU2_MPI::Error("Backscatter timescale coefficient must be non-zero.", CURRENT_FUNCTION);
+            if (SBSParam.SBS_Ctau < 0.0) {
+              cout << "Langevin equations not integrated (exact solution of Ornstein-Uhlenbeck process)." << endl;
+            } else {
+              if (SBSParam.langevinUpwBlend)
+                cout << "A hybrid central-upwind scheme based on the LES sensor is used to integrate Langevin equations." << endl;
+              else
+                cout << "A classic second-order central scheme is used to integrate Langevin equations." << endl;
+            }
             if (SBSParam.SBS_maxIterSmooth > 0) {
               cout << "Maximum number of iterations for implicit smoothing: " << SBSParam.SBS_maxIterSmooth << endl;
-              cout << "Backscatter lengthscale coefficient: " << SBSParam.SBS_Cdelta << endl;
-              if (SBSParam.SBS_Cdelta < 0.0)
-                SU2_MPI::Error("Backscatter lengthscale coefficient must be non-negative.", CURRENT_FUNCTION);
-            } else {
-              cout << "No smoothing applied to stochastic source terms in Langevin equations." << endl;
+              if (SBSParam.besselScaleFactor)
+                cout << "Bessel integral used to scale source terms after smoothing for unit variance preservation." << endl;
+              else
+                cout << "Numerically-estimated variance used to scale source terms after smoothing for unit variance preservation." << endl;
+            } else if (SBSParam.SBS_maxIterSmooth == 0) {
+              cout << "Local explicit smoothing applied to stochastic source terms in Langevin equations." << endl;
             }
+            cout << "Backscatter lengthscale coefficient: " << SBSParam.SBS_Cdelta << endl;
+            if (SBSParam.SBS_Cdelta < 0.0)
+                SU2_MPI::Error("Backscatter lengthscale coefficient must be non-negative.", CURRENT_FUNCTION);
+            if (SBSParam.restartStochField && Restart)
+              cout << "Stochastic field read from restart file (if stochastic variables are present)." << endl;
+            else
+              cout << "Stochastic field initialized to zero." << endl;
             if (SBSParam.stochSourceNu)
               cout << "Stochastic source term included in turbulence model equation." << endl;
             else

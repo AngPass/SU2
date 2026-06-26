@@ -126,4 +126,15 @@ public:
    * \param[in] val_stochSource_old - Old value of source term in Langevin equations.
    */
   inline virtual void SetLangevinSourceTermsOld(unsigned long iPoint, unsigned short iDim, su2double val_stochSource_old) {}
+
+  /*!
+   * \brief Mark the points where the Stochastic Backscatter Model is active.
+   */
+  inline virtual void SetSBSInBox(unsigned long iPoint, su2double val_sbsInBox) {}
+
+  /*!
+   * \brief Get the the points where the Stochastic Backscatter Model is active.
+   * \return One if the Stochastic Backscatter Model is active.
+   */
+  inline virtual su2double GetSBSInBox(unsigned long iPoint) const { return 0.0; }
 };

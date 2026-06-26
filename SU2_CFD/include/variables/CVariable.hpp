@@ -427,6 +427,22 @@ public:
   /*!
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   * \return Value of the stochastic variable resulting from Ornstein-Uhlenbeck process.
+   */
+  inline virtual su2double GetOU_Process(unsigned long iPoint, unsigned short iDim) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   * \param[in] val_OU - Value of the stochastic variable resulting from Ornstein-Uhlenbeck process.
+   */
+  inline virtual void SetOU_Process(unsigned long iPoint, unsigned short iDim, su2double val_OU) {}
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
    * \param[in] val_integral - Value of the integral.
    */
   inline virtual void SetBesselIntegral(unsigned long iPoint, su2double val_integral) {}

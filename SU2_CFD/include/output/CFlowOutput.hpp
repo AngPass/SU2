@@ -347,9 +347,9 @@ protected:
    * \param node_flow
    * \param node_turb
    * \param config - Definition of the particular problem per zone.
+   * \param geometry - Geometrical definition of the problem.
    */
-  void LoadTimeAveragedData(unsigned long iPoint, const CVariable *node_flow, const CVariable *node_turb, const CConfig *config);
-
+  void LoadTimeAveragedData(unsigned long iPoint, const CVariable *node_flow, const CVariable *node_turb, const CConfig *config, const CGeometry *geometry);
   /*!
    * \brief Write additional output for fixed CL mode.
    * \param[in] config - Definition of the particular problem per zone.
@@ -357,33 +357,112 @@ protected:
   void SetFixedCLScreenOutput(const CConfig *config);
 
   /*!
-   * \brief Compute the ratio of the stochastic energy backscatter to the turbulent energy dissipation.
+   * \brief Compute the power of the stochastic forcing (Backscatter Model).
    * \param iPoint - Index of the point.
    * \param config - Definition of the particular problem.
    * \param node_flow - Flow solver solution.
    * \param node_turb - Turbulence-model solver solution.
-   * \return Stochastic energy backscatter ratio.
+   * \param geometry - Geometrical definition of the problem.
+   * \return Power of the stochastic forcing.
    */
-  inline su2double GetEnergyBackscatterRatio(unsigned long iPoint, const CConfig *config, const CVariable *node_flow, const CVariable *node_turb) {
-    const su2double rho = node_flow->GetDensity(iPoint);
-    const su2double nu_t = node_flow->GetEddyViscosity(iPoint) / rho;
-    const su2double DES_lengthscale = max(node_flow->GetDES_LengthScale(iPoint), 1e-10);
-    const su2double lesSensor = node_flow->GetLES_Mode(iPoint);
+  inline su2double GetPowerStochForcing(unsigned long iPoint, const CConfig *config, const CVariable *node_flow, const CVariable *node_turb, const CGeometry *geometry) {
+
     const su2double mag = config->GetSBSParam().SBS_Cmag;
     const su2double threshold = config->GetSBSParam().stochFdThreshold;
-    su2double strainMag = node_flow->GetStrainMag(iPoint);
-    su2double tke_estim = 0.0;
-    if (lesSensor > threshold) tke_estim = pow(nu_t/DES_lengthscale, 2);
-    const su2double csi_x = node_turb->GetSolution(iPoint, 1);
-    const su2double csi_y = node_turb->GetSolution(iPoint, 2);
-    const su2double csi_z = node_turb->GetSolution(iPoint, 3);
-    const su2double R_xy = - mag * tke_estim * csi_z;
-    const su2double R_xz = + mag * tke_estim * csi_y;
-    const su2double R_yz = - mag * tke_estim * csi_x;
-    const su2double energy_res_to_mod = nu_t * strainMag * strainMag;
+
+    /*--- Compute forcing intensity at point i ---*/
+
+    const su2double rho_i = node_flow->GetDensity(iPoint);
+    const su2double nuT_i = node_flow->GetEddyViscosity(iPoint) / rho_i;
+    const su2double lengthscale_i = config->GetConst_DES() * geometry->nodes->GetMaxLength(iPoint);
+    const su2double lesSensor_i = node_flow->GetLES_Mode(iPoint);
+    su2double tkeEstim_i = (lesSensor_i > threshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
+    su2double stochVec_i[3] = {0.0};
+    for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+      stochVec_i[iDim] = (config->GetSBSParam().SBS_Ctau > 0.0) ? node_turb->GetSolution(iPoint, iDim+1) : node_turb->GetOU_Process(iPoint, iDim);
+      stochVec_i[iDim] *= tkeEstim_i * mag;
+    }
+    
+    /*--- Evaluate the curl of the stochastic vector ---*/
+
+    su2double curlStochVec[3] = {0.0};
+
+    for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
+      auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
+      auto iEdge = geometry->nodes->GetEdge(iPoint, iNode);
+      su2double sign = (geometry->edges->GetNode(iEdge, 0) == iPoint) ? 1.0 : -1.0;
+      auto* normal = geometry->edges->GetNormal(iEdge);
+
+      /*--- Compute forcing intensity at point j ---*/
+
+      const su2double rho_j = node_flow->GetDensity(jPoint);
+      const su2double nuT_j = node_flow->GetEddyViscosity(jPoint) / rho_j;
+      const su2double lengthscale_j = config->GetConst_DES() * geometry->nodes->GetMaxLength(jPoint);
+      const su2double lesSensor_j = node_flow->GetLES_Mode(jPoint);
+      su2double tkeEstim_j = (lesSensor_j > threshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
+      su2double stochVec_j[3] = {0.0};
+      for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+        stochVec_j[iDim] = (config->GetSBSParam().SBS_Ctau > 0.0) ? node_turb->GetSolution(jPoint, iDim+1) : node_turb->GetOU_Process(jPoint, iDim);
+        stochVec_j[iDim] *= tkeEstim_j * mag;
+      }
+
+      /*--- Compute fluxes ---*/
+
+      su2double Mean_stochVec[3] = {0.0};
+      for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+        Mean_stochVec[iDim] = 0.5 * (stochVec_i[iDim] + stochVec_j[iDim]);
+      }
+
+      curlStochVec[0] += sign*(normal[1]*Mean_stochVec[2] - normal[2]*Mean_stochVec[1]);
+      curlStochVec[1] += sign*(normal[2]*Mean_stochVec[0] - normal[0]*Mean_stochVec[2]);
+      curlStochVec[2] += sign*(normal[0]*Mean_stochVec[1] - normal[1]*Mean_stochVec[0]);
+    }
+
+    /*--- Compute the power of the stochastic forcing ---*/
+
+    su2double forcingPower = 0.0;
+    for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+      forcingPower += node_flow->GetVelocity(iPoint, iDim) * curlStochVec[iDim];
+    }
+    forcingPower /= (geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint));
+    
+    return forcingPower;
+  }
+
+  /*!
+   * \brief Compute the stochastic energy backscatter.
+   * \param iPoint - Index of the point.
+   * \param config - Definition of the particular problem.
+   * \param node_flow - Flow solver solution.
+   * \param node_turb - Turbulence-model solver solution.
+   * \param geometry - Geometrical definition of the problem.
+   * \return Stochastic energy backscatter.
+   */
+  inline su2double GetEnergyBackscatter(unsigned long iPoint, const CConfig *config, const CVariable *node_flow, const CVariable *node_turb, const CGeometry *geometry) {
+
+    const su2double mag = config->GetSBSParam().SBS_Cmag;
+    const su2double threshold = config->GetSBSParam().stochFdThreshold;
+
+    /*--- Compute forcing intensity at point i ---*/
+
+    const su2double rho_i = node_flow->GetDensity(iPoint);
+    const su2double nuT_i = node_flow->GetEddyViscosity(iPoint) / rho_i;
+    const su2double lengthscale_i = config->GetConst_DES() * geometry->nodes->GetMaxLength(iPoint);
+    const su2double lesSensor_i = node_flow->GetLES_Mode(iPoint);
+    su2double tkeEstim_i = (lesSensor_i > threshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
+    su2double stochVec_i[3] = {0.0};
+    for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+      stochVec_i[iDim] = (config->GetSBSParam().SBS_Ctau > 0.0) ? node_turb->GetSolution(iPoint, iDim+1) : node_turb->GetOU_Process(iPoint, iDim);
+      stochVec_i[iDim] *= tkeEstim_i * mag;
+    }
+    
+    /*--- Evaluate the dot product of the stochastic vector and the vorticity vector ---*/
+
     const auto vorticity = node_flow->GetVorticity(iPoint);
-    const su2double energy_backscatter = R_xy*vorticity[2] - R_xz*vorticity[1] + R_yz*vorticity[0];
-    const su2double energy_backscatter_ratio = energy_backscatter / (energy_res_to_mod + 1e-10);
-    return energy_backscatter_ratio;
+    su2double energyBackscatter = 0.0;
+    for (unsigned short iDim = 0; iDim < nDim; iDim++)
+      energyBackscatter += stochVec_i[iDim]*vorticity[iDim];
+    
+    return energyBackscatter;
   }
 };
