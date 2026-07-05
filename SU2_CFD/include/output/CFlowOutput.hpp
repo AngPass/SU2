@@ -372,14 +372,22 @@ protected:
 
     /*--- Compute forcing intensity at point i ---*/
 
-    const su2double rho_i = node_flow->GetDensity(iPoint);
-    const su2double nuT_i = node_flow->GetEddyViscosity(iPoint) / rho_i;
-    const su2double lengthscale_i = config->GetConst_DES() * geometry->nodes->GetMaxLength(iPoint);
+    su2double tkeEstim_i = 0.0;
     const su2double lesSensor_i = node_flow->GetLES_Mode(iPoint);
-    su2double tkeEstim_i = (lesSensor_i > threshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
+
+    if (config->GetKind_HybridRANSLES() == SST_DDES) {
+      tkeEstim_i = (lesSensor_i > threshold) ? node_turb->GetSolution(iPoint, 0) : 0.0;
+    } else {
+      const su2double rho_i = node_flow->GetDensity(iPoint);
+      const su2double nuT_i = node_flow->GetEddyViscosity(iPoint) / rho_i;
+      const su2double lengthscale_i = config->GetConst_DES() * geometry->nodes->GetMaxLength(iPoint);
+      tkeEstim_i = (lesSensor_i > threshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
+    }
+
     su2double stochVec_i[3] = {0.0};
+    unsigned short startVar = (config->GetKind_HybridRANSLES() == SST_DDES) ? 2 : 1;
     for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-      stochVec_i[iDim] = (config->GetSBSParam().SBS_Ctau > 0.0) ? node_turb->GetSolution(iPoint, iDim+1) : node_turb->GetOU_Process(iPoint, iDim);
+      stochVec_i[iDim] = (config->GetSBSParam().SBS_Ctau > 0.0) ? node_turb->GetSolution(iPoint, iDim+startVar) : node_turb->GetOU_Process(iPoint, iDim);
       stochVec_i[iDim] *= tkeEstim_i * mag;
     }
     
@@ -395,14 +403,21 @@ protected:
 
       /*--- Compute forcing intensity at point j ---*/
 
-      const su2double rho_j = node_flow->GetDensity(jPoint);
-      const su2double nuT_j = node_flow->GetEddyViscosity(jPoint) / rho_j;
-      const su2double lengthscale_j = config->GetConst_DES() * geometry->nodes->GetMaxLength(jPoint);
+      su2double tkeEstim_j = 0.0;
       const su2double lesSensor_j = node_flow->GetLES_Mode(jPoint);
-      su2double tkeEstim_j = (lesSensor_j > threshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
+
+      if (config->GetKind_HybridRANSLES() == SST_DDES) {
+        tkeEstim_j = (lesSensor_j > threshold) ? node_turb->GetSolution(jPoint, 0) : 0.0;
+      } else {
+        const su2double rho_j = node_flow->GetDensity(jPoint);
+        const su2double nuT_j = node_flow->GetEddyViscosity(jPoint) / rho_j;
+        const su2double lengthscale_j = config->GetConst_DES() * geometry->nodes->GetMaxLength(jPoint);
+        tkeEstim_j = (lesSensor_j > threshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
+      }
+
       su2double stochVec_j[3] = {0.0};
       for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-        stochVec_j[iDim] = (config->GetSBSParam().SBS_Ctau > 0.0) ? node_turb->GetSolution(jPoint, iDim+1) : node_turb->GetOU_Process(jPoint, iDim);
+        stochVec_j[iDim] = (config->GetSBSParam().SBS_Ctau > 0.0) ? node_turb->GetSolution(jPoint, iDim+startVar) : node_turb->GetOU_Process(jPoint, iDim);
         stochVec_j[iDim] *= tkeEstim_j * mag;
       }
 
@@ -445,14 +460,22 @@ protected:
 
     /*--- Compute forcing intensity at point i ---*/
 
-    const su2double rho_i = node_flow->GetDensity(iPoint);
-    const su2double nuT_i = node_flow->GetEddyViscosity(iPoint) / rho_i;
-    const su2double lengthscale_i = config->GetConst_DES() * geometry->nodes->GetMaxLength(iPoint);
+    su2double tkeEstim_i = 0.0;
     const su2double lesSensor_i = node_flow->GetLES_Mode(iPoint);
-    su2double tkeEstim_i = (lesSensor_i > threshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
+
+    if (config->GetKind_HybridRANSLES() == SST_DDES) {
+      tkeEstim_i = (lesSensor_i > threshold) ? node_turb->GetSolution(iPoint, 0) : 0.0;
+    } else {
+      const su2double rho_i = node_flow->GetDensity(iPoint);
+      const su2double nuT_i = node_flow->GetEddyViscosity(iPoint) / rho_i;
+      const su2double lengthscale_i = config->GetConst_DES() * geometry->nodes->GetMaxLength(iPoint);
+      tkeEstim_i = (lesSensor_i > threshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
+    }
+
     su2double stochVec_i[3] = {0.0};
+    unsigned short startVar = (config->GetKind_HybridRANSLES() == SST_DDES) ? 2 : 1;
     for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-      stochVec_i[iDim] = (config->GetSBSParam().SBS_Ctau > 0.0) ? node_turb->GetSolution(iPoint, iDim+1) : node_turb->GetOU_Process(iPoint, iDim);
+      stochVec_i[iDim] = (config->GetSBSParam().SBS_Ctau > 0.0) ? node_turb->GetSolution(iPoint, iDim+startVar) : node_turb->GetOU_Process(iPoint, iDim);
       stochVec_i[iDim] *= tkeEstim_i * mag;
     }
     

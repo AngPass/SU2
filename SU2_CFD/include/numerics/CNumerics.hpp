@@ -111,7 +111,10 @@ protected:
   wallDist_j;  /*!< \brief Distance of point j to the nearest wall (auxiliary variable for Backscatter Model). */
   su2double
   maxDelta_i,  /*!< \brief Maximum cell size at point i (LES filter width). */
-  maxDelta_j; /*!< \brief Maximum cell size at point j (LES filter width). */
+  maxDelta_j;  /*!< \brief Maximum cell size at point j (LES filter width). */
+  su2double
+  FDDES_i, /*!< \brief Ratio of RANS to DDES lengthscale at point i (SST turbulence model). */
+  FDDES_j; /*!< \brief Ratio of RANS to DDES lengthscale at point j (SST turbulence model). */
   const su2double
   *Und_Lapl_i,  /*!< \brief Undivided laplacians at point i. */
   *Und_Lapl_j;  /*!< \brief Undivided laplacians at point j. */
@@ -875,8 +878,8 @@ public:
 
   /*!
    * \brief Set the value of the distance from the nearest wall.
-   * \param[in] val_dist_i - Value of of the distance from point i to the nearest wall.
-   * \param[in] val_dist_j - Value of of the distance from point j to the nearest wall.
+   * \param[in] val_dist_i - Value of the distance from point i to the nearest wall.
+   * \param[in] val_dist_j - Value of the distance from point j to the nearest wall.
    */
   void SetDistance(su2double val_dist_i, su2double val_dist_j) {
     dist_i = val_dist_i;
@@ -885,8 +888,8 @@ public:
 
   /*!
    * \brief Set the value of the distance from the nearest wall (auxiliary variable for Backscatter Model).
-   * \param[in] val_dist_i - Value of of the distance from point i to the nearest wall.
-   * \param[in] val_dist_j - Value of of the distance from point j to the nearest wall.
+   * \param[in] val_dist_i - Value of the distance from point i to the nearest wall.
+   * \param[in] val_dist_j - Value of the distance from point j to the nearest wall.
    */
   void SetWallDistance(su2double val_dist_i, su2double val_dist_j) {
     wallDist_i = val_dist_i;
@@ -895,12 +898,22 @@ public:
 
   /*!
    * \brief Set the value of the maximum cell size.
-   * \param[in] val_dist_i - Value of of the distance from point i to the nearest wall.
-   * \param[in] val_dist_j - Value of of the distance from point j to the nearest wall.
+   * \param[in] val_dist_i - Value of the distance from point i to the nearest wall.
+   * \param[in] val_dist_j - Value of the distance from point j to the nearest wall.
    */
   void SetMaxDelta(su2double val_maxDelta_i, su2double val_maxDelta_j) {
     maxDelta_i = val_maxDelta_i;
     maxDelta_j = val_maxDelta_j;
+  }
+
+  /*!
+   * \brief Set the value of the ratio of the RANS lengthscale to the DDES lengthscale.
+   * \param[in] val_FDDES_i - Value of the ratio at point i.
+   * \param[in] val_FDDES_j - Value of the ratio at point j.
+   */
+  void SetFDDES(su2double val_FDDES_i, su2double val_FDDES_j) {
+    FDDES_i = val_FDDES_i;
+    FDDES_j = val_FDDES_j;
   }
 
   /*!

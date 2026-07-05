@@ -34,10 +34,16 @@ CTurbSSTVariable::CTurbSSTVariable(su2double kine, su2double omega, su2double mu
 
   sstParsedOptions = config->GetSSTParsedOptions();
 
+  bool backscatter = config->GetSBSParam().StochasticBackscatter;
   for(unsigned long iPoint=0; iPoint<nPoint; ++iPoint)
   {
     Solution(iPoint,0) = kine;
     Solution(iPoint,1) = omega;
+    if (backscatter && config->GetSBSParam().SBS_Ctau > 0.0) {
+      for (unsigned short iVar = 2; iVar < nVar; iVar++) {
+        Solution(iPoint, iVar) = 0.0;
+      }
+    }
   }
 
   Solution_Old = Solution;
@@ -51,6 +57,18 @@ CTurbSSTVariable::CTurbSSTVariable(su2double kine, su2double omega, su2double mu
   CDkw.resize(nPoint) = su2double(0.0);
 
   muT.resize(nPoint) = mut;
+
+  if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) {
+    DES_LengthScale.resize(nPoint) = su2double(0.0);
+    lesMode.resize(nPoint) = su2double(0.0);
+    if (backscatter) {
+      stochSource.resize(nPoint, nDim) = su2double(0.0);
+      stochSourceOld.resize(nPoint, nDim) = su2double(0.0);
+      besselIntegral.resize(nPoint) = su2double(0.0);
+      OU_Process.resize(nPoint, nDim) = su2double(0.0);
+      sbsInBox.resize(nPoint) = su2double(1.0);
+    }
+  }
 }
 
 void CTurbSSTVariable::SetBlendingFunc(unsigned long iPoint, su2double val_viscosity,

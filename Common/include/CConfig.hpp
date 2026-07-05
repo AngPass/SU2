@@ -1094,6 +1094,8 @@ private:
   bool DiscreteAdjoint,                /*!< \brief AD-based discrete adjoint mode. */
   DiscreteAdjointDebug;                /*!< \brief Discrete adjoint debug mode using tags. */
   su2double Const_DES;                 /*!< \brief Detached Eddy Simulation Constant. */
+  su2double Const_DES_1;               /*!< \brief First Detached Eddy Simulation constant for SST model. */
+  su2double Const_DES_2;               /*!< \brief Second Detached Eddy Simulation constant for SST model. */
   WINDOW_FUNCTION Kind_WindowFct;      /*!< \brief Type of window (weight) function for objective functional. */
   unsigned short Kind_HybridRANSLES;   /*!< \brief Kind of Hybrid RANS/LES. */
   unsigned short Kind_RoeLowDiss;      /*!< \brief Kind of Roe scheme with low dissipation for unsteady flows. */
@@ -1103,15 +1105,14 @@ private:
     unsigned short SBS_maxIterSmooth;       /*!< \brief Maximum number of smoothing iterations for the SBS model. */
     su2double SBS_Ctau;                     /*!< \brief Stochastic Backscatter Model timescale coefficient. */
     su2double SBS_Cmag;                     /*!< \brief Stochastic Backscatter Model intensity coefficient. */
-    bool stochSourceNu;                     /*!< \brief Option for including stochastic source term in turbulence model equation (Stochastic Backscatter Model). */
+    bool stochSourceTurb;                   /*!< \brief Option for including stochastic source term in turbulence model equation (Stochastic Backscatter Model). */
     bool stochSourceDiagnostics;            /*!< \brief Option for writing diagnostics related to stochastic source terms in Langevin equations (Stochastic Backscatter Model). */
     bool StochBackscatterInBox;             /*!< \brief Option for activating the Stochastic Backscatter Model only in a bounded box. */
+    bool langevinUpwBlend;                  /*!< \brief Option for integrating Langevin equations using blended central-upwind scheme. */
+    bool restartStochField;                 /*!< \brief Option for restarting stochastic field from solution file. */
+    bool besselScaleFactor;                 /*!< \brief Option for scaling the spatially-correlated random field using Bessel integral. */
     su2double StochBackscatterBoxBounds[6]; /*!< \brief Bounds of the box where the Stochastic Backscatter Model is active. */
     su2double stochFdThreshold;             /*!< \brief Shielding function lower threshold for application of Stochastic Backscatter Model. */
-    su2double stochSourceRelax;             /*!< \brief Relaxation factor for stochastic source term generation (Stochastic Backscatter Model). */
-    bool restartStochField;                 /*!< \brief Option for restarting the stochastic field (read from restart file if stochastic variables are present). */
-    bool langevinUpwBlend;                  /*!< \brief Option for employing a hybrid central-upwind scheme in Langevin equations. */
-    bool besselScaleFactor;                 /*!< \brief Option for scaling the stochastic source term in Langevin equations using bessel integral. */
   } SBSParam;
   bool enforceLES;                          /*!< \brief Option to enforce LES mode in hybrid RANS-LES simulations. */
   su2double LES_FilterWidth;                /*!< \brief LES filter width for hybrid RANS-LES simulations. */
@@ -9653,6 +9654,18 @@ public:
    * \return Value of DES constant.
    */
   su2double GetConst_DES(void) const { return Const_DES; }
+
+  /*!
+   * \brief Get the first DES Constant for SST model.
+   * \return Value of DES constant.
+   */
+  su2double GetConst_DES_1(void) const { return Const_DES_1; }
+
+  /*!
+   * \brief Get the second DES Constant for SST model.
+   * \return Value of DES constant.
+   */
+  su2double GetConst_DES_2(void) const { return Const_DES_2; }
 
   /*!
    * \brief Get the type of tape that will be checked in a tape debug run.

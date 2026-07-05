@@ -144,13 +144,21 @@ void CAvgGrad_Base::SetStressTensor(const su2double *val_primvar,
 }
 
 void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
-  su2double nuT_i = Eddy_Viscosity_i / PrimVar_i[nDim+2];
-  su2double nuT_j = Eddy_Viscosity_j / PrimVar_j[nDim+2];
-  su2double lengthscale_i = config->GetConst_DES() * maxDelta_i;
-  su2double lengthscale_j = config->GetConst_DES() * maxDelta_j;
+  su2double tkeEstim_i = 0.0, tkeEstim_j = 0.0;
   su2double sensorThreshold = config->GetSBSParam().stochFdThreshold;
-  su2double tkeEstim_i = (lesMode_i > sensorThreshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
-  su2double tkeEstim_j = (lesMode_j > sensorThreshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
+  
+  if (config->GetKind_HybridRANSLES() == SST_DDES) {
+    tkeEstim_i = (lesMode_i > sensorThreshold) ? turb_ke_i : 0.0;
+    tkeEstim_j = (lesMode_j > sensorThreshold) ? turb_ke_j : 0.0;
+  } else {
+    su2double nuT_i = Eddy_Viscosity_i / PrimVar_i[nDim+2];
+    su2double nuT_j = Eddy_Viscosity_j / PrimVar_j[nDim+2];
+    su2double lengthscale_i = config->GetConst_DES() * maxDelta_i;
+    su2double lengthscale_j = config->GetConst_DES() * maxDelta_j;
+    tkeEstim_i = (lesMode_i > sensorThreshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
+    tkeEstim_j = (lesMode_j > sensorThreshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
+  }
+  
   su2double intensityCoeff = config->GetSBSParam().SBS_Cmag;
   bool incompressible = (config->GetKind_Regime() == ENUM_REGIME::INCOMPRESSIBLE);
   su2double density = (incompressible) ? 1.0 : Mean_PrimVar[nDim+2];

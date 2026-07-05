@@ -145,7 +145,8 @@ void CTurbSolver::LoadRestart(CGeometry** geometry, CSolver*** solver, CConfig* 
     unsigned short nVarInRestart = Restart_Vars[1] - skipVars;
     nVarInRestart = min(nVarInRestart, nVar);
     if (config->GetSBSParam().StochasticBackscatter && !config->GetSBSParam().restartStochField) {
-      nVarInRestart = min(nVarInRestart, (unsigned short)1);
+      unsigned short minVar = (config->GetKind_HybridRANSLES() == SST_DDES) ? 2 : 1;
+      nVarInRestart = min(nVarInRestart, minVar);
     }
 
     /*--- Load data from the restart into correct containers. ---*/

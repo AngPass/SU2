@@ -2978,6 +2978,12 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: DES Constant */
   addDoubleOption("DES_CONST", Const_DES, 0.65);
 
+  /* DESCRIPTION: First DES Constant for SST model */
+  addDoubleOption("DES_CONST_1", Const_DES_1, 0.78);
+
+  /* DESCRIPTION: Second DES Constant for SST model */
+  addDoubleOption("DES_CONST_2", Const_DES_2, 0.61);
+
   /* DESCRIPTION: SBS lengthscale coefficient */
   addDoubleOption("SBS_LENGTHSCALE_COEFF", SBSParam.SBS_Cdelta, 0.02);
 
@@ -3000,7 +3006,16 @@ void CConfig::SetConfig_Options() {
   addBoolOption("ENFORCE_LES", enforceLES, false);
 
   /* DESCRIPTION: Specify if the stochastic source term must be included in the turbulence model equation */
-  addBoolOption("SBS_SOURCE_NU_EQUATION", SBSParam.stochSourceNu, true);
+  addBoolOption("SBS_SOURCE_TURB", SBSParam.stochSourceTurb, true);
+
+  /* DESCRIPTION: Specify if the convective terms in the Langevin equations must be discretized using blended central-upwind scheme */
+  addBoolOption("SBS_LANGEVIN_UPW_BLEND", SBSParam.langevinUpwBlend, false);
+
+  /* DESCRIPTION: Specify if the stochastic field must be read from solution file (if present) */
+  addBoolOption("SBS_RESTART", SBSParam.restartStochField, true);
+
+  /* DESCRIPTION: Specify if the spatially-correlated field must be scaled using Bessel integral. */
+  addBoolOption("SBS_BESSEL_SCALING", SBSParam.besselScaleFactor, false);
 
   /* DESCRIPTION: Enable diagnostics of the stochastic source term in Langevin equation. */
   addBoolOption("SBS_SOURCE_DIAGNOSTICS", SBSParam.stochSourceDiagnostics, false);
@@ -6520,6 +6535,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
         switch (Kind_HybridRANSLES) {
           case NO_HYBRIDRANSLES: cout << "No Hybrid RANS/LES" << endl; break;
           case SA_DES:   cout << "Detached Eddy Simulation (DES97) " << endl; break;
+          case SST_DDES:
           case SA_DDES:  cout << "Delayed Detached Eddy Simulation (DDES) with Standard SGS" << endl; break;
           case SA_ZDES:  cout << "Delayed Detached Eddy Simulation (DDES) with Vorticity-based SGS" << endl; break;
           case SA_EDDES: cout << "Delayed Detached Eddy Simulation (DDES) with Shear-layer Adapted SGS" << endl; break;
@@ -6531,56 +6547,47 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
             cout << "ON" << endl;
             if (GetnDim(GetMesh_FileName(), Mesh_FileFormat) < 3)
               SU2_MPI::Error("Stochastic Backscatter Model available for 3D flow simulations only.", CURRENT_FUNCTION);
-            cout << "Backscatter intensity coefficient: " << SBSParam.SBS_Cmag << endl;
+            cout << "| Backscatter intensity coefficient: " << SBSParam.SBS_Cmag << endl;
             if (SBSParam.SBS_Cmag < 0.0)
               SU2_MPI::Error("Backscatter intensity coefficient must be non-negative.", CURRENT_FUNCTION);
-            cout << "Backscatter timescale coefficient: " << fabs(SBSParam.SBS_Ctau) << endl;
-            if (fabs(SBSParam.SBS_Ctau) < 1e-10)
-              SU2_MPI::Error("Backscatter timescale coefficient must be non-zero.", CURRENT_FUNCTION);
-            if (SBSParam.SBS_Ctau < 0.0) {
-              cout << "Langevin equations not integrated (exact solution of Ornstein-Uhlenbeck process)." << endl;
-            } else {
+            cout << "| Backscatter timescale coefficient: " << SBSParam.SBS_Ctau << endl;
+            if (SBSParam.SBS_Ctau > 0.0) {
               if (SBSParam.langevinUpwBlend)
-                cout << "A hybrid central-upwind scheme based on the LES sensor is used to integrate Langevin equations." << endl;
+                cout << "| Langevin equations integrated using blended central-upwind scheme." << endl;
               else
-                cout << "A classic second-order central scheme is used to integrate Langevin equations." << endl;
-            }
+                cout << "| Langevin equations integrated using pure central scheme." << endl;
+              if (SBSParam.restartStochField)
+                cout << "| Stochastic field restarted from solution file (if present)." << endl;
+              else
+                cout << "| Stochastic field initialized to zero." << endl;
+            } else
+              cout << "| Langevin equations not integrated (Ornstein-Uhlenbeck process)." << endl;
             if (SBSParam.SBS_maxIterSmooth > 0) {
-              cout << "Maximum number of iterations for implicit smoothing: " << SBSParam.SBS_maxIterSmooth << endl;
+              cout << "| Maximum number of iterations for implicit smoothing: " << SBSParam.SBS_maxIterSmooth << endl;
+              cout << "| Backscatter lengthscale coefficient: " << SBSParam.SBS_Cdelta << endl;
               if (SBSParam.besselScaleFactor)
-                cout << "Bessel integral used to scale source terms after smoothing for unit variance preservation." << endl;
-              else
-                cout << "Numerically-estimated variance used to scale source terms after smoothing for unit variance preservation." << endl;
-            } else if (SBSParam.SBS_maxIterSmooth == 0) {
-              cout << "Local explicit smoothing applied to stochastic source terms in Langevin equations." << endl;
-            }
-            cout << "Backscatter lengthscale coefficient: " << SBSParam.SBS_Cdelta << endl;
-            if (SBSParam.SBS_Cdelta < 0.0)
+                cout << "| Spatially-correlated field scaled using Bessel integral to preserve unit variance." << endl;
+              if (SBSParam.SBS_Cdelta < 0.0)
                 SU2_MPI::Error("Backscatter lengthscale coefficient must be non-negative.", CURRENT_FUNCTION);
-            if (SBSParam.restartStochField && Restart)
-              cout << "Stochastic field read from restart file (if stochastic variables are present)." << endl;
+            } else {
+              cout << "| No smoothing applied to stochastic source terms in Langevin equations." << endl;
+            }
+            if (SBSParam.stochSourceTurb)
+              cout << "| Stochastic source term included in turbulence model equation." << endl;
             else
-              cout << "Stochastic field initialized to zero." << endl;
-            if (SBSParam.stochSourceNu)
-              cout << "Stochastic source term included in turbulence model equation." << endl;
-            else
-              cout << "Stochastic source term NOT included in turbulence model equation." << endl;
-            if (SBSParam.stochSourceRelax > 0.0)
-              cout << "Relaxation factor for stochastic source term: " << SBSParam.stochSourceRelax << endl;
-            else
-              cout << "No relaxation factor for stochastic source term." << endl;
+              cout << "| Stochastic source term NOT included in turbulence model equation." << endl;
             if (SBSParam.StochBackscatterInBox) {
-              cout << "Stochastic Backscatter Model activated only in a bounded box." << endl;
-              cout << "Box bounds: " << endl;
-              cout << "  X: " << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[0] << " , "
+              cout << "| Stochastic Backscatter Model activated only in a bounded box." << endl;
+              cout << "| Box bounds: " << endl;
+              cout << "|  X: " << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[0] << " , "
                               << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[1] << endl;
-              cout << "  Y: " << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[2] << " , "
+              cout << "|  Y: " << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[2] << " , "
                               << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[3] << endl;
-              cout << "  Z: " << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[4] << " , "
+              cout << "|  Z: " << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[4] << " , "
                               << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[5] << endl;
             }
             if (Kind_HybridRANSLES != SA_DES)
-              cout << "Stochastic source terms suppressed where the shielding function is lower than: " << setw(5) << setprecision(3) << SBSParam.stochFdThreshold << endl;
+              cout << "| Stochastic source terms suppressed where the shielding function is lower than: " << setw(5) << setprecision(3) << SBSParam.stochFdThreshold << endl;
           } else {
             cout << "OFF" << endl;
           }

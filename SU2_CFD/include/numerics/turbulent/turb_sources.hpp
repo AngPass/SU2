@@ -316,7 +316,7 @@ class CSourceBase_TurbSA : public CNumerics {
       su2double Production = 0.0, Destruction = 0.0;
       SourceTerms::get(ScalarVar_i[0], var, Production, Destruction, Jacobian_i[0][0]);
 
-      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceNu && lesMode_i>config->GetSBSParam().stochFdThreshold)
+      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceTurb && lesMode_i>config->GetSBSParam().stochFdThreshold)
         AddStochSource(config, var, Production);
 
       Residual[0] = (Production - Destruction) * Volume;
@@ -726,9 +726,9 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
   const su2double kAmb, omegaAmb;
 
   su2double F1_i, F2_i, CDkw_i;
-  su2double Residual[2];
-  su2double* Jacobian_i[2];
-  su2double Jacobian_Buffer[4];  /// Static storage for the Jacobian (which needs to be pointer for return type).
+  su2double Residual[5];
+  su2double* Jacobian_i[5];
+  su2double Jacobian_Buffer[25];  /// Static storage for the Jacobian (which needs to be pointer for return type).
 
   /*!
    * \brief Get strain magnitude based on perturbed reynolds stress matrix.
@@ -780,6 +780,60 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
 
   }
 
+  /*!
+   * \brief Include source-term residuals for Langevin equations (Stochastic Backscatter Model) 
+   */
+  inline void ResidualStochEquations(su2double timeStep, const su2double ct, su2double delta,
+                                     TIME_MARCHING time_marching, su2double threshold) {
+
+    const su2double k = max(ScalarVar_i[0], 1e-10);
+    const su2double omega = max(ScalarVar_i[1], 1e-10);
+
+    su2double tRANS = min(1.0/(beta_star*omega), 10.0*timeStep);
+    su2double tLES = ct * delta / sqrt(k);
+    su2double tBlended = lesMode_i*tLES + (1.0-lesMode_i)*tRANS;
+    su2double tRat = timeStep / tBlended;
+    
+    su2double corrFac = 1.0;
+    if (time_marching == TIME_MARCHING::DT_STEPPING_2ND) {
+      corrFac = sqrt(0.5*(1.0+tRat)*(4.0+tRat)/(2.0+tRat));
+    } else if (time_marching == TIME_MARCHING::DT_STEPPING_1ST) {
+      corrFac = sqrt(1.0+0.5*tRat);
+    }
+    
+    su2double scaleFactor = lesMode_i * 1.0/tBlended * sqrt(2.0/tRat) * corrFac;
+
+    for (unsigned short iVar = 2; iVar < nVar; iVar++) {
+      Residual[iVar] = scaleFactor * stochSource[iVar-2] - 1.0/tBlended * ScalarVar_i[iVar];
+      Residual[iVar] *= Volume;
+    }
+
+    for (unsigned short iVar = 2; iVar < nVar; iVar++ )
+      Jacobian_i[iVar][iVar] = -1.0/tBlended * Volume;
+
+  }
+
+  /*!
+   * \brief Include stochastic source term in the equation for the turbulent kinetic energy (Stochastic Backscatter Model).
+   */
+  inline void AddStochSource(const CConfig* config, su2double& prodK) {
+
+    su2double Cmag = config->GetSBSParam().SBS_Cmag;
+    const su2double tke = ScalarVar_i[0];
+
+    su2double stochProd = 0.0;
+    if (config->GetSBSParam().SBS_Ctau > 0.0)
+      stochProd = - Cmag * tke * (Vorticity_i[0]*ScalarVar_i[2] + Vorticity_i[1]*ScalarVar_i[3] + Vorticity_i[2]*ScalarVar_i[4]);
+    else
+      stochProd = - Cmag * tke * (Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2]);
+
+    const su2double limiter = 10.0;
+    stochProd = max(-limiter*prodK, min(limiter*prodK, stochProd));
+
+    prodK += stochProd;
+
+  }
+
  public:
   /*!
    * \brief Constructor of the class.
@@ -791,7 +845,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
    */
   CSourcePieceWise_TurbSST(unsigned short val_nDim, unsigned short, const su2double* constants, su2double val_kine_Inf,
                            su2double val_omega_Inf, const CConfig* config)
-      : CNumerics(val_nDim, 2, config),
+      : CNumerics(val_nDim, (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) ? 5 : 2, config),
         idx(val_nDim, config->GetnSpecies()),
         axisymmetric(config->GetAxisymmetric()),
         sigma_k_1(constants[0]),
@@ -808,8 +862,8 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
         kAmb(val_kine_Inf),
         omegaAmb(val_omega_Inf) {
     /*--- "Allocate" the Jacobian using the static buffer. ---*/
-    Jacobian_i[0] = Jacobian_Buffer;
-    Jacobian_i[1] = Jacobian_Buffer + 2;
+    for (unsigned short iVar = 0; iVar < 5; iVar++)
+      Jacobian_i[iVar] = Jacobian_Buffer + 5*iVar;
   }
 
   /*!
@@ -861,12 +915,12 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
     Laminar_Viscosity_i = V_i[idx.LaminarViscosity()];
     Eddy_Viscosity_i = V_i[idx.EddyViscosity()];
 
-    Residual[0] = 0.0;
-    Residual[1] = 0.0;
-    Jacobian_i[0][0] = 0.0;
-    Jacobian_i[0][1] = 0.0;
-    Jacobian_i[1][0] = 0.0;
-    Jacobian_i[1][1] = 0.0;
+    for (unsigned short iVar = 0; iVar < 5; iVar++) {
+      Residual[iVar] = 0.0;
+      for (unsigned short jVar = 0; jVar < 5; jVar++) {
+        Jacobian_i[iVar][jVar] = 0.0;
+      }
+    }
 
     /*--- Computation of blended constants for the source terms ---*/
 
@@ -971,6 +1025,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
       /*--- Dissipation ---*/
 
       su2double dk = beta_star * Density_i * ScalarVar_i[1] * ScalarVar_i[0] * (1.0 + zetaFMt);
+      if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) dk *= FDDES_i;
       su2double dw = beta_blended * Density_i * ScalarVar_i[1] * ScalarVar_i[1] * (1.0 - 0.09/beta_blended * zetaFMt);
 
       /*--- LM model coupling with production and dissipation term for k transport equation---*/
@@ -978,6 +1033,9 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
         pk = pk * eff_intermittency;
         dk = min(max(eff_intermittency, 0.1), 1.0) * dk;
       }
+
+      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceTurb && lesMode_i>config->GetSBSParam().stochFdThreshold)
+        AddStochSource(config, pk);
 
       /*--- Add the production terms to the residuals. ---*/
 
@@ -999,11 +1057,22 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
 
       Jacobian_i[0][0] = -beta_star * ScalarVar_i[1] * Volume * (1.0 + zetaFMt);
       Jacobian_i[0][1] = -beta_star * ScalarVar_i[0] * Volume * (1.0 + zetaFMt);
+      if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) {
+        Jacobian_i[0][0] *= FDDES_i;
+        Jacobian_i[0][1] *= FDDES_i;
+      }
       Jacobian_i[1][0] = 0.0;
       Jacobian_i[1][1] = -2.0 * beta_blended * ScalarVar_i[1] * Volume * (1.0 - 0.09/beta_blended * zetaFMt);
+
+      /*--- Compute residual for Langevin equations (Stochastic Backscatter Model). ---*/
+
+      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) {
+        ResidualStochEquations(config->GetDelta_UnstTimeND(), config->GetSBSParam().SBS_Ctau, maxDelta_i,
+                               config->GetTime_Marching(), config->GetSBSParam().stochFdThreshold);
+      }
     }
 
-    AD::SetPreaccOut(Residual, nVar);
+    AD::SetPreaccOut(Residual, 5);
     AD::EndPreacc();
 
     return ResidualType<>(Residual, Jacobian_i, nullptr);

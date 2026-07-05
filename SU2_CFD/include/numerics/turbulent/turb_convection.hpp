@@ -111,7 +111,9 @@ private:
   using Base::Jacobian_j;
   using Base::ScalarVar_i;
   using Base::ScalarVar_j;
+  using Base::lesSensor;
   using Base::idx;
+  using Base::nVar;
   using Base::bounded_scalar;
 
   /*!
@@ -124,6 +126,18 @@ private:
    * \param[in] config - Definition of the particular problem.
    */
   void FinishResidualCalc(const CConfig* config) override {
+    if (config->GetSBSParam().StochasticBackscatter) {
+      for (unsigned short iVar = 2; iVar < nVar; iVar++) {
+        Flux[iVar] = (a0 + a1) * 0.5 * (ScalarVar_i[iVar] + ScalarVar_j[iVar]) * lesSensor +
+                     (1.0-lesSensor) * (a0*ScalarVar_i[iVar] + a1*ScalarVar_j[iVar]);
+        Jacobian_i[iVar][iVar] = 0.5 * (a0+a1) * lesSensor + (1.0-lesSensor) * a0;
+        Jacobian_j[iVar][iVar] = 0.5 * (a0+a1) * lesSensor + (1.0-lesSensor) * a1;
+        Flux[iVar] *= config->GetVelocity_Ref();
+        Jacobian_i[iVar][iVar] *= config->GetVelocity_Ref();
+        Jacobian_j[iVar][iVar] *= config->GetVelocity_Ref();
+      }
+    }
+
     Flux[0] = a0*V_i[idx.Density()]*ScalarVar_i[0] + a1*V_j[idx.Density()]*ScalarVar_j[0];
     Flux[1] = a0*V_i[idx.Density()]*ScalarVar_i[1] + a1*V_j[idx.Density()]*ScalarVar_j[1];
 

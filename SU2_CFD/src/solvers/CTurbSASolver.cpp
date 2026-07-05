@@ -1699,49 +1699,6 @@ void CTurbSASolver::SetLangevinSourceTerms(CConfig *config, CGeometry* geometry)
     }
     END_SU2_OMP_FOR
   }
-
-  InitiateComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
-  CompleteComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
-
-  const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
-  if (maxIter == 0) {
-    const su2double cDelta = config->GetSBSParam().SBS_Cdelta;
-    SU2_OMP_FOR_STAT(omp_chunk_size)
-    for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-      auto coord_i = geometry->nodes->GetCoord(iPoint);
-      su2double maxDelta = geometry->nodes->GetMaxLength(iPoint);
-      su2double lengthScaleSq = cDelta * maxDelta * maxDelta;
-      for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-        su2double weightSum = 1.0;
-        su2double weightSumSq = 1.0;
-        su2double sourceOld_i = nodes->GetLangevinSourceTerms(iPoint, iDim);
-        su2double sourceSum = sourceOld_i;
-        for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
-          auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
-          auto coord_j = geometry->nodes->GetCoord(jPoint);
-          su2double distance = GeometryToolbox::Distance(nDim, coord_i, coord_j);
-          su2double weight = exp(-distance*distance/lengthScaleSq);
-          weightSum += weight;
-          weightSumSq += weight*weight;
-          su2double sourceOld_j = nodes->GetLangevinSourceTerms(jPoint, iDim);
-          sourceSum += weight*sourceOld_j;
-        }
-        su2double sourceNew = sourceSum / weightSum;
-        su2double scaleCoeff = weightSum / sqrt(weightSumSq);
-        nodes->SetLangevinSourceTermsOld(iPoint, iDim, sourceNew*scaleCoeff);
-      }
-    }
-    END_SU2_OMP_FOR
-
-    SU2_OMP_FOR_STAT(omp_chunk_size)
-    for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-      for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-        nodes->SetLangevinSourceTerms(iPoint, iDim, nodes->GetLangevinSourceTermsOld(iPoint, iDim));
-      }
-    }
-    END_SU2_OMP_FOR
-  }
-
 }
 
 void CTurbSASolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeometry *geometry) {
@@ -1783,7 +1740,7 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
   const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
   const su2double tol = -5.0;
   const su2double sourceLim = 5.0;
-  const su2double omega = 0.8;
+  const su2double omega = 0.99;
   unsigned long timeIter = config->GetTimeIter();
   unsigned long restartIter = config->GetRestart_Iter();
 

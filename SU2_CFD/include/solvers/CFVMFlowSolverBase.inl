@@ -490,10 +490,11 @@ void CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsigned long iEdge, CGeome
   /*--- Stochastic variables from Langevin equations (Stochastic Backscatter Model). ---*/
 
   if (backscatter) {
+    unsigned short startVar = (config->GetKind_HybridRANSLES() == SST_DDES) ? 2 : 1;
     if (config->GetSBSParam().SBS_Ctau > 0.0) {
       for (unsigned short iDim = 0; iDim < nDim; iDim++)
-        numerics->SetStochVar(iDim, turbNodes->GetSolution(iPoint, iDim+1),
-                                    turbNodes->GetSolution(jPoint, iDim+1));
+        numerics->SetStochVar(iDim, turbNodes->GetSolution(iPoint, iDim+startVar),
+                                    turbNodes->GetSolution(jPoint, iDim+startVar));
     } else {
       for (unsigned short iDim = 0; iDim < nDim; iDim++)
         numerics->SetStochVar(iDim, turbNodes->GetOU_Process(iPoint, iDim),

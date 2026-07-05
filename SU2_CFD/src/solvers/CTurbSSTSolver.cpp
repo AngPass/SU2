@@ -30,6 +30,7 @@
 #include "../../include/variables/CFlowVariable.hpp"
 #include "../../../Common/include/parallelization/omp_structure.hpp"
 #include "../../../Common/include/toolboxes/geometry_toolbox.hpp"
+#include "../../../Common/include/toolboxes/random_toolbox.hpp"
 
 
 CTurbSSTSolver::CTurbSSTSolver(CGeometry *geometry, CConfig *config, unsigned short iMesh)
@@ -56,6 +57,13 @@ CTurbSSTSolver::CTurbSSTSolver(CGeometry *geometry, CConfig *config, unsigned sh
   /*--- Define geometry constants in the solver structure ---*/
 
   nDim = geometry->GetnDim();
+
+  /*--- Add Langevin equations if the Stochastic Backscatter Model is used ---*/
+
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) {
+    nVar += 3;
+    nVarGrad = nPrimVar = nVar;
+  }
 
   /*--- Single grid simulation ---*/
 
@@ -127,6 +135,10 @@ CTurbSSTSolver::CTurbSSTSolver(CGeometry *geometry, CConfig *config, unsigned sh
 
   Solution_Inf[0] = kine_Inf;
   Solution_Inf[1] = omega_Inf;
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) {
+    for (unsigned short iVar = 2; iVar < nVar; iVar++)
+      Solution_Inf[iVar] = 0.0;
+  }
 
   /*--- Constants to use for lower limit of turbulence variable. ---*/
   su2double Ck = config->GetKFactor_LowerLimit();
@@ -178,6 +190,9 @@ CTurbSSTSolver::CTurbSSTSolver(CGeometry *geometry, CConfig *config, unsigned sh
     for (unsigned long iVertex = 0; iVertex < nVertex[iMarker]; ++iVertex) {
       Inlet_TurbVars[iMarker](iVertex,0) = kine_Inf;
       Inlet_TurbVars[iMarker](iVertex,1) = omega_Inf;
+      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0)
+        for (unsigned short iVar = 2; iVar < nVar; iVar++)
+          Inlet_TurbVars[iMarker](iVertex, iVar) = 0.0;
     }
   }
 
@@ -203,6 +218,36 @@ void CTurbSSTSolver::Preprocessing(CGeometry *geometry, CSolver **solver_contain
 
   /*--- Upwind second order reconstruction and gradients ---*/
   CommonPreprocessing(geometry, config, Output);
+  
+  if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) {
+
+    /*--- Compute the DES length scale ---*/
+
+    SetDES_LengthScale(solver_container, geometry, config);
+
+    bool backscatter = config->GetSBSParam().StochasticBackscatter;
+    bool backscatterInBox = config->GetSBSParam().StochBackscatterInBox;
+    if (backscatter && backscatterInBox) SetBackscatterInBox(config, geometry);
+
+    InitiateComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
+    CompleteComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
+
+    InitiateComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
+    CompleteComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
+
+    /*--- Compute source terms for Langevin equations ---*/
+
+    unsigned long innerIter = config->GetInnerIter();
+    if (backscatter && innerIter==0) {
+      SetLangevinSourceTerms(config, geometry);
+      const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
+      const su2double ctau = config->GetSBSParam().SBS_Ctau;
+      if (maxIter > 0) SmoothLangevinSourceTerms(config, geometry);
+      if (ctau < 0.0) ComputeOU_Process(solver_container, config, geometry);
+    }
+
+  }
+
 }
 
 void CTurbSSTSolver::Postprocessing(CGeometry *geometry, CSolver **solver_container,
@@ -372,6 +417,30 @@ void CTurbSSTSolver::Source_Residual(CGeometry *geometry, CSolver **solver_conta
     if (axisymmetric){
       /*--- Set y coordinate ---*/
       numerics->SetCoord(geometry->nodes->GetCoord(iPoint), geometry->nodes->GetCoord(iPoint));
+    }
+
+    if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) {
+      su2double k = nodes->GetSolution(iPoint, 0);
+      su2double omega = nodes->GetSolution(iPoint, 1);
+      su2double beta_star = constants[6];
+      su2double RANS_lengthscale = sqrt(k)/(beta_star*max(omega, 1e-10));
+      su2double DES_lengthscale = nodes->GetDES_LengthScale(iPoint);
+      su2double FDDES = RANS_lengthscale/max(DES_lengthscale, 1e-10);
+      numerics->SetFDDES(FDDES, 0.0);
+
+      /*--- Compute source terms in Langevin equations (Stochastic Basckscatter Model) ---*/
+
+      if (config->GetSBSParam().StochasticBackscatter) {
+        if (config->GetSBSParam().SBS_Ctau > 0.0) {
+          for (unsigned short iDim = 0; iDim < nDim; iDim++)
+            numerics->SetStochSource(nodes->GetLangevinSourceTerms(iPoint, iDim), iDim);
+        } else {
+          for (unsigned short iDim = 0; iDim < nDim; iDim++)
+            numerics->SetStochSource(nodes->GetOU_Process(iPoint, iDim), iDim);
+        }
+        numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), 0.0);
+        numerics->SetMaxDelta(geometry->nodes->GetMaxLength(iPoint), 0.0);
+      }
     }
 
     /*--- Compute the source term ---*/
@@ -580,6 +649,420 @@ void CTurbSSTSolver::SetTurbVars_WF(CGeometry *geometry, CSolver **solver_contai
       Jacobian.DeleteValsRowi(iPoint_Neighbor, 1);
     }
   }
+}
+
+void CTurbSSTSolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, CConfig *config){
+  SU2_ZONE_SCOPED
+
+  const su2double cDES_1 = config->GetConst_DES_1();
+  const su2double cDES_2 = config->GetConst_DES_2();
+  const su2double beta_star = constants[6];
+  const su2double k2 = pow(0.41, 2);
+
+  auto* flowNodes = su2staticcast_p<CFlowVariable*>(solver[FLOW_SOL]->GetNodes());
+
+  SU2_OMP_FOR_DYN(omp_chunk_size)
+  for (auto iPoint = 0ul; iPoint < nPointDomain; iPoint++){
+
+    const auto wallDistance  = geometry->nodes->GetWall_Distance(iPoint);
+    const auto velocityGrad  = flowNodes->GetVelocityGradient(iPoint);
+    const auto density       = flowNodes->GetDensity(iPoint);
+    const auto laminarViscosity = flowNodes->GetLaminarViscosity(iPoint);
+    const auto eddyViscosity    = nodes->GetmuT(iPoint);
+    const su2double kinematicViscosity     = laminarViscosity/density;
+    const su2double kinematicViscosityTurb = eddyViscosity/density;
+    const su2double k = nodes->GetSolution(iPoint, 0);
+    const su2double omega = max(nodes->GetSolution(iPoint, 1), 1e-10);
+    const su2double F1 = nodes->GetF1blending(iPoint);
+    su2double constDES = cDES_1*F1 + cDES_2*(1.0-F1);
+
+    su2double uijuij = 0.0;
+    for(auto iDim = 0u; iDim < nDim; iDim++){
+      for(auto jDim = 0u; jDim < nDim; jDim++){
+        uijuij += pow(velocityGrad[iDim][jDim], 2);
+      }
+    }
+    uijuij = sqrt(fabs(uijuij));
+    uijuij = max(uijuij,1e-10);
+
+    const su2double LES_FilterWidth = config->GetLES_FilterWidth();
+    su2double maxDelta = (LES_FilterWidth > 0.0) ? LES_FilterWidth : geometry->nodes->GetMaxLength(iPoint);
+
+    const su2double r_d = (kinematicViscosityTurb+kinematicViscosity)/(uijuij*k2*pow(wallDistance, 2.0));
+    const su2double f_d = 1.0-tanh(pow(20.0*r_d,3.0));
+
+    const su2double distDES = constDES * maxDelta;
+    const su2double distRANS = sqrt(k)/(omega*beta_star);
+    su2double lengthScale = distRANS-f_d*max(0.0,(distRANS-distDES));
+    su2double lesSensor = (distRANS<=distDES) ? 0.0 : f_d;
+
+    if (config->GetEnforceLES()) {
+      lengthScale = distDES;
+      lesSensor = 1.0;
+    }
+
+    nodes->SetDES_LengthScale(iPoint, lengthScale);
+    nodes->SetLES_Mode(iPoint, lesSensor);
+
+  }
+  END_SU2_OMP_FOR
+}
+
+void CTurbSSTSolver::SetBackscatterInBox(CConfig *config, CGeometry *geometry) {
+  SU2_ZONE_SCOPED
+
+  auto sbsBoxBounds = config->GetSBSParam().StochBackscatterBoxBounds;
+
+  SU2_OMP_FOR_STAT(omp_chunk_size)
+  for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
+    const auto coord = geometry->nodes->GetCoord(iPoint);
+    bool outOfBoxX = (coord[0]<sbsBoxBounds[0] || coord[0]>sbsBoxBounds[1]);
+    bool outOfBoxY = (coord[1]<sbsBoxBounds[2] || coord[1]>sbsBoxBounds[3]);
+    bool outOfBoxZ = (coord[2]<sbsBoxBounds[4] || coord[2]>sbsBoxBounds[5]);
+    bool outOfBox  = (outOfBoxX || outOfBoxY || outOfBoxZ);
+    su2double sbsInBox = outOfBox ? 0.0 : 1.0;
+    nodes->SetSBSInBox(iPoint, sbsInBox);
+  }
+  END_SU2_OMP_FOR
+
+}
+
+void CTurbSSTSolver::SetLangevinSourceTerms(CConfig *config, CGeometry* geometry) {
+  SU2_ZONE_SCOPED
+
+  const su2double threshold = config->GetSBSParam().stochFdThreshold;
+  const su2double dummySource = 1e3;
+  unsigned long timeIter = config->GetTimeIter();
+
+  SU2_OMP_FOR_STAT(omp_chunk_size)
+  for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++){
+    unsigned long iPointGlobal = geometry->nodes->GetGlobalIndex(iPoint);
+    for (unsigned short iDim = 0; iDim < nDim; iDim++){
+      su2double lesSensor = nodes->GetLES_Mode(iPoint) * nodes->GetSBSInBox(iPoint);
+      if (lesSensor>threshold) {
+        su2double rnd = RandomToolbox::GetNormal(iPointGlobal, iDim, timeIter);
+        nodes->SetLangevinSourceTermsOld(iPoint, iDim, rnd);
+        nodes->SetLangevinSourceTerms(iPoint, iDim, rnd);
+      } else {
+        nodes->SetLangevinSourceTermsOld(iPoint, iDim, dummySource);
+        nodes->SetLangevinSourceTerms(iPoint, iDim, 0.0);
+      }
+    }
+  }
+  END_SU2_OMP_FOR
+
+  for (unsigned short iMarker = 0; iMarker < config->GetnMarker_All(); iMarker++) {
+    SU2_OMP_FOR_STAT(OMP_MIN_SIZE)
+    for (unsigned long iVertex = 0; iVertex < geometry->nVertex[iMarker]; iVertex++) {
+      unsigned long iPoint = geometry->vertex[iMarker][iVertex]->GetNode();
+      if (config->GetMarker_All_KindBC(iMarker) != SEND_RECEIVE) {
+        for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+          nodes->SetLangevinSourceTermsOld(iPoint, iDim, dummySource);
+          nodes->SetLangevinSourceTerms(iPoint, iDim, 0.0);
+        }
+      }
+    }
+    END_SU2_OMP_FOR
+  }
+}
+
+void CTurbSSTSolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeometry *geometry) {
+  SU2_ZONE_SCOPED
+
+  auto* flowNodes = su2staticcast_p<CFlowVariable*>(solver[FLOW_SOL]->GetNodes());
+  su2double timeStep = config->GetDelta_UnstTimeND();
+
+  SU2_OMP_FOR_STAT(omp_chunk_size)
+  for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+    su2double maxDelta = geometry->nodes->GetMaxLength(iPoint);
+    su2double timeRANS = fabs(config->GetSBSParam().SBS_Ctau) * maxDelta / max(sqrt(nodes->GetSolution(iPoint, 0)), 1e-10);
+    su2double timeLES = 1.0 / (constants[6]*max(nodes->GetSolution(iPoint, 1), 1e-10));
+    su2double lesMode = nodes->GetLES_Mode(iPoint);
+    su2double timeBlended = min(timeRANS, 10.0*config->GetTime_Step()) * (1.0-lesMode) + timeLES * lesMode;
+    su2double timeRatio = timeStep/timeBlended;
+    su2double term1 = exp(-timeRatio);
+    su2double term2 = (timeRatio < 1e-6) ? sqrt(2.0*timeRatio) : sqrt(1.0-exp(-2.0*timeRatio));
+    for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+      su2double stochSourceOld = nodes->GetOU_Process(iPoint, iDim);
+      su2double langevinSource = nodes->GetLangevinSourceTerms(iPoint, iDim);
+      su2double stochSourceNew = stochSourceOld*term1 + term2*langevinSource;
+      nodes->SetOU_Process(iPoint, iDim, stochSourceNew);
+    }
+  }
+  END_SU2_OMP_FOR
+
+  InitiateComms(geometry, config, MPI_QUANTITIES::OU_PROCESS);
+  CompleteComms(geometry, config, MPI_QUANTITIES::OU_PROCESS);
+}
+
+void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geometry) {
+  SU2_ZONE_SCOPED
+
+  static su2double globalResNorm;
+  static unsigned long global_nPointLES;
+  static std::array<su2double, 6> globalChecks;
+
+  const su2double LES_FilterWidth = config->GetLES_FilterWidth();
+  const su2double cDelta = config->GetSBSParam().SBS_Cdelta;
+  const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
+  const su2double tol = -5.0;
+  const su2double sourceLim = 5.0;
+  const su2double omega = 0.99;
+  unsigned long timeIter = config->GetTimeIter();
+  unsigned long restartIter = config->GetRestart_Iter();
+
+  /*--- Start SOR algorithm for the Laplacian smoothing. ---*/
+
+  for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+
+    for (unsigned short iter = 0; iter < maxIter; iter++) {
+
+      /*--- MPI communication. ---*/
+
+      InitiateComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
+      CompleteComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
+
+      su2double localResNorm = 0.0;
+      unsigned long local_nPointLES = 0;
+
+      BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+      for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+        su2double source_i_old = nodes->GetLangevinSourceTermsOld(iPoint, iDim);
+        if (source_i_old > 3.0*sourceLim) continue;
+        local_nPointLES += 1;
+        su2double maxDelta = (LES_FilterWidth > 0.0) ? LES_FilterWidth : geometry->nodes->GetMaxLength(iPoint);
+        su2double b2 = cDelta * maxDelta * maxDelta;
+        su2double volume_iPoint = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
+        su2double source_i = nodes->GetLangevinSourceTerms(iPoint, iDim);
+        auto coord_i = geometry->nodes->GetCoord(iPoint);
+
+        /*--- Assemble system matrix. ---*/
+
+        su2double diag = 1.0;
+        su2double sum = 0.0;
+        for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
+          auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
+          auto coord_j = geometry->nodes->GetCoord(jPoint);
+          auto iEdge = geometry->nodes->GetEdge(iPoint, iNode);
+          auto* normal = geometry->edges->GetNormal(iEdge);
+          su2double area = GeometryToolbox::Norm(nDim, normal);
+          su2double dx_ij_vec[3];
+          for (unsigned short index = 0; index < nDim; index++)
+            dx_ij_vec[index] = coord_j[index] - coord_i[index];
+          su2double distance = GeometryToolbox::Norm(nDim, dx_ij_vec);
+          su2double dot_nd = 0.0;
+          for (unsigned short index = 0; index < nDim; index++)
+            dot_nd += normal[index] * dx_ij_vec[index];
+          su2double sign = (geometry->edges->GetNode(iEdge, 0) == iPoint) ? 1.0 : -1.0;
+          su2double d_normal = sign * dot_nd / max(area*distance, 1e-10);
+          su2double source_j = nodes->GetLangevinSourceTerms(jPoint, iDim);
+          su2double a_ij = area/volume_iPoint * fabs(d_normal) * b2/max(distance, 1e-10);
+          diag += a_ij;
+          sum += a_ij * source_j;
+        }
+
+        /*--- Update the solution. ---*/
+
+        su2double residual = source_i_old - (source_i * diag - sum);
+        localResNorm += pow(residual, 2);
+        su2double source_tmp = (source_i_old + sum) / diag;
+        source_i = (1.0-omega)*source_i + omega*source_tmp;
+        nodes->SetLangevinSourceTerms(iPoint, iDim, source_i);
+
+      }
+      END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+      /*--- Stop integration if residual drops below tolerance. ---*/
+
+      BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS {
+        SU2_MPI::Allreduce(&local_nPointLES, &global_nPointLES, 1, MPI_UNSIGNED_LONG, MPI_SUM, SU2_MPI::GetComm());
+        SU2_MPI::Allreduce(&localResNorm, &globalResNorm, 1, MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
+        globalResNorm = (global_nPointLES==0) ? su2double(0.0) : sqrt(globalResNorm / global_nPointLES);
+      }
+      END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+      SU2_OMP_MASTER
+      if (rank == MASTER_NODE) {
+        if (iter == 0) {
+          cout << "\nResidual of Laplacian smoothing along dimension " << iDim+1
+               << "\n---------------------------------"
+               << "\n   Iter       RMS Residual"
+               << "\n---------------------------------" << endl;
+        }
+        if (iter%50 == 0) {
+          cout << "  "
+               << std::setw(5) << iter
+               << "       "
+               << std::setw(12) << std::fixed << std::setprecision(6) << log10(globalResNorm)
+               << endl;
+        }
+      }
+      END_SU2_OMP_MASTER
+
+      if (log10(globalResNorm) < tol || iter == maxIter-1) {
+
+        SU2_OMP_MASTER
+        if (rank == MASTER_NODE) {
+          cout << "  "
+               << std::setw(5) << iter
+               << "       "
+               << std::setw(12) << std::fixed << ::setprecision(6) << log10(globalResNorm)
+               << endl;
+          cout << "---------------------------------" << endl;
+        }
+        END_SU2_OMP_MASTER
+
+        /*--- Scale source terms for variance preservation. ---*/
+
+        su2double mean_check_old = 0.0, var_check_old = 0.0;
+        su2double mean_check_new = 0.0, var_check_new = 0.0;
+        su2double mean_check_notSmoothed = 0.0, var_check_notSmoothed = 0.0;
+
+        SU2_OMP_FOR_(schedule(static, omp_chunk_size) SU2_NOWAIT)
+        for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+          su2double source_notSmoothed = nodes->GetLangevinSourceTermsOld(iPoint, iDim);
+          if (source_notSmoothed > 3.0*sourceLim) continue;
+          su2double source = nodes->GetLangevinSourceTerms(iPoint, iDim);
+          mean_check_old += source;
+          var_check_old += pow(source, 2);
+          mean_check_notSmoothed += source_notSmoothed;
+          var_check_notSmoothed += pow(source_notSmoothed, 2);
+        }
+        END_SU2_OMP_FOR
+
+        if (config->GetSBSParam().besselScaleFactor) {
+          SU2_OMP_FOR_(schedule(static, omp_chunk_size) SU2_NOWAIT)
+          for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+            su2double integral = 0.0;
+            if (timeIter==restartIter) {
+              su2double maxDelta = (LES_FilterWidth > 0.0) ? LES_FilterWidth : geometry->nodes->GetMaxLength(iPoint);
+              su2double b2 = cDelta * maxDelta * maxDelta;
+              su2double M[3][3] = {{0.0}};
+              for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
+                auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
+                auto iEdge = geometry->nodes->GetEdge(iPoint, iNode);
+                auto* normal = geometry->edges->GetNormal(iEdge);
+                for (unsigned short ind1 = 0; ind1 < nDim; ind1++) {
+                  for (unsigned short ind2 = 0; ind2 < nDim; ind2++) {
+                    M[ind1][ind2] += normal[ind1]*normal[ind2];
+                  }
+                }
+              }
+              su2double a = M[0][0], b = M[1][1], c = M[2][2];
+              su2double d = M[0][1], e = M[1][2], f = M[0][2];
+              su2double lambda[3] = {0.0};
+              su2double p1 = d*d + e*e + f*f;
+              if (p1 < 1e-20) {
+                lambda[0] = a;
+                lambda[1] = b;
+                lambda[2] = (nDim==3 ? c : b);
+              } else {
+                su2double trace = (a + b + c) / 3.0;
+                su2double p2 = (a-trace)*(a-trace) +
+                               (b-trace)*(b-trace) +
+                               (c-trace)*(c-trace) +
+                               2.0 * p1;
+                su2double p = sqrt(p2 / 6.0);
+                su2double B[3][3];
+                for (unsigned short ind1 = 0; ind1 < nDim; ind1++)
+                  for (unsigned short ind2 = 0; ind2 < nDim; ind2++)
+                    B[ind1][ind2] = M[ind1][ind2];
+                B[0][0] -= trace;
+                B[1][1] -= trace;
+                B[2][2] -= trace;
+                for (unsigned short ind1 = 0; ind1 < nDim; ind1++)
+                  for (unsigned short ind2 = 0; ind2 < nDim; ind2++)
+                    B[ind1][ind2] /= p;
+                su2double detB =
+                    B[0][0]*(B[1][1]*B[2][2] - B[1][2]*B[2][1]) -
+                    B[0][1]*(B[1][0]*B[2][2] - B[1][2]*B[2][0]) +
+                    B[0][2]*(B[1][0]*B[2][1] - B[1][1]*B[2][0]);
+                su2double r = detB * 0.5;
+                r = max(min(r, 1.0), -1.0);
+                su2double phi = acos(r) / 3.0;
+                lambda[0] = max(trace + 2.0*p*cos(phi), 1e-10);
+                lambda[1] = max(trace + 2.0*p*cos(phi + 2.0*M_PI/3.0), 1e-10);
+                lambda[2] = max(trace + 2.0*p*cos(phi + 4.0*M_PI/3.0), 1e-10);
+              }
+              su2double V = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
+              su2double dI = V / sqrt(lambda[0]);
+              su2double dJ = V / sqrt(lambda[1]);
+              su2double dK = V / sqrt(lambda[2]);
+              su2double dI2 = dI * dI;
+              su2double dJ2 = dJ * dJ;
+              su2double dK2 = dK * dK;
+              su2double bI = b2 / dI2;
+              su2double bJ = b2 / dJ2;
+              su2double bK = b2 / dK2;
+              integral = RandomToolbox::GetBesselIntegral(bI, bJ, bK);
+              nodes->SetBesselIntegral(iPoint, integral);
+            } else {
+              integral = nodes->GetBesselIntegral(iPoint);
+            }
+            su2double scaleFactor = 1.0 / sqrt(max(integral, 1e-10));
+            su2double source = nodes->GetLangevinSourceTerms(iPoint, iDim);
+            source *= scaleFactor;
+            if (source < -sourceLim || source > sourceLim) source = 0.0;
+            mean_check_new += source;
+            var_check_new += pow(source, 2);
+            nodes->SetLangevinSourceTerms(iPoint, iDim, source);
+          }
+          END_SU2_OMP_FOR
+        }
+
+        SU2_OMP_SAFE_GLOBAL_ACCESS(globalChecks = {0, 0, 0, 0, 0, 0};)
+
+        atomicAdd(mean_check_old, globalChecks[0]);
+        atomicAdd(var_check_old, globalChecks[1]);
+        atomicAdd(mean_check_notSmoothed, globalChecks[2]);
+        atomicAdd(var_check_notSmoothed, globalChecks[3]);
+        atomicAdd(mean_check_new, globalChecks[4]);
+        atomicAdd(var_check_new, globalChecks[5]);
+
+        BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS {
+          auto tmp = globalChecks;
+          SU2_MPI::Allreduce(tmp.data(), globalChecks.data(), tmp.size(), MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
+        }
+        END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+        const auto invDenom = 1.0 / max(global_nPointLES, 1ul);
+        mean_check_old = globalChecks[0] * invDenom;
+        var_check_old = globalChecks[1] * invDenom - pow(mean_check_old, 2);
+
+        if (!config->GetSBSParam().besselScaleFactor) {
+          SU2_OMP_FOR_(schedule(static, omp_chunk_size) SU2_NOWAIT)
+          for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+            su2double source = nodes->GetLangevinSourceTerms(iPoint, iDim);
+            source *= 1.0/sqrt(max(var_check_old, 1e-10));
+            nodes->SetLangevinSourceTerms(iPoint, iDim, source);
+          }
+          END_SU2_OMP_FOR
+        }
+
+        SU2_OMP_MASTER
+        if (rank == MASTER_NODE && config->GetSBSParam().stochSourceDiagnostics) {
+          mean_check_notSmoothed = globalChecks[2] * invDenom;
+          var_check_notSmoothed = globalChecks[3] * invDenom - pow(mean_check_notSmoothed, 2);
+          mean_check_new = globalChecks[4] * invDenom;
+          var_check_new = globalChecks[5] * invDenom - pow(mean_check_new, 2);
+
+          cout << "Mean of stochastic source term in Langevin equations:";
+          cout << "\n   Uncorrelated            --> " << mean_check_notSmoothed;
+          cout << "\n   Smoothed before scaling --> " << mean_check_old;
+          cout << "\n   Smoothed after scaling  --> " << mean_check_new;
+          cout << "\nVariance of stochastic source term in Langevin equations:";
+          cout << "\n   Uncorrelated            --> " << var_check_notSmoothed;
+          cout << "\n   Smoothed before scaling --> " << var_check_old;
+          cout << "\n   Smoothed after scaling  --> " << ((config->GetSBSParam().besselScaleFactor) ? var_check_new : 1.0) << '\n' << endl;
+        }
+        END_SU2_OMP_MASTER
+
+        /*--- Converged or maximum number of iterations reached. ---*/
+        break;
+      }
+    }
+  }
+
 }
 
 void CTurbSSTSolver::BC_Isothermal_Wall(CGeometry *geometry, CSolver **solver_container, CNumerics *conv_numerics,
@@ -1064,6 +1547,8 @@ void CTurbSSTSolver::SetUniformInlet(const CConfig* config, unsigned short iMark
 
 void CTurbSSTSolver::ComputeUnderRelaxationFactor(CSolver** solver_container, const CConfig *config) {
   SU2_ZONE_SCOPED
+
+  if (config->GetSBSParam().StochasticBackscatter) return;
 
   const su2double allowableRatio = config->GetMaxUpdateFractionSST();
 
