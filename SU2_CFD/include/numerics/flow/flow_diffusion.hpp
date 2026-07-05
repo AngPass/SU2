@@ -137,15 +137,6 @@ protected:
   void GetViscousProjFlux(const su2double *val_primvar,
                           const su2double *val_normal);
 
-                    
-  /*!
-   * \brief Compute the projection of the viscous fluxes into a direction.
-   *
-   * \param[in] val_normal - Normal vector, the norm of the vector is the area of the face.
-   * \param[in] incompressible - Incompressible flow.
-   */
-  void GetStochasticIncProjFlux(const su2double *val_normal, const bool incompressible );
-
   /*!
    * \brief TSL-Approximation of Viscous NS Jacobians.
    *
