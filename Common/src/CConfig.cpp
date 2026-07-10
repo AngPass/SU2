@@ -3007,6 +3007,9 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Specify if the Stochastic Backscatter Model must be activated */
   addBoolOption("STOCHASTIC_BACKSCATTER", SBSParam.StochasticBackscatter, false);
 
+  /* DESCRIPTION: Specify Hybrid RANS/LES model */
+  addEnumOption("SBS_SOURCE_TYPE", SBSParam.stochSourceType, stochSource_Map, LANGEVIN);
+
   /* DESCRIPTION: Specify if the LES mode must be enforced */
   addBoolOption("ENFORCE_LES", enforceLES, false);
 
@@ -3042,6 +3045,12 @@ void CConfig::SetConfig_Options() {
 
   /* DESCRIPTION: Employ a hybrid central-upwind scheme in Langevin equations */
   addBoolOption("SBS_BESSEL_SCALING", SBSParam.besselScaleFactor, false);
+
+  /* DESCRIPTION: Use mean turbulent kinetic energy in the definition of the stochastic source term. */
+  addBoolOption("SBS_USE_MEAN_TKE", SBSParam.useMeanTurbKE, false);
+
+  /* DESCRIPTION: Specify if the modeled stresses must be filtered in time. */
+  addBoolOption("SBS_FILTER_STRESSES", SBSParam.filterStresses, false);
 
   /* DESCRIPTION: Filter width for LES (if negative, it is computed based on the local cell size) */
   addDoubleOption("LES_FILTER_WIDTH", LES_FilterWidth, -1.0);
@@ -6556,7 +6565,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
             if (SBSParam.SBS_Cmag < 0.0)
               SU2_MPI::Error("Backscatter intensity coefficient must be non-negative.", CURRENT_FUNCTION);
             cout << "| Backscatter timescale coefficient: " << SBSParam.SBS_Ctau << endl;
-            if (SBSParam.SBS_Ctau > 0.0) {
+            if (SBSParam.stochSourceType == LANGEVIN) {
               if (SBSParam.langevinUpwBlend)
                 cout << "| Langevin equations integrated using blended central-upwind scheme." << endl;
               else
@@ -6565,8 +6574,11 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
                 cout << "| Stochastic field restarted from solution file (if present)." << endl;
               else
                 cout << "| Stochastic field initialized to zero." << endl;
-            } else
-              cout << "| Langevin equations not integrated (Ornstein-Uhlenbeck process)." << endl;
+            } else if (SBSParam.stochSourceType == ORNSTEIN_UHLENBECK) {
+              cout << "| Analytical solution of the Ornstein-Uhlenbeck process." << endl;
+            } else {
+              cout << "| White noise (uncorrelated)." << endl;
+            }
             if (SBSParam.SBS_maxIterSmooth > 0) {
               cout << "| Maximum number of iterations for implicit smoothing: " << SBSParam.SBS_maxIterSmooth << endl;
               cout << "| Backscatter lengthscale coefficient: " << SBSParam.SBS_Cdelta << endl;
@@ -6591,8 +6603,10 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
               cout << "|  Z: " << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[4] << " , "
                               << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[5] << endl;
             }
+            if (SBSParam.filterStresses)
+              cout << "| Subgrid stresses filtered in time." << endl;
             if (Kind_HybridRANSLES != SA_DES)
-              cout << "| Stochastic source terms suppressed where the shielding function is lower than: " << setw(5) << setprecision(3) << SBSParam.stochFdThreshold << endl;
+              cout << "| Stochastic source terms suppressed where the shielding function is lower than: " << setw(4) << setprecision(4) << SBSParam.stochFdThreshold << endl;
           } else {
             cout << "OFF" << endl;
           }

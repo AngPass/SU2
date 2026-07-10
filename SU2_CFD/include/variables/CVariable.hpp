@@ -400,6 +400,18 @@ public:
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
    */
+  inline virtual su2double GetMeanTurbKinEnergy(unsigned long iPoint) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   */
+  inline virtual void SetMeanTurbKinEnergy(unsigned long iPoint, su2double val_mean_tke) {}
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   */
   inline virtual su2double GetLES_Mode(unsigned long iPoint) const { return 0.0; }
 
   /*!

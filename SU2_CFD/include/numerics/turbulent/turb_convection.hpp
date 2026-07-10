@@ -64,7 +64,7 @@ private:
    * \param[in] config - Definition of the particular problem.
    */
   void FinishResidualCalc(const CConfig* config) override {
-    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) {
+    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
       for (unsigned short iVar = 1; iVar < nVar; iVar++) {
         Flux[iVar] = (a0 + a1) * 0.5 * (ScalarVar_i[iVar] + ScalarVar_j[iVar]) * lesSensor +
                      (1.0-lesSensor) * (a0*ScalarVar_i[iVar] + a1*ScalarVar_j[iVar]);
@@ -126,10 +126,10 @@ private:
    * \param[in] config - Definition of the particular problem.
    */
   void FinishResidualCalc(const CConfig* config) override {
-    if (config->GetSBSParam().StochasticBackscatter) {
+    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
       for (unsigned short iVar = 2; iVar < nVar; iVar++) {
-        Flux[iVar] = (a0 + a1) * 0.5 * (ScalarVar_i[iVar] + ScalarVar_j[iVar]) * lesSensor +
-                     (1.0-lesSensor) * (a0*ScalarVar_i[iVar] + a1*ScalarVar_j[iVar]);
+        Flux[iVar] = (a0 + a1) * 0.5 * (V_i[idx.Density()]*ScalarVar_i[iVar] + V_j[idx.Density()]*ScalarVar_j[iVar]) * lesSensor +
+                     (1.0-lesSensor) * (a0*V_i[idx.Density()]*ScalarVar_i[iVar] + a1*V_j[idx.Density()]*ScalarVar_j[iVar]);
         Jacobian_i[iVar][iVar] = 0.5 * (a0+a1) * lesSensor + (1.0-lesSensor) * a0;
         Jacobian_j[iVar][iVar] = 0.5 * (a0+a1) * lesSensor + (1.0-lesSensor) * a1;
         Flux[iVar] *= config->GetVelocity_Ref();

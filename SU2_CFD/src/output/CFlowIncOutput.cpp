@@ -398,8 +398,8 @@ void CFlowIncOutput::SetVolumeOutputFields(CConfig *config){
 
 void CFlowIncOutput::LoadVolumeData(CConfig *config, CGeometry *geometry, CSolver **solver, unsigned long iPoint){
 
-  const auto* Node_Flow = solver[FLOW_SOL]->GetNodes();
-  const CVariable* Node_Turb = nullptr;
+  auto* Node_Flow = solver[FLOW_SOL]->GetNodes();
+  CVariable* Node_Turb = nullptr;
   if (config->GetKind_Turb_Model() != TURB_MODEL::NONE) Node_Turb = solver[TURB_SOL]->GetNodes();
   const CVariable* Node_Heat = nullptr;
   const CVariable* Node_Rad = nullptr;

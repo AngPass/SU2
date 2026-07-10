@@ -60,7 +60,7 @@ CTurbSSTSolver::CTurbSSTSolver(CGeometry *geometry, CConfig *config, unsigned sh
 
   /*--- Add Langevin equations if the Stochastic Backscatter Model is used ---*/
 
-  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) {
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
     nVar += 3;
     nVarGrad = nPrimVar = nVar;
   }
@@ -135,7 +135,7 @@ CTurbSSTSolver::CTurbSSTSolver(CGeometry *geometry, CConfig *config, unsigned sh
 
   Solution_Inf[0] = kine_Inf;
   Solution_Inf[1] = omega_Inf;
-  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) {
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
     for (unsigned short iVar = 2; iVar < nVar; iVar++)
       Solution_Inf[iVar] = 0.0;
   }
@@ -190,7 +190,7 @@ CTurbSSTSolver::CTurbSSTSolver(CGeometry *geometry, CConfig *config, unsigned sh
     for (unsigned long iVertex = 0; iVertex < nVertex[iMarker]; ++iVertex) {
       Inlet_TurbVars[iMarker](iVertex,0) = kine_Inf;
       Inlet_TurbVars[iMarker](iVertex,1) = omega_Inf;
-      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0)
+      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN)
         for (unsigned short iVar = 2; iVar < nVar; iVar++)
           Inlet_TurbVars[iMarker](iVertex, iVar) = 0.0;
     }
@@ -229,21 +229,22 @@ void CTurbSSTSolver::Preprocessing(CGeometry *geometry, CSolver **solver_contain
     bool backscatterInBox = config->GetSBSParam().StochBackscatterInBox;
     if (backscatter && backscatterInBox) SetBackscatterInBox(config, geometry);
 
-    InitiateComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
-    CompleteComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
-
-    InitiateComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
-    CompleteComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
-
     /*--- Compute source terms for Langevin equations ---*/
 
     unsigned long innerIter = config->GetInnerIter();
     if (backscatter && innerIter==0) {
+      InitiateComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
+      CompleteComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
+      InitiateComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
+      CompleteComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
+      InitiateComms(geometry, config, MPI_QUANTITIES::MEAN_TKE);
+      CompleteComms(geometry, config, MPI_QUANTITIES::MEAN_TKE);
+
       SetLangevinSourceTerms(config, geometry);
       const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
       const su2double ctau = config->GetSBSParam().SBS_Ctau;
       if (maxIter > 0) SmoothLangevinSourceTerms(config, geometry);
-      if (ctau < 0.0) ComputeOU_Process(solver_container, config, geometry);
+      if (config->GetSBSParam().stochSourceType == ORNSTEIN_UHLENBECK) ComputeOU_Process(solver_container, config, geometry);
     }
 
   }
@@ -268,6 +269,8 @@ void CTurbSSTSolver::Postprocessing(CGeometry *geometry, CSolver **solver_contai
   AD::StartNoSharedReading();
 
   auto* flowNodes = su2staticcast_p<CFlowVariable*>(solver_container[FLOW_SOL]->GetNodes());
+
+  const su2double cYosh = 0.08;
 
   SU2_OMP_FOR_STAT(omp_chunk_size)
   for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
@@ -430,7 +433,7 @@ void CTurbSSTSolver::Source_Residual(CGeometry *geometry, CSolver **solver_conta
       /*--- Compute source terms in Langevin equations (Stochastic Basckscatter Model) ---*/
 
       if (config->GetSBSParam().StochasticBackscatter) {
-        if (config->GetSBSParam().SBS_Ctau > 0.0) {
+        if (config->GetSBSParam().stochSourceType == LANGEVIN || config->GetSBSParam().stochSourceType == WHITE_NOISE) {
           for (unsigned short iDim = 0; iDim < nDim; iDim++)
             numerics->SetStochSource(nodes->GetLangevinSourceTerms(iPoint, iDim), iDim);
         } else {
@@ -439,6 +442,7 @@ void CTurbSSTSolver::Source_Residual(CGeometry *geometry, CSolver **solver_conta
         }
         numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), 0.0);
         numerics->SetMaxDelta(geometry->nodes->GetMaxLength(iPoint), 0.0);
+        if (config->GetSBSParam().useMeanTurbKE) numerics->SetAvgTurbKineticEnergy(nodes->GetMeanTurbKinEnergy(iPoint), 0.0);
       }
     }
 
@@ -768,16 +772,17 @@ void CTurbSSTSolver::SetLangevinSourceTerms(CConfig *config, CGeometry* geometry
 void CTurbSSTSolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeometry *geometry) {
   SU2_ZONE_SCOPED
 
-  auto* flowNodes = su2staticcast_p<CFlowVariable*>(solver[FLOW_SOL]->GetNodes());
   su2double timeStep = config->GetDelta_UnstTimeND();
+  const su2double beta = constants[6];
 
   SU2_OMP_FOR_STAT(omp_chunk_size)
   for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
     su2double maxDelta = geometry->nodes->GetMaxLength(iPoint);
-    su2double timeRANS = fabs(config->GetSBSParam().SBS_Ctau) * maxDelta / max(sqrt(nodes->GetSolution(iPoint, 0)), 1e-10);
-    su2double timeLES = 1.0 / (constants[6]*max(nodes->GetSolution(iPoint, 1), 1e-10));
+    su2double tke = (config->GetSBSParam().useMeanTurbKE) ? nodes->GetMeanTurbKinEnergy(iPoint) : nodes->GetSolution(iPoint, 0);
+    su2double timeLES = fabs(config->GetSBSParam().SBS_Ctau) * maxDelta / sqrt(max(tke, 1e-10));
+    su2double timeRANS = 1.0 / (beta*max(nodes->GetSolution(iPoint, 1), 1e-10));
     su2double lesMode = nodes->GetLES_Mode(iPoint);
-    su2double timeBlended = min(timeRANS, 10.0*config->GetTime_Step()) * (1.0-lesMode) + timeLES * lesMode;
+    su2double timeBlended = min(timeRANS, 10.0*timeStep) * (1.0-lesMode) + timeLES * lesMode;
     su2double timeRatio = timeStep/timeBlended;
     su2double term1 = exp(-timeRatio);
     su2double term2 = (timeRatio < 1e-6) ? sqrt(2.0*timeRatio) : sqrt(1.0-exp(-2.0*timeRatio));
@@ -810,6 +815,37 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
   unsigned long timeIter = config->GetTimeIter();
   unsigned long restartIter = config->GetRestart_Iter();
 
+  /*--- Assemble system matrix. */
+
+  if (timeIter == restartIter) {
+    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+    for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+      su2double maxDelta = (LES_FilterWidth > 0.0) ? LES_FilterWidth : geometry->nodes->GetMaxLength(iPoint);
+      su2double b2 = cDelta * maxDelta * maxDelta;
+      su2double volume_iPoint = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
+      auto coord_i = geometry->nodes->GetCoord(iPoint);
+      for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
+        auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
+        auto coord_j = geometry->nodes->GetCoord(jPoint);
+        auto iEdge = geometry->nodes->GetEdge(iPoint, iNode);
+        auto* normal = geometry->edges->GetNormal(iEdge);
+        su2double area = GeometryToolbox::Norm(nDim, normal);
+        su2double dx_ij_vec[3];
+        for (unsigned short index = 0; index < nDim; index++)
+          dx_ij_vec[index] = coord_j[index] - coord_i[index];
+        su2double distance = GeometryToolbox::Norm(nDim, dx_ij_vec);
+        su2double dot_nd = 0.0;
+        for (unsigned short index = 0; index < nDim; index++)
+          dot_nd += normal[index] * dx_ij_vec[index];
+        su2double sign = (geometry->edges->GetNode(iEdge, 0) == iPoint) ? 1.0 : -1.0;
+        su2double d_normal = sign * dot_nd / max(area*distance, 1e-10);
+        su2double a_ij = area/volume_iPoint * fabs(d_normal) * b2/max(distance, 1e-10);
+        nodes->SetSmoothingMatrixCoeff(iPoint, iNode, a_ij);
+      }
+    }
+    END_SU2_OMP_SAFE_GLOBAL_ACCESS
+  }
+
   /*--- Start SOR algorithm for the Laplacian smoothing. ---*/
 
   for (unsigned short iDim = 0; iDim < nDim; iDim++) {
@@ -829,33 +865,16 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
         su2double source_i_old = nodes->GetLangevinSourceTermsOld(iPoint, iDim);
         if (source_i_old > 3.0*sourceLim) continue;
         local_nPointLES += 1;
-        su2double maxDelta = (LES_FilterWidth > 0.0) ? LES_FilterWidth : geometry->nodes->GetMaxLength(iPoint);
-        su2double b2 = cDelta * maxDelta * maxDelta;
-        su2double volume_iPoint = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
         su2double source_i = nodes->GetLangevinSourceTerms(iPoint, iDim);
-        auto coord_i = geometry->nodes->GetCoord(iPoint);
 
-        /*--- Assemble system matrix. ---*/
+        /*--- Solve system. ---*/
 
         su2double diag = 1.0;
         su2double sum = 0.0;
         for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
           auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
-          auto coord_j = geometry->nodes->GetCoord(jPoint);
-          auto iEdge = geometry->nodes->GetEdge(iPoint, iNode);
-          auto* normal = geometry->edges->GetNormal(iEdge);
-          su2double area = GeometryToolbox::Norm(nDim, normal);
-          su2double dx_ij_vec[3];
-          for (unsigned short index = 0; index < nDim; index++)
-            dx_ij_vec[index] = coord_j[index] - coord_i[index];
-          su2double distance = GeometryToolbox::Norm(nDim, dx_ij_vec);
-          su2double dot_nd = 0.0;
-          for (unsigned short index = 0; index < nDim; index++)
-            dot_nd += normal[index] * dx_ij_vec[index];
-          su2double sign = (geometry->edges->GetNode(iEdge, 0) == iPoint) ? 1.0 : -1.0;
-          su2double d_normal = sign * dot_nd / max(area*distance, 1e-10);
           su2double source_j = nodes->GetLangevinSourceTerms(jPoint, iDim);
-          su2double a_ij = area/volume_iPoint * fabs(d_normal) * b2/max(distance, 1e-10);
+          su2double a_ij = nodes->GetSmoothingMatrixCoeff(iPoint, iNode);
           diag += a_ij;
           sum += a_ij * source_j;
         }
@@ -873,6 +892,9 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
 
       /*--- Stop integration if residual drops below tolerance. ---*/
 
+      const bool checkConvergence = ((iter == 0) || ((iter+1) % 5 == 0) || (iter == maxIter-1));
+      if (!checkConvergence) continue; 
+
       BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS {
         SU2_MPI::Allreduce(&local_nPointLES, &global_nPointLES, 1, MPI_UNSIGNED_LONG, MPI_SUM, SU2_MPI::GetComm());
         SU2_MPI::Allreduce(&localResNorm, &globalResNorm, 1, MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
@@ -888,7 +910,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
                << "\n   Iter       RMS Residual"
                << "\n---------------------------------" << endl;
         }
-        if (iter%50 == 0) {
+        if (iter == 0 || (iter+1)%50 == 0) {
           cout << "  "
                << std::setw(5) << iter
                << "       "

@@ -46,12 +46,15 @@ protected:
   VectorType CDkw;  /*!< \brief Cross-diffusion. */
   SST_ParsedOptions sstParsedOptions;
   VectorType DES_LengthScale;
+  VectorType MeanTurbKE;
   VectorType lesMode;
   MatrixType stochSource;
   MatrixType stochSourceOld;
   MatrixType OU_Process;
   VectorType sbsInBox;
   VectorType besselIntegral;
+  MatrixType smoothMatrix;
+  su2double MAXNNEIGHBORS = 32;
 public:
   /*!
    * \brief Constructor of the class.
@@ -86,6 +89,18 @@ public:
   inline void SetDES_LengthScale(unsigned long iPoint, su2double val_des_lengthscale) override { DES_LengthScale(iPoint) = val_des_lengthscale; }
 
   /*!
+   * \brief Get the mean turbulent kinetic energy.
+   * \param[in] iPoint - Point index.
+   * \return Mean turbulent kinetic energy.
+   */
+  inline su2double GetMeanTurbKinEnergy(unsigned long iPoint) const override { return MeanTurbKE(iPoint); }
+
+  /*!
+   * \brief Set the mean turbulent kinetic energy.
+   */
+  inline void SetMeanTurbKinEnergy(unsigned long iPoint, su2double val_mean_tke) override { MeanTurbKE(iPoint) = val_mean_tke; }
+
+  /*!
    * \brief Get the source terms for the stochastic equations.
    * \param[in] iPoint - Point index.
    * \param[in] iDim - Dimension index.
@@ -116,6 +131,22 @@ public:
    * \param[in] val_stochSource_old - Old value of the source term for the stochastic equations.
    */
   inline void SetLangevinSourceTermsOld(unsigned long iPoint, unsigned short iDim, su2double val_stochSource_old) override { stochSourceOld(iPoint, iDim) = val_stochSource_old; }
+
+  /*!
+   * \brief Get the IJ-coefficient of the system matrix for Laplacian smoothing of the stochastic source term.
+   * \param[in] iPoint - Point index.
+   * \param[in] iNode - Neighbor index.
+   * \return IJ-coefficient of the system matrix for Laplacian smoothing of the stochastic source term.
+   */
+  inline su2double GetSmoothingMatrixCoeff(unsigned long iPoint, unsigned short iNode) const override { return smoothMatrix(iPoint, iNode); }
+
+  /*!
+   * \brief Set the IJ-coefficient of the system matrix for Laplacian smoothing of the stochastic source term.
+   * \param[in] iPoint - Point index.
+   * \param[in] iNode - Neighbor index.
+   * \param[in] val_smoothmat - IJ-coefficient of the system matrix for Laplacian smoothing of the stochastic source term.
+   */
+  inline void SetSmoothingMatrixCoeff(unsigned long iPoint, unsigned short iNode, su2double val_smoothmat) override { smoothMatrix(iPoint, iNode) = val_smoothmat; }
 
 
   /*!

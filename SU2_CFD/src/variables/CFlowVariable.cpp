@@ -52,6 +52,8 @@ CFlowVariable::CFlowVariable(unsigned long npoint, unsigned long ndim, unsigned 
 
   if (config->GetMUSCL_Flow() || config->GetViscous() || config->GetContinuous_Adjoint()) {
     Gradient_Primitive.resize(nPoint, nPrimVarGrad, nDim, 0.0);
+    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses)
+      Gradient_MeanVelocity.resize(nPoint, nDim, nDim, 0.0);
   }
 
   if (config->GetReconstructionGradientRequired() && config->GetKind_ConvNumScheme_Flow() != SPACE_CENTERED) {

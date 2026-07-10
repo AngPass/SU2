@@ -139,35 +139,50 @@ void CAvgGrad_Base::SetStressTensor(const su2double *val_primvar,
   } else {
     const su2double total_viscosity = val_laminar_viscosity + val_eddy_viscosity;
     // turb_ke is not considered in the stress tensor, see #797
-    ComputeStressTensor(nDim, tau, val_gradprimvar+1, total_viscosity, Density, su2double(0.0));
+    ComputeStressTensor(nDim, tau, val_gradprimvar+1, total_viscosity, Density, 0.0);
+  }
+
+  if (config->GetSBSParam().StochasticBackscatter) {
+    for (unsigned short iDim = 0 ; iDim < nDim; iDim++)
+      for (unsigned short jDim = 0 ; jDim < nDim; jDim++)
+        tau[iDim][jDim] -= stochStressTensor[iDim][jDim];
   }
 }
 
 void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
-  su2double tkeEstim_i = 0.0, tkeEstim_j = 0.0;
+  su2double tke_i = 0.0, tke_j = 0.0;
   su2double sensorThreshold = config->GetSBSParam().stochFdThreshold;
   
   if (config->GetKind_HybridRANSLES() == SST_DDES) {
-    tkeEstim_i = (lesMode_i > sensorThreshold) ? turb_ke_i : 0.0;
-    tkeEstim_j = (lesMode_j > sensorThreshold) ? turb_ke_j : 0.0;
+    su2double turbKinEn_i = (config->GetSBSParam().useMeanTurbKE) ? avg_turb_ke_i : turb_ke_i;
+    su2double turbKinEn_j = (config->GetSBSParam().useMeanTurbKE) ? avg_turb_ke_j : turb_ke_j;
+    tke_i = (lesMode_i > sensorThreshold) ? turbKinEn_i : 0.0;
+    tke_j = (lesMode_j > sensorThreshold) ? turbKinEn_j : 0.0;
   } else {
     su2double nuT_i = Eddy_Viscosity_i / PrimVar_i[nDim+2];
     su2double nuT_j = Eddy_Viscosity_j / PrimVar_j[nDim+2];
     su2double lengthscale_i = config->GetConst_DES() * maxDelta_i;
     su2double lengthscale_j = config->GetConst_DES() * maxDelta_j;
-    tkeEstim_i = (lesMode_i > sensorThreshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
-    tkeEstim_j = (lesMode_j > sensorThreshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
+    tke_i = (lesMode_i > sensorThreshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
+    tke_j = (lesMode_j > sensorThreshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
   }
   
   su2double intensityCoeff = config->GetSBSParam().SBS_Cmag;
-  bool incompressible = (config->GetKind_Regime() == ENUM_REGIME::INCOMPRESSIBLE);
-  su2double density = (incompressible) ? 1.0 : Mean_PrimVar[nDim+2];
+  su2double density = Mean_PrimVar[nDim+2];
+
+  stochStressTensor[0][0] = stochStressTensor[1][1] = stochStressTensor[2][2] = 0.0;
+  stochStressTensor[0][1] = intensityCoeff * 0.5 * (stochVar_i[2]+stochVar_j[2]);
+  stochStressTensor[1][0] = - stochStressTensor[0][1];
+  stochStressTensor[0][2] = - intensityCoeff * 0.5 * (stochVar_i[1]+stochVar_j[1]);
+  stochStressTensor[2][0] = - stochStressTensor[0][2];
+  stochStressTensor[1][2] = intensityCoeff * 0.5 * (stochVar_i[0]+stochVar_j[0]);
+  stochStressTensor[2][1] = - stochStressTensor[1][2];
+
   for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-    su2double stochIntensity_i = intensityCoeff * density * tkeEstim_i * stochVar_i[iDim];
-    su2double stochIntensity_j = intensityCoeff * density * tkeEstim_j * stochVar_j[iDim];
-    stochSourceMom[iDim] = 0.5 * (stochIntensity_i + stochIntensity_j);
+    for (unsigned short jDim = 0; jDim < nDim; jDim++) {
+      stochStressTensor[iDim][jDim] *= 0.5 * density * (tke_i + tke_j);
+    }
   }
-  GetStochasticIncProjFlux(Normal, incompressible);
 }
 
 void CAvgGrad_Base::SetHeatFluxVector(const su2double* const* val_gradprimvar, const su2double val_eddy_viscosity,
@@ -475,6 +490,7 @@ CNumerics::ResidualType<> CAvgGrad_Flow::ComputeResidual(const CConfig* config) 
 
   /*--- Get projected flux tensor (viscous residual) ---*/
 
+  if (config->GetSBSParam().StochasticBackscatter) SetStochSourceMom(config);
   SetStressTensor(Mean_PrimVar, Mean_GradPrimVar, Mean_turb_ke,
                   Mean_Laminar_Viscosity, Mean_Eddy_Viscosity, config);
   if (config->GetSAParsedOptions().qcr2000) AddQCR(nDim, &Mean_GradPrimVar[1], tau);
@@ -483,10 +499,6 @@ CNumerics::ResidualType<> CAvgGrad_Flow::ComputeResidual(const CConfig* config) 
   SetHeatFluxVector(Mean_GradPrimVar, Mean_Eddy_Viscosity, Mean_Thermal_Conductivity, Mean_Cp);
 
   GetViscousProjFlux(Mean_PrimVar, Normal);
-
-  /* --- If the Stochastic Backscatter Model is active, add stochastic source term ---*/
-
-  if (config->GetSBSParam().StochasticBackscatter) SetStochSourceMom(config);
 
   /*--- Compute the implicit part ---*/
 
@@ -653,16 +665,13 @@ CNumerics::ResidualType<> CAvgGradInc_Flow::ComputeResidual(const CConfig* confi
 
   /*--- Get projected flux tensor (viscous residual) ---*/
 
+  if (config->GetSBSParam().StochasticBackscatter) SetStochSourceMom(config);
   SetStressTensor(Mean_PrimVar, Mean_GradPrimVar, Mean_turb_ke,
                   Mean_Laminar_Viscosity, Mean_Eddy_Viscosity, config);
   if (config->GetSAParsedOptions().qcr2000) AddQCR(nDim, &Mean_GradPrimVar[1], tau);
   if (Mean_TauWall > 0) AddTauWall(UnitNormal, Mean_TauWall);
 
   GetViscousIncProjFlux(Mean_GradPrimVar, Normal, Mean_Thermal_Conductivity);
-
-  /* --- If the Stochastic Backscatter Model is active, add stochastic source term ---*/
-
-  if (config->GetSBSParam().StochasticBackscatter) SetStochSourceMom(config);
 
   if (energy_multicomponent) {
     Proj_Flux_Tensor[nVar - 1] += HeatFluxDiffusion;
@@ -770,17 +779,6 @@ void CAvgGradInc_Flow::GetViscousIncProjFlux(const su2double* const *val_gradpri
       Proj_Flux_Tensor[iVar] += Flux_Tensor[iVar][iDim] * val_normal[iDim];
   }
 
-}
-
-void CAvgGrad_Base::GetStochasticIncProjFlux(const su2double *val_normal, const bool incompressible) {
-  Proj_Flux_Tensor[1] += val_normal[1]*stochSourceMom[2] - val_normal[2]*stochSourceMom[1];
-  Proj_Flux_Tensor[2] += val_normal[2]*stochSourceMom[0] - val_normal[0]*stochSourceMom[2];
-  Proj_Flux_Tensor[3] += val_normal[0]*stochSourceMom[1] - val_normal[1]*stochSourceMom[0];
-  if (!incompressible) {
-    Proj_Flux_Tensor[4] += val_normal[0]*(stochSourceMom[1]*Mean_PrimVar[3]-stochSourceMom[2]*Mean_PrimVar[2]) +
-                           val_normal[1]*(stochSourceMom[2]*Mean_PrimVar[1]-stochSourceMom[0]*Mean_PrimVar[3]) +
-                           val_normal[2]*(stochSourceMom[0]*Mean_PrimVar[2]-stochSourceMom[1]*Mean_PrimVar[1]);
-  }
 }
 
 void CAvgGradInc_Flow::GetViscousIncProjJacs(su2double val_dS,
@@ -994,6 +992,7 @@ CNumerics::ResidualType<> CGeneralAvgGrad_Flow::ComputeResidual(const CConfig* c
 
   /*--- Get projected flux tensor (viscous residual) ---*/
 
+  if (config->GetSBSParam().StochasticBackscatter) SetStochSourceMom(config);
   SetStressTensor(Mean_PrimVar, Mean_GradPrimVar, Mean_turb_ke,
                   Mean_Laminar_Viscosity, Mean_Eddy_Viscosity, config);
   if (config->GetSAParsedOptions().qcr2000) AddQCR(nDim, &Mean_GradPrimVar[1], tau);
@@ -1002,10 +1001,6 @@ CNumerics::ResidualType<> CGeneralAvgGrad_Flow::ComputeResidual(const CConfig* c
   SetHeatFluxVector(Mean_GradPrimVar, Mean_Eddy_Viscosity, Mean_Thermal_Conductivity, Mean_Cp);
 
   GetViscousProjFlux(Mean_PrimVar, Normal);
-
-  /* --- If the Stochastic Backscatter Model is active, add stochastic source term ---*/
-
-  if (config->GetSBSParam().StochasticBackscatter) SetStochSourceMom(config);
 
   /*--- Compute the implicit part ---*/
 

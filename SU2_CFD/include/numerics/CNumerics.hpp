@@ -80,6 +80,9 @@ protected:
   turb_ke_i,  /*!< \brief Turbulent kinetic energy at point i. */
   turb_ke_j;  /*!< \brief Turbulent kinetic energy at point j. */
   su2double
+  avg_turb_ke_i,  /*!< \brief Time-averaged turbulent kinetic energy at point i. */
+  avg_turb_ke_j;  /*!< \brief Time-averaged turbulent kinetic energy at point j. */
+  su2double
   intermittency_eff_i, /*!< \brief effective intermittency at point i. */
   intermittency_i; /*!< \brief intermittency at point i. */
   su2double
@@ -192,9 +195,9 @@ protected:
   su2double roughness_i = 0.0,             /*!< \brief Roughness of the wall nearest to point i. */
   roughness_j = 0.0;                       /*!< \brief Roughness of the wall nearest to point j. */
 
-  su2double MeanPerturbedRSM[3][3];   /*!< \brief Perturbed Reynolds stress tensor  */
-  su2double stochSourceMom[3] = {0.0}; /*!< \brief Stochastic source term in momentum equations (Backscatter Model). */
-  su2double stochSource[3] = {0.0}; /*!< \brief Source term for Langevin equations in Stochastic Backscatter Model. */
+  su2double MeanPerturbedRSM[3][3];            /*!< \brief Perturbed Reynolds stress tensor  */
+  su2double stochStressTensor[3][3] = {{0.0}}; /*!< \brief Stochastic source term in momentum equations (Backscatter Model). */
+  su2double stochSource[3] = {0.0};            /*!< \brief Source term for Langevin equations in Stochastic Backscatter Model. */
   su2double
   stochVar_i[3] = {0.0}, /*!< \brief Stochastic variables at point i for Stochastic Backscatter Model. */
   stochVar_j[3] = {0.0}; /*!< \brief Stochastic variables at point j for Stochastic Backscatter Model. */
@@ -853,6 +856,16 @@ public:
   inline void SetTurbKineticEnergy(su2double val_turb_ke_i, su2double val_turb_ke_j) {
     turb_ke_i = val_turb_ke_i;
     turb_ke_j = val_turb_ke_j;
+  }
+
+  /*!
+   * \brief Set the time-averaged turbulent kinetic energy.
+   * \param[in] val_avg_turb_ke_i - Value of the time-averaged turbulent kinetic energy at point i.
+   * \param[in] val_avg_turb_ke_j - Value of the time-averaged turbulent kinetic energy at point j.
+   */
+  inline void SetAvgTurbKineticEnergy(su2double val_avg_turb_ke_i, su2double val_avg_turb_ke_j) {
+    avg_turb_ke_i = val_avg_turb_ke_i;
+    avg_turb_ke_j = val_avg_turb_ke_j;
   }
 
   /*!

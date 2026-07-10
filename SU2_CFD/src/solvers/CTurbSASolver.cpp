@@ -58,7 +58,7 @@ CTurbSASolver::CTurbSASolver(CGeometry *geometry, CConfig *config, unsigned shor
 
   /*--- Add Langevin equations if the Stochastic Backscatter Model is used ---*/
 
-  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) {
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
     nVar += 3;
     nVarGrad = nPrimVar = nVar;
   }
@@ -118,7 +118,7 @@ CTurbSASolver::CTurbSASolver(CGeometry *geometry, CConfig *config, unsigned shor
   }
 
   Solution_Inf[0] = nu_tilde_Inf;
-  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) {
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
     for (unsigned short iVar = 1; iVar < nVar; iVar++) {
       Solution_Inf[iVar] = 0.0;
     }
@@ -175,7 +175,7 @@ CTurbSASolver::CTurbSASolver(CGeometry *geometry, CConfig *config, unsigned shor
   Inlet_TurbVars.resize(nMarker);
   for (unsigned long iMarker = 0; iMarker < nMarker; iMarker++) {
     Inlet_TurbVars[iMarker].resize(nVertex[iMarker],nVar) = nu_tilde_Inf;
-    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) {
+    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
       for (unsigned long iVertex = 0; iVertex < nVertex[iMarker]; iVertex++) {
         for (unsigned short iVar = 1; iVar < nVar; iVar++) {
           Inlet_TurbVars[iMarker](iVertex,iVar) = 0.0;
@@ -248,7 +248,7 @@ void CTurbSASolver::Preprocessing(CGeometry *geometry, CSolver **solver_containe
       const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
       const su2double ctau = config->GetSBSParam().SBS_Ctau;
       if (maxIter > 0) SmoothLangevinSourceTerms(config, geometry);
-      if (ctau < 0.0) ComputeOU_Process(solver_container, config, geometry);
+      if (config->GetSBSParam().stochSourceType == ORNSTEIN_UHLENBECK) ComputeOU_Process(solver_container, config, geometry);
     }
 
   }
@@ -431,7 +431,7 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
       /*--- Compute source terms in Langevin equations (Stochastic Basckscatter Model) ---*/
 
       if (config->GetSBSParam().StochasticBackscatter) {
-        if (config->GetSBSParam().SBS_Ctau > 0.0) {
+        if (config->GetSBSParam().stochSourceType == LANGEVIN || config->GetSBSParam().stochSourceType == WHITE_NOISE) {
           for (unsigned short iDim = 0; iDim < nDim; iDim++)
             numerics->SetStochSource(nodes->GetLangevinSourceTerms(iPoint, iDim), iDim);
         } else {

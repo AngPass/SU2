@@ -40,7 +40,8 @@ class CIncNSVariable final : public CIncEulerVariable {
 private:
   VectorType Tau_Wall;        /*!< \brief Magnitude of the wall shear stress from a wall function. */
   VectorType DES_LengthScale; /*!< \brief DES Length Scale. */
-  VectorType lesMode;        /*!< \brief Sensor for local simulation mode (0=RANS, 1=LES).*/
+  VectorType lesMode;         /*!< \brief Sensor for local simulation mode (0=RANS, 1=LES).*/
+  VectorType MeanTurbKE;      /*!< \brief Mean turbulent kinetic energy. */
   const bool Energy;          /*!< \brief Flag for Energy equation in incompressible flows. */
 
 public:
@@ -133,6 +134,18 @@ public:
    * \return Value of the DES length Scale.
    */
   inline su2double GetDES_LengthScale(unsigned long iPoint) const override { return DES_LengthScale(iPoint); }
+
+  /*!
+   * \brief Get the mean turbulent kinetic energy.
+   * \param[in] iPoint - Point index.
+   * \return Mean turbulent kinetic energy.
+   */
+  inline su2double GetMeanTurbKinEnergy(unsigned long iPoint) const override { return MeanTurbKE(iPoint); }
+
+  /*!
+   * \brief Set the mean turbulent kinetic energy.
+   */
+  inline void SetMeanTurbKinEnergy(unsigned long iPoint, su2double val_mean_tke) override { MeanTurbKE(iPoint) = val_mean_tke; }
 
   /*!
    * \brief Set the LES sensor.

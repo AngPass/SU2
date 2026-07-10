@@ -118,14 +118,6 @@ protected:
                          const su2double *val_normal);
 
   /*!
-   * \brief Compute the projection of the stochastic fluxes into a direction
-   * \param[in] val_gradprimvar - Gradient of the primitive variables.
-   * \param[in] val_normal - Normal vector, the norm of the vector is the area of the face.
-   * \param[in] incompressible - Incompressible flow.
-   */
-  void GetStochasticIncProjFlux(const su2double *val_normal, const bool incompressible);
-
-  /*!
    * \brief Compute the projection of the viscous fluxes into a direction.
    *
    * The heat flux vector and the stress tensor must be calculated before

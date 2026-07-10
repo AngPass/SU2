@@ -41,7 +41,8 @@ private:
 
   VectorType Tau_Wall;        /*!< \brief Magnitude of the wall shear stress from a wall function. */
   VectorType DES_LengthScale; /*!< \brief DES Length Scale. */
-  VectorType lesMode;        /*!< \brief Sensor for local simulation mode (0=RANS, 1=LES).*/
+  VectorType lesMode;         /*!< \brief Sensor for local simulation mode (0=RANS, 1=LES).*/
+  VectorType MeanTurbKE;      /*!< \brief Mean turbulent kinetic energy. */
   VectorType Roe_Dissipation; /*!< \brief Roe low dissipation coefficient. */
   VectorType Vortex_Tilting;  /*!< \brief Value of the vortex tilting variable for DES length scale computation. */
 
@@ -186,7 +187,19 @@ public:
     DES_LengthScale(iPoint) = val_des_lengthscale;
   }
 
-/*!
+  /*!
+   * \brief Get the mean turbulent kinetic energy.
+   * \param[in] iPoint - Point index.
+   * \return Mean turbulent kinetic energy.
+   */
+  inline su2double GetMeanTurbKinEnergy(unsigned long iPoint) const override { return MeanTurbKE(iPoint); }
+
+  /*!
+   * \brief Set the mean turbulent kinetic energy.
+   */
+  inline void SetMeanTurbKinEnergy(unsigned long iPoint, su2double val_mean_tke) override { MeanTurbKE(iPoint) = val_mean_tke; }
+
+  /*!
    * \brief Set the LES sensor.
    */
   inline void SetLES_Mode(unsigned long iPoint, su2double val_les_mode) override {

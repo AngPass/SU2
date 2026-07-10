@@ -40,7 +40,7 @@ protected:
   VectorType muT; /*!< \brief Eddy viscosity. */
 
 public:
-  static constexpr size_t MAXNVAR = 4;
+  static constexpr size_t MAXNVAR = 5;
   VectorType turb_index;
   VectorType intermittency;         /*!< \brief Value of the intermittency for the trans. model. */
 
@@ -126,6 +126,21 @@ public:
    * \param[in] val_stochSource_old - Old value of source term in Langevin equations.
    */
   inline virtual void SetLangevinSourceTermsOld(unsigned long iPoint, unsigned short iDim, su2double val_stochSource_old) {}
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] iNode - Neighbor index.
+   */
+  inline virtual su2double GetSmoothingMatrixCoeff(unsigned long iPoint, unsigned short iNode) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] iNode - Neighbor index.
+   * \param[in] val_smoothmat - IJ-coefficient of the system matrix for Laplacian smoothing of the stochastic source term.
+   */
+  inline virtual void SetSmoothingMatrixCoeff(unsigned long iPoint, unsigned short iNode, su2double val_smoothmat) {}
 
   /*!
    * \brief Mark the points where the Stochastic Backscatter Model is active.

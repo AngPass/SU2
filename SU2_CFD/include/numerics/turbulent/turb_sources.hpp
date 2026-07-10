@@ -159,7 +159,7 @@ class CSourceBase_TurbSA : public CNumerics {
     su2double tke = pow(nut/lengthscale, 2);
 
     su2double StochDotVor = 0.0;
-    if (config->GetSBSParam().SBS_Ctau > 0.0)
+    if (config->GetSBSParam().stochSourceType == LANGEVIN)
       StochDotVor = - Cmag * tke * (Vorticity_i[0]*ScalarVar_i[1] + Vorticity_i[1]*ScalarVar_i[2] + Vorticity_i[2]*ScalarVar_i[3]);
     else
       StochDotVor = - Cmag * tke * (Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2]);
@@ -182,7 +182,7 @@ class CSourceBase_TurbSA : public CNumerics {
    * \param[in] config - Definition of the particular problem.
    */
   CSourceBase_TurbSA(unsigned short nDim, const CConfig* config)
-      : CNumerics(nDim, (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) ? 4 : 1, config),
+      : CNumerics(nDim, (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) ? 4 : 1, config),
         idx(nDim, config->GetnSpecies()),
         options(config->GetSAParsedOptions()),
         axisymmetric(config->GetAxisymmetric()),
@@ -327,7 +327,7 @@ class CSourceBase_TurbSA : public CNumerics {
 
       /*--- Compute residual for Langevin equations (Stochastic Backscatter Model). ---*/
 
-      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) {
+      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
         ResidualStochEquations(config->GetDelta_UnstTimeND(), config->GetSBSParam().SBS_Ctau, maxDelta_i, wallDist_i,
                                var, config->GetTime_Marching(), config->GetSBSParam().stochFdThreshold);
       }
@@ -783,10 +783,10 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
   /*!
    * \brief Include source-term residuals for Langevin equations (Stochastic Backscatter Model) 
    */
-  inline void ResidualStochEquations(su2double timeStep, const su2double ct, su2double delta,
+  inline void ResidualStochEquations(bool meanTke, su2double timeStep, const su2double ct, su2double delta,
                                      TIME_MARCHING time_marching, su2double threshold) {
 
-    const su2double k = max(ScalarVar_i[0], 1e-10);
+    su2double k = (meanTke) ? max(avg_turb_ke_i, 1e-10) : max(ScalarVar_i[0], 1e-10);
     const su2double omega = max(ScalarVar_i[1], 1e-10);
 
     su2double tRANS = min(1.0/(beta_star*omega), 10.0*timeStep);
@@ -804,7 +804,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
     su2double scaleFactor = lesMode_i * 1.0/tBlended * sqrt(2.0/tRat) * corrFac;
 
     for (unsigned short iVar = 2; iVar < nVar; iVar++) {
-      Residual[iVar] = scaleFactor * stochSource[iVar-2] - 1.0/tBlended * ScalarVar_i[iVar];
+      Residual[iVar] = scaleFactor * Density_i * stochSource[iVar-2] - 1.0/tBlended * Density_i * ScalarVar_i[iVar]; 
       Residual[iVar] *= Volume;
     }
 
@@ -816,21 +816,22 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
   /*!
    * \brief Include stochastic source term in the equation for the turbulent kinetic energy (Stochastic Backscatter Model).
    */
-  inline void AddStochSource(const CConfig* config, su2double& prodK) {
+  inline void AddStochSource(const CConfig* config, su2double& prodK, const su2double dissipK, su2double& prodOm, su2double prodFac) {
 
     su2double Cmag = config->GetSBSParam().SBS_Cmag;
-    const su2double tke = ScalarVar_i[0];
+    su2double tke = (config->GetSBSParam().useMeanTurbKE) ? avg_turb_ke_i : ScalarVar_i[0];
 
     su2double stochProd = 0.0;
-    if (config->GetSBSParam().SBS_Ctau > 0.0)
-      stochProd = - Cmag * tke * (Vorticity_i[0]*ScalarVar_i[2] + Vorticity_i[1]*ScalarVar_i[3] + Vorticity_i[2]*ScalarVar_i[4]);
+    if (config->GetSBSParam().stochSourceType == LANGEVIN)
+      stochProd = - Cmag * Density_i * tke * (Vorticity_i[0]*ScalarVar_i[2] + Vorticity_i[1]*ScalarVar_i[3] + Vorticity_i[2]*ScalarVar_i[4]);
     else
-      stochProd = - Cmag * tke * (Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2]);
+      stochProd = - Cmag * Density_i * tke * (Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2]);
 
-    const su2double limiter = 10.0;
-    stochProd = max(-limiter*prodK, min(limiter*prodK, stochProd));
+    const su2double limiter = 1.0;
+    stochProd = max(-limiter*dissipK, min(limiter*dissipK, stochProd));
 
-    prodK += stochProd;
+    prodK  -= stochProd;
+    prodOm -= stochProd * prodFac;
 
   }
 
@@ -845,7 +846,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
    */
   CSourcePieceWise_TurbSST(unsigned short val_nDim, unsigned short, const su2double* constants, su2double val_kine_Inf,
                            su2double val_omega_Inf, const CConfig* config)
-      : CNumerics(val_nDim, (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) ? 5 : 2, config),
+      : CNumerics(val_nDim, (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) ? 5 : 2, config),
         idx(val_nDim, config->GetnSpecies()),
         axisymmetric(config->GetAxisymmetric()),
         sigma_k_1(constants[0]),
@@ -910,6 +911,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
     AD::SetPreaccIn(V_i[idx.Density()], V_i[idx.LaminarViscosity()], V_i[idx.EddyViscosity()]);
     AD::SetPreaccIn(V_i[idx.Velocity() + 1]);
     AD::SetPreaccIn(V_i[idx.SoundSpeed()]);
+    AD::SetPreaccIn(stochSource, 3);
 
     Density_i = V_i[idx.Density()];
     Laminar_Viscosity_i = V_i[idx.LaminarViscosity()];
@@ -1035,7 +1037,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
       }
 
       if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceTurb && lesMode_i>config->GetSBSParam().stochFdThreshold)
-        AddStochSource(config, pk);
+        AddStochSource(config, pk, dk, pw, alfa_blended*Density_i/Eddy_Viscosity_i);
 
       /*--- Add the production terms to the residuals. ---*/
 
@@ -1066,8 +1068,8 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
 
       /*--- Compute residual for Langevin equations (Stochastic Backscatter Model). ---*/
 
-      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau > 0.0) {
-        ResidualStochEquations(config->GetDelta_UnstTimeND(), config->GetSBSParam().SBS_Ctau, maxDelta_i,
+      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
+        ResidualStochEquations(config->GetSBSParam().useMeanTurbKE, config->GetDelta_UnstTimeND(), config->GetSBSParam().SBS_Ctau, maxDelta_i,
                                config->GetTime_Marching(), config->GetSBSParam().stochFdThreshold);
       }
     }

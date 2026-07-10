@@ -1547,6 +1547,20 @@ static const MapType<std::string, ENUM_HYBRIDRANSLES> HybridRANSLES_Map = {
 };
 
 /*!
+ * \brief Types of stochastic source terms (Stochastic Backscatter Model)
+ */
+enum ENUM_STOCH_SOURCE {
+  WHITE_NOISE        = 0,
+  ORNSTEIN_UHLENBECK = 1,
+  LANGEVIN           = 2
+};
+static const MapType<std::string, ENUM_STOCH_SOURCE> stochSource_Map = {
+  MakePair("WHITE_NOISE", WHITE_NOISE)
+  MakePair("ORNSTEIN_UHLENBECK", ORNSTEIN_UHLENBECK)
+  MakePair("LANGEVIN", LANGEVIN)
+};
+
+/*!
  * \brief Types of Roe Low Dissipation Schemes
  */
 enum ENUM_ROELOWDISS {
@@ -2741,6 +2755,7 @@ enum class MPI_QUANTITIES {
   MAX_LENGTH           ,  /*!< \brief Maximum length communication. */
   GRID_VELOCITY        ,  /*!< \brief Grid velocity communication. */
   SOLUTION_EDDY        ,  /*!< \brief Turbulent solution plus eddy viscosity communication. */
+  MEAN_TKE             ,  /*!< \brief Mean turbulent kinetic energy communication. */
   STOCH_SOURCE_LANG    ,  /*!< \brief Stochastic source term for Langevin equations communication. */
   DES_LENGTHSCALE      ,  /*!< \brief DES length scale communication. */
   LES_SENSOR           ,  /*!< \brief LES sensor communication. */

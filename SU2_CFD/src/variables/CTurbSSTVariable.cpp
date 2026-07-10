@@ -39,7 +39,7 @@ CTurbSSTVariable::CTurbSSTVariable(su2double kine, su2double omega, su2double mu
   {
     Solution(iPoint,0) = kine;
     Solution(iPoint,1) = omega;
-    if (backscatter && config->GetSBSParam().SBS_Ctau > 0.0) {
+    if (backscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
       for (unsigned short iVar = 2; iVar < nVar; iVar++) {
         Solution(iPoint, iVar) = 0.0;
       }
@@ -60,6 +60,7 @@ CTurbSSTVariable::CTurbSSTVariable(su2double kine, su2double omega, su2double mu
 
   if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) {
     DES_LengthScale.resize(nPoint) = su2double(0.0);
+    MeanTurbKE.resize(nPoint) = su2double(0.0);
     lesMode.resize(nPoint) = su2double(0.0);
     if (backscatter) {
       stochSource.resize(nPoint, nDim) = su2double(0.0);
@@ -67,6 +68,7 @@ CTurbSSTVariable::CTurbSSTVariable(su2double kine, su2double omega, su2double mu
       besselIntegral.resize(nPoint) = su2double(0.0);
       OU_Process.resize(nPoint, nDim) = su2double(0.0);
       sbsInBox.resize(nPoint) = su2double(1.0);
+      smoothMatrix.resize(nPoint, MAXNNEIGHBORS) = su2double(0.0);
     }
   }
 }

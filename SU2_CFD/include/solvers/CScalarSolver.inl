@@ -200,7 +200,7 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
       const auto Scalar_j = nodes->GetSolution(jPoint);
       numerics->SetScalarVar(Scalar_i, Scalar_j);
 
-      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau>0.0) {
+      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
         numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), nodes->GetLES_Mode(jPoint));
       }
 

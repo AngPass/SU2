@@ -349,7 +349,7 @@ protected:
    * \param config - Definition of the particular problem per zone.
    * \param geometry - Geometrical definition of the problem.
    */
-  void LoadTimeAveragedData(unsigned long iPoint, const CVariable *node_flow, const CVariable *node_turb, const CConfig *config, const CGeometry *geometry);
+  void LoadTimeAveragedData(unsigned long iPoint, CVariable *node_flow, CVariable *node_turb, const CConfig *config, const CGeometry *geometry);
   /*!
    * \brief Write additional output for fixed CL mode.
    * \param[in] config - Definition of the particular problem per zone.
@@ -376,7 +376,8 @@ protected:
     const su2double lesSensor_i = node_flow->GetLES_Mode(iPoint);
 
     if (config->GetKind_HybridRANSLES() == SST_DDES) {
-      tkeEstim_i = (lesSensor_i > threshold) ? node_turb->GetSolution(iPoint, 0) : 0.0;
+      su2double tke_i = (config->GetSBSParam().useMeanTurbKE) ? node_turb->GetMeanTurbKinEnergy(iPoint) : node_turb->GetSolution(iPoint, 0);
+      tkeEstim_i = (lesSensor_i > threshold) ? tke_i : 0.0;
     } else {
       const su2double rho_i = node_flow->GetDensity(iPoint);
       const su2double nuT_i = node_flow->GetEddyViscosity(iPoint) / rho_i;
@@ -387,7 +388,12 @@ protected:
     su2double stochVec_i[3] = {0.0};
     unsigned short startVar = (config->GetKind_HybridRANSLES() == SST_DDES) ? 2 : 1;
     for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-      stochVec_i[iDim] = (config->GetSBSParam().SBS_Ctau > 0.0) ? node_turb->GetSolution(iPoint, iDim+startVar) : node_turb->GetOU_Process(iPoint, iDim);
+      if (config->GetSBSParam().stochSourceType == LANGEVIN)
+        stochVec_i[iDim] = node_turb->GetSolution(iPoint, iDim+startVar);
+      else if (config->GetSBSParam().stochSourceType == ORNSTEIN_UHLENBECK)
+        stochVec_i[iDim] = node_turb->GetOU_Process(iPoint, iDim);
+      else
+        stochVec_i[iDim] = node_turb->GetLangevinSourceTerms(iPoint, iDim);
       stochVec_i[iDim] *= tkeEstim_i * mag;
     }
     
@@ -407,7 +413,8 @@ protected:
       const su2double lesSensor_j = node_flow->GetLES_Mode(jPoint);
 
       if (config->GetKind_HybridRANSLES() == SST_DDES) {
-        tkeEstim_j = (lesSensor_j > threshold) ? node_turb->GetSolution(jPoint, 0) : 0.0;
+        su2double tke_j = (config->GetSBSParam().useMeanTurbKE) ? node_turb->GetMeanTurbKinEnergy(jPoint) : node_turb->GetSolution(jPoint, 0);
+        tkeEstim_j = (lesSensor_j > threshold) ? tke_j : 0.0;
       } else {
         const su2double rho_j = node_flow->GetDensity(jPoint);
         const su2double nuT_j = node_flow->GetEddyViscosity(jPoint) / rho_j;
@@ -417,7 +424,12 @@ protected:
 
       su2double stochVec_j[3] = {0.0};
       for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-        stochVec_j[iDim] = (config->GetSBSParam().SBS_Ctau > 0.0) ? node_turb->GetSolution(jPoint, iDim+startVar) : node_turb->GetOU_Process(jPoint, iDim);
+        if (config->GetSBSParam().stochSourceType == LANGEVIN)
+          stochVec_j[iDim] = node_turb->GetSolution(jPoint, iDim+startVar);
+        else if (config->GetSBSParam().stochSourceType == ORNSTEIN_UHLENBECK)
+          stochVec_j[iDim] = node_turb->GetOU_Process(jPoint, iDim);
+        else
+          stochVec_j[iDim] = node_turb->GetLangevinSourceTerms(jPoint, iDim);
         stochVec_j[iDim] *= tkeEstim_j * mag;
       }
 
@@ -464,7 +476,8 @@ protected:
     const su2double lesSensor_i = node_flow->GetLES_Mode(iPoint);
 
     if (config->GetKind_HybridRANSLES() == SST_DDES) {
-      tkeEstim_i = (lesSensor_i > threshold) ? node_turb->GetSolution(iPoint, 0) : 0.0;
+      su2double tke_i = (config->GetSBSParam().useMeanTurbKE) ? node_turb->GetMeanTurbKinEnergy(iPoint) : node_turb->GetSolution(iPoint, 0);
+      tkeEstim_i = (lesSensor_i > threshold) ? tke_i : 0.0;
     } else {
       const su2double rho_i = node_flow->GetDensity(iPoint);
       const su2double nuT_i = node_flow->GetEddyViscosity(iPoint) / rho_i;
@@ -475,7 +488,12 @@ protected:
     su2double stochVec_i[3] = {0.0};
     unsigned short startVar = (config->GetKind_HybridRANSLES() == SST_DDES) ? 2 : 1;
     for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-      stochVec_i[iDim] = (config->GetSBSParam().SBS_Ctau > 0.0) ? node_turb->GetSolution(iPoint, iDim+startVar) : node_turb->GetOU_Process(iPoint, iDim);
+      if (config->GetSBSParam().stochSourceType == LANGEVIN)
+        stochVec_i[iDim] = node_turb->GetSolution(iPoint, iDim+startVar);
+      else if (config->GetSBSParam().stochSourceType == ORNSTEIN_UHLENBECK)
+        stochVec_i[iDim] = node_turb->GetOU_Process(iPoint, iDim);
+      else
+        stochVec_i[iDim] = node_turb->GetLangevinSourceTerms(iPoint, iDim);
       stochVec_i[iDim] *= tkeEstim_i * mag;
     }
     

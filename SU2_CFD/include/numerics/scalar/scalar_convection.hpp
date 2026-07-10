@@ -118,7 +118,7 @@ class CUpwScalar : public CNumerics {
     AD::SetPreaccIn(V_i[idx.Density()]);
     AD::SetPreaccIn(V_j[idx.Density()]);
     AD::SetPreaccIn(MassFlux);
-    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau>0.0) {
+    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
       AD::SetPreaccIn(lesMode_i);
       AD::SetPreaccIn(lesMode_j);
     }
@@ -145,9 +145,9 @@ class CUpwScalar : public CNumerics {
       a1 = fmin(0.0, q_ij);
     }
 
-    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().SBS_Ctau>0.0) {
+    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
       const su2double dissipFactor = 0.99;
-      lesSensor = (config->GetSBSParam().langevinUpwBlend) ? min(dissipFactor, 0.5*(lesMode_i + lesMode_j)) : dissipFactor;
+      lesSensor = (config->GetSBSParam().langevinUpwBlend) ? min(dissipFactor, 0.5*(lesMode_i + lesMode_j)) : 1.0;
     }
 
     FinishResidualCalc(config);

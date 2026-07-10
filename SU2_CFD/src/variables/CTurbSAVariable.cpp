@@ -34,7 +34,7 @@ CTurbSAVariable::CTurbSAVariable(su2double val_nu_tilde, su2double val_muT, unsi
 
   /*--- Initialize solution (check if the Stochastic Backscatter Model is active) ---*/
   bool backscatter = config->GetSBSParam().StochasticBackscatter;
-  if (!(backscatter && config->GetSBSParam().SBS_Ctau > 0.0)) {
+  if (!(backscatter && config->GetSBSParam().stochSourceType == LANGEVIN)) {
     Solution_Old = Solution = val_nu_tilde;
   } else {
     for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {

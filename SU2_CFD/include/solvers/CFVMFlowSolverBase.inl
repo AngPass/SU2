@@ -491,16 +491,25 @@ void CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsigned long iEdge, CGeome
 
   if (backscatter) {
     unsigned short startVar = (config->GetKind_HybridRANSLES() == SST_DDES) ? 2 : 1;
-    if (config->GetSBSParam().SBS_Ctau > 0.0) {
+    if (config->GetSBSParam().stochSourceType == LANGEVIN) {
       for (unsigned short iDim = 0; iDim < nDim; iDim++)
         numerics->SetStochVar(iDim, turbNodes->GetSolution(iPoint, iDim+startVar),
                                     turbNodes->GetSolution(jPoint, iDim+startVar));
-    } else {
+    } else if (config->GetSBSParam().stochSourceType == ORNSTEIN_UHLENBECK) {
       for (unsigned short iDim = 0; iDim < nDim; iDim++)
         numerics->SetStochVar(iDim, turbNodes->GetOU_Process(iPoint, iDim),
                                     turbNodes->GetOU_Process(jPoint, iDim));
+    } else {
+      for (unsigned short iDim = 0; iDim < nDim; iDim++)
+        numerics->SetStochVar(iDim, turbNodes->GetLangevinSourceTerms(iPoint, iDim),
+                                    turbNodes->GetLangevinSourceTerms(jPoint, iDim));
     }
-    numerics->SetMaxDelta(geometry->nodes->GetMaxLength(iPoint), geometry->nodes->GetMaxLength(jPoint));
+    if (config->GetKind_HybridRANSLES() != SST_DDES) {
+      numerics->SetMaxDelta(geometry->nodes->GetMaxLength(iPoint), geometry->nodes->GetMaxLength(jPoint));
+    }
+    if (config->GetKind_HybridRANSLES() == SST_DDES && config->GetSBSParam().useMeanTurbKE) {
+      numerics->SetAvgTurbKineticEnergy(turbNodes->GetMeanTurbKinEnergy(iPoint), turbNodes->GetMeanTurbKinEnergy(jPoint));
+    }
     numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), nodes->GetLES_Mode(jPoint));
   }
 
