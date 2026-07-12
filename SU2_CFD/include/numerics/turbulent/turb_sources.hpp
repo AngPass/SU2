@@ -124,9 +124,17 @@ class CSourceBase_TurbSA : public CNumerics {
 
     su2double tRANS = min(wallDist*wallDist/nut, 10.0*timeStep);
     su2double tLES = ct*delta*delta/nut;
-    su2double tBlended = lesMode_i*tLES + (1.0-lesMode_i)*tRANS;
-    su2double tRat = timeStep / tBlended;
-    
+    /*--- Clamp away from zero: tBlended is a denominator below (both directly and
+     * via tRat), and it can otherwise collapse to exactly 0 (e.g. timeStep == 0
+     * on the very first call, or a very large omega/nut), producing Inf which,
+     * multiplied by a zero-initialized stochastic state or by lesMode_i == 0,
+     * yields NaN. ---*/
+    su2double tBlended = max(lesMode_i*tLES + (1.0-lesMode_i)*tRANS, 1e-10);
+    /*--- Also clamp tRat away from zero: timeStep can be exactly 0 on the very
+     * first call (before the CFL-based time step has been computed), which
+     * would otherwise send sqrt(2.0/tRat) below to Inf. ---*/
+    su2double tRat = max(timeStep / tBlended, 1e-10);
+
     su2double corrFac = 1.0;
     if (time_marching == TIME_MARCHING::DT_STEPPING_2ND) {
       corrFac = sqrt(0.5*(1.0+tRat)*(4.0+tRat)/(2.0+tRat));
@@ -134,8 +142,8 @@ class CSourceBase_TurbSA : public CNumerics {
       corrFac = sqrt(1.0+0.5*tRat);
     }
 
-    /*--- Guard against 0 * inf = NaN when tBlended (and hence tRat) collapses
-     * to (near) zero at RANS-mode points, where lesMode_i is exactly 0. ---*/
+    /*--- Guard against 0 * inf = NaN when tRat blows up (e.g. timeStep == 0)
+     * at RANS-mode points, where lesMode_i is exactly 0. ---*/
     su2double scaleFactor = 0.0;
     if (lesMode_i > threshold) {
       scaleFactor = lesMode_i * 1.0/tBlended * sqrt(2.0/tRat) * corrFac;
@@ -796,9 +804,17 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
 
     su2double tRANS = min(1.0/(beta_star*omega), 10.0*timeStep);
     su2double tLES = ct * delta / sqrt(k);
-    su2double tBlended = lesMode_i*tLES + (1.0-lesMode_i)*tRANS;
-    su2double tRat = timeStep / tBlended;
-    
+    /*--- Clamp away from zero: tBlended is a denominator below (both directly and
+     * via tRat), and it can otherwise collapse to exactly 0 (e.g. timeStep == 0
+     * on the very first call, or a very large omega), producing Inf which,
+     * multiplied by a zero-initialized stochastic state or by lesMode_i == 0,
+     * yields NaN. ---*/
+    su2double tBlended = max(lesMode_i*tLES + (1.0-lesMode_i)*tRANS, 1e-10);
+    /*--- Also clamp tRat away from zero: timeStep can be exactly 0 on the very
+     * first call (before the CFL-based time step has been computed), which
+     * would otherwise send sqrt(2.0/tRat) below to Inf. ---*/
+    su2double tRat = max(timeStep / tBlended, 1e-10);
+
     su2double corrFac = 1.0;
     if (time_marching == TIME_MARCHING::DT_STEPPING_2ND) {
       corrFac = sqrt(0.5*(1.0+tRat)*(4.0+tRat)/(2.0+tRat));
@@ -806,8 +822,8 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
       corrFac = sqrt(1.0+0.5*tRat);
     }
 
-    /*--- Guard against 0 * inf = NaN when tBlended (and hence tRat) collapses
-     * to (near) zero at RANS-mode points, where lesMode_i is exactly 0. ---*/
+    /*--- Guard against 0 * inf = NaN when tRat blows up (e.g. timeStep == 0)
+     * at RANS-mode points, where lesMode_i is exactly 0. ---*/
     su2double scaleFactor = 0.0;
     if (lesMode_i > threshold) {
       scaleFactor = lesMode_i * 1.0/tBlended * sqrt(2.0/tRat) * corrFac;

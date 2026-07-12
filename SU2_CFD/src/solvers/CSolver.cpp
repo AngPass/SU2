@@ -2090,7 +2090,8 @@ void CSolver::SetResidual_RMS(const CGeometry *geometry, const CConfig *config) 
   for (unsigned short iVar = 0; iVar < nVar; iVar++) {
 
     if (std::isnan(SU2_TYPE::GetValue(rbuf_res[iVar]))) {
-      SU2_MPI::Error("SU2 has diverged (NaN detected).", CURRENT_FUNCTION);
+      SU2_MPI::Error("SU2 has diverged (NaN detected) in solver \"" + SolverName +
+                     "\", equation index " + std::to_string(iVar) + ".", CURRENT_FUNCTION);
     }
 
     Residual_RMS[iVar] = max(EPS*EPS, sqrt(rbuf_res[iVar]/Global_nPointDomain));
