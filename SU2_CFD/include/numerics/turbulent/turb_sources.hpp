@@ -133,8 +133,13 @@ class CSourceBase_TurbSA : public CNumerics {
     } else if (time_marching == TIME_MARCHING::DT_STEPPING_1ST) {
       corrFac = sqrt(1.0+0.5*tRat);
     }
-    
-    su2double scaleFactor = lesMode_i * 1.0/tBlended * sqrt(2.0/tRat) * corrFac;
+
+    /*--- Guard against 0 * inf = NaN when tBlended (and hence tRat) collapses
+     * to (near) zero at RANS-mode points, where lesMode_i is exactly 0. ---*/
+    su2double scaleFactor = 0.0;
+    if (lesMode_i > threshold) {
+      scaleFactor = lesMode_i * 1.0/tBlended * sqrt(2.0/tRat) * corrFac;
+    }
 
     for (unsigned short iVar = 1; iVar < nVar; iVar++) {
       Residual[iVar] = scaleFactor * stochSource[iVar-1] - 1.0/tBlended * ScalarVar_i[iVar];
@@ -800,11 +805,16 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
     } else if (time_marching == TIME_MARCHING::DT_STEPPING_1ST) {
       corrFac = sqrt(1.0+0.5*tRat);
     }
-    
-    su2double scaleFactor = lesMode_i * 1.0/tBlended * sqrt(2.0/tRat) * corrFac;
+
+    /*--- Guard against 0 * inf = NaN when tBlended (and hence tRat) collapses
+     * to (near) zero at RANS-mode points, where lesMode_i is exactly 0. ---*/
+    su2double scaleFactor = 0.0;
+    if (lesMode_i > threshold) {
+      scaleFactor = lesMode_i * 1.0/tBlended * sqrt(2.0/tRat) * corrFac;
+    }
 
     for (unsigned short iVar = 2; iVar < nVar; iVar++) {
-      Residual[iVar] = scaleFactor * Density_i * stochSource[iVar-2] - 1.0/tBlended * Density_i * ScalarVar_i[iVar]; 
+      Residual[iVar] = scaleFactor * Density_i * stochSource[iVar-2] - 1.0/tBlended * Density_i * ScalarVar_i[iVar];
       Residual[iVar] *= Volume;
     }
 
