@@ -5204,6 +5204,10 @@ void CEulerSolver::BC_Far_Field(CGeometry *geometry, CSolver **solver_container,
         visc_numerics->SetPrimVarGradient(nodes->GetGradient_Primitive(iPoint),
                                           nodes->GetGradient_Primitive(iPoint));
 
+        if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses)
+          visc_numerics->SetMeanVelGradient(nodes->GetGradient_MeanVel(iPoint),
+                                            nodes->GetGradient_MeanVel(iPoint));
+
         /*--- Turbulent kinetic energy ---*/
 
         if (config->GetKind_Turb_Model() == TURB_MODEL::SST)
@@ -5607,6 +5611,9 @@ void CEulerSolver::BC_Riemann(CGeometry *geometry, CSolver **solver_container,
 
         visc_numerics->SetPrimitive(V_domain, V_boundary);
         visc_numerics->SetPrimVarGradient(nodes->GetGradient_Primitive(iPoint), nodes->GetGradient_Primitive(iPoint));
+
+        if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses)
+          visc_numerics->SetMeanVelGradient(nodes->GetGradient_MeanVel(iPoint), nodes->GetGradient_MeanVel(iPoint));
 
         /*--- Secondary variables ---*/
 
@@ -6105,6 +6112,9 @@ void CEulerSolver::BC_TurboRiemann(CGeometry *geometry, CSolver **solver_contain
 
           visc_numerics->SetPrimitive(V_domain, V_boundary);
           visc_numerics->SetPrimVarGradient(nodes->GetGradient_Primitive(iPoint), nodes->GetGradient_Primitive(iPoint));
+
+          if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses)
+            visc_numerics->SetMeanVelGradient(nodes->GetGradient_MeanVel(iPoint), nodes->GetGradient_MeanVel(iPoint));
 
           /*--- Secondary variables ---*/
 
@@ -7030,6 +7040,8 @@ void CEulerSolver::BC_Giles(CGeometry *geometry, CSolver **solver_container, CNu
         visc_numerics->SetPrimitive(V_domain, V_boundary);
         visc_numerics->SetPrimVarGradient(nodes->GetGradient_Primitive(iPoint), nodes->GetGradient_Primitive(iPoint));
 
+        if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses)
+          visc_numerics->SetMeanVelGradient(nodes->GetGradient_MeanVel(iPoint), nodes->GetGradient_MeanVel(iPoint));
 
         /*--- Compute secondary thermodynamic properties (partial derivatives...) ---*/
 
