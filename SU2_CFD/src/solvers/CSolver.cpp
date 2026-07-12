@@ -756,18 +756,21 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
               Rotate(zeros, jacBlock[iVar], rotBlock[iVar]);
             }
 
-            /*--- Rotate the vector components of the solution. ---*/
+            /*--- Rotate the vector components of the solution. For PERIODIC_MEANVEL_GG
+             the gradient only stores velocity (no leading scalar), so the velocity
+             block starts at index 0 instead of 1. ---*/
 
             if (rotate_periodic) {
+              const unsigned short velOffset = (commType == PERIODIC_MEANVEL_GG) ? 0 : 1;
               for (iDim = 0; iDim < nDim; iDim++) {
                 su2double d_diDim[3] = {0.0};
-                for (iVar = 1; iVar < 1+nDim; ++iVar) {
-                  d_diDim[iVar-1] = rotBlock(iVar, iDim);
+                for (iVar = velOffset; iVar < velOffset+nDim; ++iVar) {
+                  d_diDim[iVar-velOffset] = rotBlock(iVar, iDim);
                 }
                 su2double rotated[3] = {0.0};
                 Rotate(zeros, d_diDim, rotated);
-                for (iVar = 1; iVar < 1+nDim; ++iVar) {
-                  rotBlock(iVar, iDim) = rotated[iVar-1];
+                for (iVar = velOffset; iVar < velOffset+nDim; ++iVar) {
+                  rotBlock(iVar, iDim) = rotated[iVar-velOffset];
                 }
               }
             }

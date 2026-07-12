@@ -4222,7 +4222,8 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
   if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses) {
     Node_Flow->SetMeanVelocity(iPoint, 0, GetVolumeOutputValue("MEAN_VELOCITY-X", iPoint));
     Node_Flow->SetMeanVelocity(iPoint, 1, GetVolumeOutputValue("MEAN_VELOCITY-Y", iPoint));
-    Node_Flow->SetMeanVelocity(iPoint, 2, GetVolumeOutputValue("MEAN_VELOCITY-Z", iPoint));
+    if (nDim == 3)
+      Node_Flow->SetMeanVelocity(iPoint, 2, GetVolumeOutputValue("MEAN_VELOCITY-Z", iPoint));
   }
 
   SetAvgVolumeOutputValue("MEAN_PRESSURE", iPoint, Node_Flow->GetPressure(iPoint));
