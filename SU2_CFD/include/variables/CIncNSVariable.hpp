@@ -38,11 +38,12 @@
  */
 class CIncNSVariable final : public CIncEulerVariable {
 private:
-  VectorType Tau_Wall;        /*!< \brief Magnitude of the wall shear stress from a wall function. */
-  VectorType DES_LengthScale; /*!< \brief DES Length Scale. */
-  VectorType lesMode;         /*!< \brief Sensor for local simulation mode (0=RANS, 1=LES).*/
-  VectorType MeanTurbKE;      /*!< \brief Mean turbulent kinetic energy. */
-  const bool Energy;          /*!< \brief Flag for Energy equation in incompressible flows. */
+  VectorType Tau_Wall;                   /*!< \brief Magnitude of the wall shear stress from a wall function. */
+  VectorType DES_LengthScale;            /*!< \brief DES Length Scale. */
+  VectorType lesMode;                    /*!< \brief Sensor for local simulation mode (0=RANS, 1=LES).*/
+  VectorType MeanTurbKE;                 /*!< \brief Mean turbulent kinetic energy. */
+  MatrixType MeanVelocity;               /*!< \brief Mean velocity vector. */
+  const bool Energy;                     /*!< \brief Flag for Energy equation in incompressible flows. */
 
 public:
   /*!
@@ -146,6 +147,22 @@ public:
    * \brief Set the mean turbulent kinetic energy.
    */
   inline void SetMeanTurbKinEnergy(unsigned long iPoint, su2double val_mean_tke) override { MeanTurbKE(iPoint) = val_mean_tke; }
+
+  /*!
+   * \brief Get the mean velocity for all points.
+   * \return Mean velocity.
+   */
+  inline const MatrixType& GetMeanVelocity() const final { return MeanVelocity; }
+
+  /*!
+   * \brief Get the mean velocity.
+   */
+  inline su2double GetMeanVelocity(unsigned long iPoint, unsigned short iDim) const final { return MeanVelocity(iPoint, iDim); }
+
+  /*!
+   * \brief Set the mean velocity.
+   */
+  inline void SetMeanVelocity(unsigned long iPoint, unsigned short iDim, su2double val_mean_vel) override { MeanVelocity(iPoint, iDim) = val_mean_vel; }
 
   /*!
    * \brief Set the LES sensor.

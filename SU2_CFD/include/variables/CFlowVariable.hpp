@@ -40,7 +40,6 @@ class CFlowVariable : public CVariable {
   /*--- Primitive variable definition. ---*/
   MatrixType Primitive;                     /*!< \brief Primitive variables. */
   CVectorOfMatrix Gradient_Primitive;       /*!< \brief Gradient of the primitive variables. */
-  CVectorOfMatrix Gradient_MeanVelocity;    /*!< \brief Gradient of the time-averaged velocity. */
   CVectorOfMatrix& Gradient_Reconstruction; /*!< \brief Reference to the gradient of the primitive variables for MUSCL
                                                reconstruction for the convective term */
   CVectorOfMatrix
@@ -165,6 +164,30 @@ class CFlowVariable : public CVariable {
    */
   inline CVectorOfMatrix& GetGradient_Primitive() final { return Gradient_Primitive; }
   inline const CVectorOfMatrix& GetGradient_Primitive() const final { return Gradient_Primitive; }
+
+  /*!
+   * \brief Get the value of the mean velocity gradient.
+   * \param[in] iPoint - Point index.
+   * \param[in] iVar - Index of the variable.
+   * \param[in] iDim - Index of the dimension.
+   * \return Value of the mean velocity gradient.
+   */
+  inline su2double GetGradient_MeanVel(unsigned long iPoint, unsigned long iVar, unsigned long iDim) const final {
+    return Gradient_MeanVelocity(iPoint, iVar, iDim);
+  }
+
+  /*!
+   * \brief Get the mean velocity gradients for all points.
+   * \return Reference to mean velocity gradient.
+   */
+  inline CVectorOfMatrix& GetGradient_MeanVel() final { return Gradient_MeanVelocity; }
+  inline const CVectorOfMatrix& GetGradient_MeanVel() const final { return Gradient_MeanVelocity; }
+
+  /*!
+   * \brief Get the mean velocity gradient.
+   * \return Value of the mean velocity gradient.
+   */
+  inline CMatrixView<su2double> GetGradient_MeanVel(unsigned long iPoint, unsigned long iVar=0) final { return Gradient_MeanVelocity(iPoint, iVar); }
 
   /*!
    * \brief Get the array of the reconstruction variables gradient at a node.

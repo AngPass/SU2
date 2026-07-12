@@ -276,6 +276,11 @@ void CFVMFlowSolverBase<V, R>::CommunicateInitialState(CGeometry* geometry, cons
   InitiateComms(geometry, config, MPI_QUANTITIES::SOLUTION);
   CompleteComms(geometry, config, MPI_QUANTITIES::SOLUTION);
 
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses) {
+    InitiateComms(geometry, config, MPI_QUANTITIES::MEAN_VELOCITY);
+    CompleteComms(geometry, config, MPI_QUANTITIES::MEAN_VELOCITY);
+  }
+
   /*--- Store the initial CFL number for all grid points. ---*/
 
   const auto CFL = config->GetCFL(MGLevel);
@@ -402,6 +407,18 @@ void CFVMFlowSolverBase<V, R>::SetPrimitive_Gradient_GG(CGeometry* geometry, con
 }
 
 template <class V, ENUM_REGIME R>
+void CFVMFlowSolverBase<V, R>::SetMeanVelocity_Gradient_GG(CGeometry* geometry, const CConfig* config) {
+  SU2_ZONE_SCOPED
+
+  const auto& meanVel = nodes->GetMeanVelocity();
+  auto& gradient = nodes->GetGradient_MeanVel();
+  const auto comm = MPI_QUANTITIES::MEANVEL_GRADIENT;
+  const auto commPer = PERIODIC_MEANVEL_GG;
+
+  computeGradientsGreenGauss(this, comm, commPer, *geometry, *config, meanVel, 0, nDim, 1000, gradient);
+}
+
+template <class V, ENUM_REGIME R>
 void CFVMFlowSolverBase<V, R>::SetPrimitive_Gradient_LS(CGeometry* geometry, const CConfig* config,
                                                         bool reconstruction) {
   SU2_ZONE_SCOPED
@@ -511,6 +528,8 @@ void CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsigned long iEdge, CGeome
       numerics->SetAvgTurbKineticEnergy(turbNodes->GetMeanTurbKinEnergy(iPoint), turbNodes->GetMeanTurbKinEnergy(jPoint));
     }
     numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), nodes->GetLES_Mode(jPoint));
+    if (config->GetSBSParam().filterStresses)
+      numerics->SetMeanVelGradient(nodes->GetGradient_MeanVel(iPoint), nodes->GetGradient_MeanVel(jPoint));
   }
 
   /*--- Wall shear stress values (wall functions) ---*/

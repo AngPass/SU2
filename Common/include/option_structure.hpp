@@ -2716,6 +2716,7 @@ enum PERIODIC_QUANTITIES {
   PERIODIC_SENSOR     ,  /*!< \brief Dissipation sensor communication (periodic only). */
   PERIODIC_SOL_GG     ,  /*!< \brief Solution gradient communication for Green-Gauss (periodic only). */
   PERIODIC_PRIM_GG    ,  /*!< \brief Primitive gradient communication for Green-Gauss (periodic only). */
+  PERIODIC_MEANVEL_GG ,  /*!< \brief Mean velocity gradient communication for Green-Gauss (periodic only). */
   PERIODIC_SOL_LS     ,  /*!< \brief Solution gradient communication for weighted Least Squares (periodic only). */
   PERIODIC_PRIM_LS    ,  /*!< \brief Primitive gradient communication for weighted Least Squares (periodic only). */
   PERIODIC_SOL_ULS    ,  /*!< \brief Solution gradient communication for unwieghted Least Squares (periodic only). */
@@ -2744,6 +2745,7 @@ enum class MPI_QUANTITIES {
   SOLUTION_LIMITER     ,  /*!< \brief Conservative solution limiter communication. */
   SOLUTION_GEOMETRY    ,  /*!< \brief Geometry solution communication. */
   PRIMITIVE_GRADIENT   ,  /*!< \brief Primitive gradient communication. */
+  MEANVEL_GRADIENT     ,  /*!< \brief Mean velocity gradient communication. */
   PRIMITIVE_GRAD_REC   ,  /*!< \brief Primitive reconstruction gradient communication. */
   PRIMITIVE_LIMITER    ,  /*!< \brief Primitive limiter communication. */
   UNDIVIDED_LAPLACIAN  ,  /*!< \brief Undivided Laplacian communication. */
@@ -2756,6 +2758,7 @@ enum class MPI_QUANTITIES {
   GRID_VELOCITY        ,  /*!< \brief Grid velocity communication. */
   SOLUTION_EDDY        ,  /*!< \brief Turbulent solution plus eddy viscosity communication. */
   MEAN_TKE             ,  /*!< \brief Mean turbulent kinetic energy communication. */
+  MEAN_VELOCITY        ,  /*!< \brief Mean velocity communication. */
   STOCH_SOURCE_LANG    ,  /*!< \brief Stochastic source term for Langevin equations communication. */
   DES_LENGTHSCALE      ,  /*!< \brief DES length scale communication. */
   LES_SENSOR           ,  /*!< \brief LES sensor communication. */

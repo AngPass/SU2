@@ -240,6 +240,12 @@ void CSolver::GetPeriodicCommCountAndType(const CConfig* config,
       ICOUNT           = nPrimVarGrad;
       JCOUNT           = nDim;
       break;
+    case PERIODIC_MEANVEL_GG:
+      COUNT_PER_POINT  = nDim*nDim;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      ICOUNT           = nDim;
+      JCOUNT           = nDim;
+      break;
     case PERIODIC_SOL_LS:
     case PERIODIC_SOL_ULS:
     case PERIODIC_SOL_LS_R:
@@ -293,6 +299,9 @@ namespace PeriodicCommHelpers {
       case PERIODIC_PRIM_ULS:
         return nodes->GetGradient_Primitive();
         break;
+      case PERIODIC_MEANVEL_GG:
+        return nodes->GetGradient_MeanVel();
+        break;
       case PERIODIC_SOL_GG:
       case PERIODIC_SOL_LS:
       case PERIODIC_SOL_ULS:
@@ -315,6 +324,9 @@ namespace PeriodicCommHelpers {
       case PERIODIC_LIM_PRIM_1:
       case PERIODIC_LIM_PRIM_2:
         return nodes->GetPrimitive();
+        break;
+      case PERIODIC_MEANVEL_GG:
+        return nodes->GetMeanVelocity();
         break;
       default:
         return nodes->GetSolution();
@@ -726,6 +738,7 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
           case PERIODIC_SOL_GG_R:
           case PERIODIC_PRIM_GG:
           case PERIODIC_PRIM_GG_R:
+          case PERIODIC_MEANVEL_GG:
 
             /*--- Access and rotate the partial G-G gradient. These will be
              summed on both sides of the periodic faces before dividing
@@ -1234,6 +1247,7 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
             case PERIODIC_SOL_GG_R:
             case PERIODIC_PRIM_GG:
             case PERIODIC_PRIM_GG_R:
+            case PERIODIC_MEANVEL_GG:
 
               /*--- For G-G, we accumulate partial gradients then compute
                the final value using the entire volume of the periodic cell. ---*/
@@ -1361,6 +1375,10 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       COUNT_PER_POINT  = nPrimVarGrad*nDim;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
+    case MPI_QUANTITIES::MEANVEL_GRADIENT:
+      COUNT_PER_POINT  = nDim*nDim;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      break;
     case MPI_QUANTITIES::PRIMITIVE_LIMITER:
       COUNT_PER_POINT  = nPrimVarGrad;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
@@ -1371,6 +1389,10 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       break;
     case MPI_QUANTITIES::MEAN_TKE:
       COUNT_PER_POINT  = 1;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      break;
+    case MPI_QUANTITIES::MEAN_VELOCITY:
+      COUNT_PER_POINT  = nDim;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case MPI_QUANTITIES::STOCH_SOURCE_LANG:
@@ -1423,6 +1445,7 @@ namespace CommHelpers {
     switch(commType) {
       case MPI_QUANTITIES::SOLUTION_GRAD_REC: return nodes->GetGradient_Reconstruction();
       case MPI_QUANTITIES::PRIMITIVE_GRADIENT: return nodes->GetGradient_Primitive();
+      case MPI_QUANTITIES::MEANVEL_GRADIENT: return nodes->GetGradient_MeanVel();
       case MPI_QUANTITIES::PRIMITIVE_GRAD_REC: return nodes->GetGradient_Reconstruction();
       case MPI_QUANTITIES::AUXVAR_GRADIENT: return nodes->GetAuxVarGradient();
       default: return nodes->GetGradient();
@@ -1519,6 +1542,10 @@ void CSolver::InitiateComms(CGeometry *geometry,
           case MPI_QUANTITIES::MEAN_TKE:
             bufDSend[buf_offset] = base_nodes->GetMeanTurbKinEnergy(iPoint);
             break;
+          case MPI_QUANTITIES::MEAN_VELOCITY:
+            for (iDim = 0; iDim < nDim; iDim++)
+              bufDSend[buf_offset+iDim] = base_nodes->GetMeanVelocity(iPoint, iDim);
+            break;
           case MPI_QUANTITIES::STOCH_SOURCE_LANG:
             for (iDim = 0; iDim < nDim; iDim++)
               bufDSend[buf_offset+iDim] = base_nodes->GetLangevinSourceTerms(iPoint, iDim);
@@ -1556,6 +1583,11 @@ void CSolver::InitiateComms(CGeometry *geometry,
             for (iVar = 0; iVar < nVarGrad; iVar++)
               for (iDim = 0; iDim < nDim; iDim++)
                 bufDSend[buf_offset+iVar*nDim+iDim] = gradient(iPoint, iVar, iDim);
+            break;
+          case MPI_QUANTITIES::MEANVEL_GRADIENT:
+            for (iDim = 0; iDim < nDim; iDim++)
+              for (unsigned short jDim = 0; jDim < nDim; jDim++)
+                bufDSend[buf_offset+iDim*nDim+jDim] = gradient(iPoint, iDim, jDim);
             break;
           case MPI_QUANTITIES::SOLUTION_FEA:
             for (iVar = 0; iVar < nVar; iVar++) {
@@ -1685,6 +1717,10 @@ void CSolver::CompleteComms(CGeometry *geometry,
           case MPI_QUANTITIES::MEAN_TKE:
             base_nodes->SetMeanTurbKinEnergy(iPoint, bufDRecv[buf_offset]);
             break;
+          case MPI_QUANTITIES::MEAN_VELOCITY:
+            for (iDim = 0; iDim < nDim; iDim++)
+              base_nodes->SetMeanVelocity(iPoint, iDim, bufDRecv[buf_offset+iDim]);
+            break;
           case MPI_QUANTITIES::STOCH_SOURCE_LANG:
             for (iDim = 0; iDim < nDim; iDim++)
               base_nodes->SetLangevinSourceTerms(iPoint, iDim, bufDRecv[buf_offset+iDim]);
@@ -1722,6 +1758,11 @@ void CSolver::CompleteComms(CGeometry *geometry,
             for (iVar = 0; iVar < nVarGrad; iVar++)
               for (iDim = 0; iDim < nDim; iDim++)
                 gradient(iPoint,iVar,iDim) = bufDRecv[buf_offset+iVar*nDim+iDim];
+            break;
+          case MPI_QUANTITIES::MEANVEL_GRADIENT:
+            for (iDim = 0; iDim < nDim; iDim++)
+              for (unsigned short jDim = 0; jDim < nDim; jDim++)
+                gradient(iPoint,iDim,jDim) = bufDRecv[buf_offset+iDim*nDim+jDim];
             break;
           case MPI_QUANTITIES::SOLUTION_FEA:
             for (iVar = 0; iVar < nVar; iVar++) {

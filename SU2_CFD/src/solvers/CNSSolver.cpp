@@ -109,6 +109,9 @@ void CNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, C
     SetPrimitive_Gradient_LS(geometry, config);
   }
 
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses)
+    SetMeanVelocity_Gradient_GG(geometry, config);
+
   if (Output) ompMasterAssignBarrier(nPrimVarGrad, nPrimVarGrad_bak);
 
   /*--- Compute the limiters ---*/

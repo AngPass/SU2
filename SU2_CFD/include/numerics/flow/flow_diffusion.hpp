@@ -55,6 +55,7 @@ protected:
   *PrimVar_i = nullptr,
   *PrimVar_j = nullptr;                   /*!< \brief Primitives variables at point i and j. */
   su2double **Mean_GradPrimVar = nullptr, /*!< \brief Mean value of the gradient. */
+  **Mean_GradMeanVel = nullptr,           /*!< \brief Mean time-averaged velocity gradient. */
   Mean_Laminar_Viscosity,                 /*!< \brief Mean value of the viscosity. */
   Mean_Eddy_Viscosity,                    /*!< \brief Mean value of the eddy viscosity. */
   Mean_Thermal_Conductivity,              /*!< \brief Mean value of the thermal conductivity. */
@@ -207,6 +208,14 @@ public:
                        su2double val_laminar_viscosity,
                        su2double val_eddy_viscosity,
                        const CConfig* config);
+
+  /*!
+   * \brief Subtract mean stresses from turbulent stress tensor.
+   * \param[in] val_gradmeanvel - Mean velocity gradient.
+   * \param[in] val_eddy_viscosity - Eddy viscosity.
+   * \param[in] config - Definition of the particular problem.
+   */
+  void SubtractMeanStress(const su2double* const *val_gradprimvar, su2double val_eddy_viscosity, const CConfig* config);
 
   /*!
    * \brief Calculate the stochastic contribution to the subgrid stress tensor (Stochastic Backscatter Model)

@@ -161,7 +161,7 @@ void computeGradientsGreenGauss(CSolver* solver, MPI_QUANTITIES kindMpiComm, PER
 
   /*--- Compute the corrections for symmetry planes and Euler walls. ---*/
 
-  correctGradientsSymmetry<nDim>(geometry, config, varBegin, varEnd, idxVel, gradient);
+  if (idxVel != 1000) correctGradientsSymmetry<nDim>(geometry, config, varBegin, varEnd, idxVel, gradient);
 
   /*--- If no solver was provided we do not communicate ---*/
 

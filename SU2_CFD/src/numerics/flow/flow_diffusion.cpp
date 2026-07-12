@@ -50,6 +50,12 @@ CAvgGrad_Base::CAvgGrad_Base(unsigned short val_nDim,
   for (iVar = 0; iVar < nPrimVar; iVar++)
     Mean_GradPrimVar[iVar] = new su2double [nDim];
 
+  Mean_GradMeanVel = nullptr;
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses) {
+    Mean_GradMeanVel = new su2double* [nDim];
+    for (iDim = 0; iDim < nDim; iDim++)
+      Mean_GradMeanVel[iDim] = new su2double [nDim];
+  }
 
   tau_jacobian_i = new su2double* [nDim];
   for (iDim = 0; iDim < nDim; iDim++) {
@@ -94,6 +100,13 @@ CAvgGrad_Base::~CAvgGrad_Base() {
     }
     delete [] Jacobian_i;
     delete [] Jacobian_j;
+  }
+
+  if (Mean_GradMeanVel != nullptr) {
+    for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+      delete [] Mean_GradMeanVel[iDim];
+    }
+    delete [] Mean_GradMeanVel;
   }
 
 }
@@ -147,6 +160,20 @@ void CAvgGrad_Base::SetStressTensor(const su2double *val_primvar,
       for (unsigned short jDim = 0 ; jDim < nDim; jDim++)
         tau[iDim][jDim] -= stochStressTensor[iDim][jDim];
   }
+}
+
+void CAvgGrad_Base::SubtractMeanStress(const su2double* const *val_gradmeanvel,
+                                       const su2double val_eddy_viscosity,
+                                       const CConfig* config) {
+
+  ComputeMeanStressTensor(nDim, meanStress, val_gradmeanvel, val_eddy_viscosity);
+
+  su2double sensorThreshold = config->GetSBSParam().stochFdThreshold;
+  su2double sensor = (max(lesMode_i, lesMode_j) > sensorThreshold) ? 1.0 : 0.0;
+
+  for (unsigned short iDim = 0; iDim < nDim; iDim++)
+    for (unsigned short jDim = 0; jDim < nDim; jDim++)
+      tau[iDim][jDim] -= sensor * meanStress[iDim][jDim];
 }
 
 void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
@@ -493,6 +520,12 @@ CNumerics::ResidualType<> CAvgGrad_Flow::ComputeResidual(const CConfig* config) 
   if (config->GetSBSParam().StochasticBackscatter) SetStochSourceMom(config);
   SetStressTensor(Mean_PrimVar, Mean_GradPrimVar, Mean_turb_ke,
                   Mean_Laminar_Viscosity, Mean_Eddy_Viscosity, config);
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses) {
+    for (iDim = 0; iDim < nDim; ++iDim)
+      for (unsigned short jDim = 0; jDim < nDim; ++jDim)
+        Mean_GradMeanVel[iDim][jDim] = 0.5*(MeanVel_Grad_i[iDim][jDim] + MeanVel_Grad_j[iDim][jDim]);
+    SubtractMeanStress(Mean_GradMeanVel, Mean_Eddy_Viscosity, config);
+  }
   if (config->GetSAParsedOptions().qcr2000) AddQCR(nDim, &Mean_GradPrimVar[1], tau);
   if (Mean_TauWall > 0) AddTauWall(UnitNormal, Mean_TauWall);
 
@@ -668,6 +701,12 @@ CNumerics::ResidualType<> CAvgGradInc_Flow::ComputeResidual(const CConfig* confi
   if (config->GetSBSParam().StochasticBackscatter) SetStochSourceMom(config);
   SetStressTensor(Mean_PrimVar, Mean_GradPrimVar, Mean_turb_ke,
                   Mean_Laminar_Viscosity, Mean_Eddy_Viscosity, config);
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses) {
+    for (iDim = 0; iDim < nDim; ++iDim)
+      for (unsigned short jDim = 0; jDim < nDim; ++jDim)
+        Mean_GradMeanVel[iDim][jDim] = 0.5*(MeanVel_Grad_i[iDim][jDim] + MeanVel_Grad_j[iDim][jDim]);
+    SubtractMeanStress(Mean_GradMeanVel, Mean_Eddy_Viscosity, config);
+  }
   if (config->GetSAParsedOptions().qcr2000) AddQCR(nDim, &Mean_GradPrimVar[1], tau);
   if (Mean_TauWall > 0) AddTauWall(UnitNormal, Mean_TauWall);
 
@@ -995,6 +1034,12 @@ CNumerics::ResidualType<> CGeneralAvgGrad_Flow::ComputeResidual(const CConfig* c
   if (config->GetSBSParam().StochasticBackscatter) SetStochSourceMom(config);
   SetStressTensor(Mean_PrimVar, Mean_GradPrimVar, Mean_turb_ke,
                   Mean_Laminar_Viscosity, Mean_Eddy_Viscosity, config);
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses) {
+    for (iDim = 0; iDim < nDim; ++iDim)
+      for (unsigned short jDim = 0; jDim < nDim; ++jDim)
+        Mean_GradMeanVel[iDim][jDim] = 0.5*(MeanVel_Grad_i[iDim][jDim] + MeanVel_Grad_j[iDim][jDim]);
+    SubtractMeanStress(Mean_GradMeanVel, Mean_Eddy_Viscosity, config);
+  }
   if (config->GetSAParsedOptions().qcr2000) AddQCR(nDim, &Mean_GradPrimVar[1], tau);
   if (Mean_TauWall > 0) AddTauWall(UnitNormal, Mean_TauWall);
 

@@ -2325,6 +2325,10 @@ void CIncEulerSolver::BC_Far_Field(CGeometry *geometry, CSolver **solver_contain
     visc_numerics->SetPrimVarGradient(nodes->GetGradient_Primitive(iPoint),
                                       nodes->GetGradient_Primitive(iPoint));
 
+    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses)
+      visc_numerics->SetMeanVelGradient(nodes->GetGradient_MeanVel(iPoint),
+                                        nodes->GetGradient_MeanVel(iPoint));
+
     /*--- Turbulent kinetic energy ---*/
 
     if (config->GetKind_Turb_Model() == TURB_MODEL::SST)
@@ -2598,6 +2602,10 @@ void CIncEulerSolver::BC_Inlet(CGeometry *geometry, CSolver **solver_container,
     visc_numerics->SetPrimVarGradient(nodes->GetGradient_Primitive(iPoint),
                                       nodes->GetGradient_Primitive(iPoint));
 
+    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses)
+      visc_numerics->SetMeanVelGradient(nodes->GetGradient_MeanVel(iPoint),
+                                        nodes->GetGradient_MeanVel(iPoint));
+
     /*--- Turbulent kinetic energy ---*/
 
     if (config->GetKind_Turb_Model() == TURB_MODEL::SST)
@@ -2804,6 +2812,10 @@ void CIncEulerSolver::BC_Outlet(CGeometry *geometry, CSolver **solver_container,
     visc_numerics->SetPrimitive(V_domain, V_outlet);
     visc_numerics->SetPrimVarGradient(nodes->GetGradient_Primitive(iPoint),
                                       nodes->GetGradient_Primitive(iPoint));
+
+    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses)
+      visc_numerics->SetMeanVelGradient(nodes->GetGradient_MeanVel(iPoint),
+                                        nodes->GetGradient_MeanVel(iPoint));
 
     /*--- Turbulent kinetic energy ---*/
 

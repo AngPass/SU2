@@ -98,6 +98,9 @@ void CIncNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container
     SetPrimitive_Gradient_LS(geometry, config);
   }
 
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses)
+    SetMeanVelocity_Gradient_GG(geometry, config);
+
   /*--- Compute the limiters ---*/
 
   if (muscl && !center && limiter && !van_albada && !Output) {

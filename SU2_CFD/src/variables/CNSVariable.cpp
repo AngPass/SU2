@@ -44,7 +44,7 @@ CNSVariable::CNSVariable(su2double density, const su2double *velocity, su2double
   Roe_Dissipation.resize(nPoint) = su2double(0.0);
   Vortex_Tilting.resize(nPoint) = su2double(0.0);
   Max_Lambda_Visc.resize(nPoint) = su2double(0.0);
-
+  MeanVelocity.resize(nPoint, nDim) = su2double(0.0);
 }
 
 void CNSVariable::SetRoe_Dissipation_NTS(unsigned long iPoint,

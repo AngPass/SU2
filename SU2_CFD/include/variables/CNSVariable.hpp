@@ -39,12 +39,13 @@ class CNSVariable final : public CEulerVariable {
 private:
   su2double inv_TimeScale;   /*!< \brief Inverse of the reference time scale. */
 
-  VectorType Tau_Wall;        /*!< \brief Magnitude of the wall shear stress from a wall function. */
-  VectorType DES_LengthScale; /*!< \brief DES Length Scale. */
-  VectorType lesMode;         /*!< \brief Sensor for local simulation mode (0=RANS, 1=LES).*/
-  VectorType MeanTurbKE;      /*!< \brief Mean turbulent kinetic energy. */
-  VectorType Roe_Dissipation; /*!< \brief Roe low dissipation coefficient. */
-  VectorType Vortex_Tilting;  /*!< \brief Value of the vortex tilting variable for DES length scale computation. */
+  VectorType Tau_Wall;                    /*!< \brief Magnitude of the wall shear stress from a wall function. */
+  VectorType DES_LengthScale;             /*!< \brief DES Length Scale. */
+  VectorType lesMode;                     /*!< \brief Sensor for local simulation mode (0=RANS, 1=LES).*/
+  VectorType MeanTurbKE;                  /*!< \brief Mean turbulent kinetic energy. */
+  MatrixType MeanVelocity;                /*!< \brief Mean velocity vector. */
+  VectorType Roe_Dissipation;             /*!< \brief Roe low dissipation coefficient. */
+  VectorType Vortex_Tilting;              /*!< \brief Value of the vortex tilting variable for DES length scale computation. */
 
 public:
   /*!
@@ -200,6 +201,22 @@ public:
   inline void SetMeanTurbKinEnergy(unsigned long iPoint, su2double val_mean_tke) override { MeanTurbKE(iPoint) = val_mean_tke; }
 
   /*!
+   * \brief Get the mean velocity for all points.
+   * \return Mean velocity.
+   */
+  inline const MatrixType& GetMeanVelocity() const final { return MeanVelocity; }
+
+  /*!
+   * \brief Get the mean velocity.
+   */
+  inline su2double GetMeanVelocity(unsigned long iPoint, unsigned short iDim) const final { return MeanVelocity(iPoint, iDim); }
+
+  /*!
+   * \brief Set the mean velocity.
+   */
+  inline void SetMeanVelocity(unsigned long iPoint, unsigned short iDim, su2double val_mean_vel) override { MeanVelocity(iPoint, iDim) = val_mean_vel; }
+
+  /*!
    * \brief Set the LES sensor.
    */
   inline void SetLES_Mode(unsigned long iPoint, su2double val_les_mode) override {
@@ -238,5 +255,4 @@ public:
   inline void SetRoe_Dissipation(unsigned long iPoint, su2double val_dissipation) override {
     Roe_Dissipation(iPoint) = val_dissipation;
   }
-
 };

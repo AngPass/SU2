@@ -72,8 +72,9 @@ protected:
   MatrixType Solution_time_n1;   /*!< \brief Solution of the problem at time n-1 for dual-time stepping technique. */
   VectorType Delta_Time;         /*!< \brief Time step. */
 
-  CVectorOfMatrix Gradient;  /*!< \brief Gradient of the solution of the problem. */
-  C3DDoubleMatrix Rmatrix;   /*!< \brief Geometry-based matrix for weighted least squares gradient calculations. */
+  CVectorOfMatrix Gradient;              /*!< \brief Gradient of the solution of the problem. */
+  CVectorOfMatrix Gradient_MeanVelocity; /*!< \brief Gradient of the time-averaged velocity. */
+  C3DDoubleMatrix Rmatrix;               /*!< \brief Geometry-based matrix for weighted least squares gradient calculations. */
 
   MatrixType Limiter;        /*!< \brief Limiter of the solution of the problem. */
   MatrixType Solution_Max;   /*!< \brief Max solution for limiter computation. */
@@ -407,6 +408,44 @@ public:
    * \param[in] iPoint - Point index.
    */
   inline virtual void SetMeanTurbKinEnergy(unsigned long iPoint, su2double val_mean_tke) {}
+
+  /*!
+   * \brief A virtual member.
+   */
+  inline virtual const MatrixType& GetMeanVelocity() const { AssertOverride(); return Solution; }
+
+  /*!
+   * \brief A virtual member.
+   */
+  inline virtual su2double GetMeanVelocity(unsigned long iPoint, unsigned short iDim) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   */
+  inline virtual void SetMeanVelocity(unsigned long iPoint, unsigned short iDim, su2double val_mean_vel) {}
+
+  /*!
+   * \brief Get the value of the mean velocity gradient.
+   * \param[in] iPoint - Point index.
+   * \param[in] iVar - Index of the variable.
+   * \param[in] iDim - Index of the dimension.
+   * \return Value of the mean velocity gradient.
+   */
+  inline virtual su2double GetGradient_MeanVel(unsigned long iPoint, unsigned long iVar, unsigned long iDim) const  { return 0.0; }
+
+  /*!
+   * \brief Get the mean velocity gradients for all points.
+   * \return Reference to mean velocity gradient.
+   */
+  inline virtual CVectorOfMatrix& GetGradient_MeanVel() { AssertOverride(); return Gradient; }
+  inline virtual const CVectorOfMatrix& GetGradient_MeanVel() const { AssertOverride(); return Gradient; }
+
+  /*!
+   * \brief A virtual member.
+   * \return Value of the mean velocity gradient.
+   */
+  inline virtual CMatrixView<su2double> GetGradient_MeanVel(unsigned long iPoint, unsigned long iVar=0) { return nullptr; }
 
   /*!
    * \brief A virtual member.

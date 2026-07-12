@@ -59,6 +59,7 @@ protected:
   su2double
   *Proj_Flux_Tensor;  /*!< \brief Flux tensor projected in a direction. */
   su2double **tau;    /*!< \brief Viscous stress tensor. */
+  su2double meanStress [3][3] = {{0.0}}; /*!< \brief Mean stress tensor. */
   const su2double delta [3][3] = {{1.0, 0.0, 0.0},{0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}}; /*!< \brief Identity matrix. */
   const su2double
   *Diffusion_Coeff_i, /*!< \brief Species diffusion coefficients at point i. */
@@ -158,6 +159,8 @@ protected:
   ConsVar_Grad,    /*!< \brief Gradient of conservative variables which is a scalar. */
   PrimVar_Grad_i,  /*!< \brief Gradient of primitive variables at point i. */
   PrimVar_Grad_j,  /*!< \brief Gradient of primitive variables at point j. */
+  MeanVel_Grad_i,  /*!< \brief Mean velocity gradient at point i.*/
+  MeanVel_Grad_j,  /*!< \brief Mean velocity gradient at point j.*/
   PsiVar_Grad_i,   /*!< \brief Gradient of adjoint variables at point i. */
   PsiVar_Grad_j,   /*!< \brief Gradient of adjoint variables at point j. */
   ScalarVar_Grad_i,  /*!< \brief Gradient of scalar variables at point i. */
@@ -352,6 +355,17 @@ public:
   }
 
   /*!
+   * \brief Set the mean velocity gradient.
+   * \param[in] val_meanvel_grad_i - Mean velocity gradient at point i.
+   * \param[in] val_meanvel_grad_j - Mean velocity gradient at point j.
+   */
+  void SetMeanVelGradient(CMatrixView<const su2double> val_meanvel_grad_i,
+                          CMatrixView<const su2double> val_meanvel_grad_j) {
+    MeanVel_Grad_i = val_meanvel_grad_i;
+    MeanVel_Grad_j = val_meanvel_grad_j;
+  }
+
+  /*!
    * \brief Set the value of the adjoint variable.
    * \param[in] val_psi_i - Value of the adjoint variable at point i.
    * \param[in] val_psi_j - Value of the adjoint variable at point j.
@@ -520,6 +534,28 @@ public:
     if(reynolds3x3 && nDim==2) { // fill the third row and column of Reynolds stress matrix
       stress[0][2] = stress[1][2] = stress[2][0] = stress[2][1] = 0.0;
       stress[2][2] = -pTerm;
+    }
+  }
+
+  /*!
+   * \brief Compute the mean stress tensor.
+   * \param[in] nDim - Dimension of the flow problem.
+   * \param[out] stress - Stress tensor.
+   * \param[in] velgrad - A velocity gradient matrix.
+   * \param[in] viscosity - Viscosity
+   */
+  template<class Mat1, class Mat2, class Scalar>
+  FORCEINLINE static void ComputeMeanStressTensor(size_t nDim, Mat1& stress, const Mat2& velgrad,
+                                                  Scalar viscosity){
+    Scalar divVel = 0.0;
+    for (size_t iDim = 0; iDim < nDim; iDim++) {
+      divVel += velgrad[iDim][iDim];
+    }
+    for (size_t iDim = 0; iDim < nDim; iDim++){
+      for (size_t jDim = 0; jDim < nDim; jDim++){
+        stress[iDim][jDim] = viscosity * (velgrad[iDim][jDim]+velgrad[jDim][iDim]);
+      }
+      stress[iDim][iDim] -= 2./3. * viscosity * divVel;
     }
   }
 

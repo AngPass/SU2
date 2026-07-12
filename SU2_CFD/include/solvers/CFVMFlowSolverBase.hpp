@@ -1024,6 +1024,13 @@ class CFVMFlowSolverBase : public CSolver {
   void SetPrimitive_Gradient_GG(CGeometry* geometry, const CConfig* config, bool reconstruction = false) override;
 
   /*!
+   * \brief Compute the gradient of the mean velocity using Green-Gauss method.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   */
+  void SetMeanVelocity_Gradient_GG(CGeometry* geometry, const CConfig* config) override;
+
+  /*!
    * \brief Compute the gradient of the primitive variables using a Least-Squares method,
    *        and stores the result in the <i>Gradient_Primitive</i> variable.
    * \param[in] geometry - Geometrical definition of the problem.

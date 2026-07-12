@@ -1555,6 +1555,13 @@ public:
    * \brief A virtual member.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] config - Definition of the particular problem.
+   */
+  inline virtual void SetMeanVelocity_Gradient_GG(CGeometry* geometry, const CConfig* config) {};
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
    * \param[in] reconstruction - indicator that the gradient being computed is for upwind reconstruction.
    */
   inline virtual void SetPrimitive_Gradient_LS(CGeometry *geometry,
