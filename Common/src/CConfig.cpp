@@ -3037,20 +3037,8 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Shielding function lower threshold for application of Stochastic Backscatter Model */
   addDoubleOption("SBS_FD_LOWER_THRESHOLD", SBSParam.stochFdThreshold, 0.9);
 
-  /* DESCRIPTION: Restart stochastic field (read from restart file if present) */
-  addBoolOption("SBS_RESTART", SBSParam.restartStochField, true);
-
-  /* DESCRIPTION: Employ a hybrid central-upwind scheme in Langevin equations */
-  addBoolOption("SBS_LANGEVIN_UPW_BLEND", SBSParam.langevinUpwBlend, true);
-
-  /* DESCRIPTION: Employ a hybrid central-upwind scheme in Langevin equations */
-  addBoolOption("SBS_BESSEL_SCALING", SBSParam.besselScaleFactor, false);
-
   /* DESCRIPTION: Use mean turbulent kinetic energy in the definition of the stochastic source term. */
   addBoolOption("SBS_USE_MEAN_TKE", SBSParam.useMeanTurbKE, false);
-
-  /* DESCRIPTION: Specify if the modeled stresses must be filtered in time. */
-  addBoolOption("SBS_FILTER_STRESSES", SBSParam.filterStresses, false);
 
   /* DESCRIPTION: Filter width for LES (if negative, it is computed based on the local cell size) */
   addDoubleOption("LES_FILTER_WIDTH", LES_FilterWidth, -1.0);
@@ -6603,8 +6591,6 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
               cout << "|  Z: " << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[4] << " , "
                               << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[5] << endl;
             }
-            if (SBSParam.filterStresses)
-              cout << "| Subgrid stresses filtered in time." << endl;
             if (Kind_HybridRANSLES != SA_DES)
               cout << "| Stochastic source terms suppressed where the shielding function is lower than: " << setw(4) << setprecision(4) << SBSParam.stochFdThreshold << endl;
           } else {

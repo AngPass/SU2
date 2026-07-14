@@ -820,19 +820,35 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
 
     su2double Cmag = config->GetSBSParam().SBS_Cmag;
     su2double tke = (config->GetSBSParam().useMeanTurbKE) ? avg_turb_ke_i : ScalarVar_i[0];
+    const bool isLangevin = (config->GetSBSParam().stochSourceType == LANGEVIN);
 
     su2double stochProd = 0.0;
-    if (config->GetSBSParam().stochSourceType == LANGEVIN)
+    if (isLangevin)
       stochProd = - Cmag * Density_i * tke * (Vorticity_i[0]*ScalarVar_i[2] + Vorticity_i[1]*ScalarVar_i[3] + Vorticity_i[2]*ScalarVar_i[4]);
     else
       stochProd = - Cmag * Density_i * tke * (Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2]);
 
     const su2double limiter = 1.0;
+    const bool clipped = (stochProd < -limiter*dissipK) || (stochProd > limiter*dissipK);
     stochProd = max(-limiter*dissipK, min(limiter*dissipK, stochProd));
 
     prodK  -= stochProd;
     prodOm -= stochProd * prodFac;
 
+    if (isLangevin) {
+      if (!clipped) {
+        for (unsigned short iDim = 0; iDim < 3; iDim++) {
+          const su2double dProdK_dStochVar = Cmag * Density_i * tke * Vorticity_i[iDim];
+          Jacobian_i[0][2+iDim] = dProdK_dStochVar * Volume;
+          Jacobian_i[1][2+iDim] = dProdK_dStochVar * prodFac * Volume;
+        }
+      }
+      Jacobian_i[0][0] += Cmag * Density_i * (Vorticity_i[0]*ScalarVar_i[2] + Vorticity_i[1]*ScalarVar_i[3] + Vorticity_i[2]*ScalarVar_i[4]) * Volume;
+      Jacobian_i[1][0] += Cmag * Density_i * (Vorticity_i[0]*ScalarVar_i[2] + Vorticity_i[1]*ScalarVar_i[3] + Vorticity_i[2]*ScalarVar_i[4]) * prodFac * Volume;
+    } else {
+      Jacobian_i[0][0] += Cmag * Density_i * (Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2]) * Volume;
+      Jacobian_i[1][0] += Cmag * Density_i * (Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2]) * prodFac * Volume;
+    }
   }
 
  public:
@@ -1037,7 +1053,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
       }
 
       if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceTurb && lesMode_i>config->GetSBSParam().stochFdThreshold)
-        AddStochSource(config, pk, dk, pw, alfa_blended*Density_i/Eddy_Viscosity_i);
+        AddStochSource(config, pk, dk, pw, pw/pk);
 
       /*--- Add the production terms to the residuals. ---*/
 

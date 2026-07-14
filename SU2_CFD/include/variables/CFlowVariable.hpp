@@ -40,7 +40,6 @@ class CFlowVariable : public CVariable {
   /*--- Primitive variable definition. ---*/
   MatrixType Primitive;                     /*!< \brief Primitive variables. */
   CVectorOfMatrix Gradient_Primitive;       /*!< \brief Gradient of the primitive variables. */
-  CVectorOfMatrix Gradient_MeanVelocity;    /*!< \brief Gradient of the time-averaged velocity. */
   CVectorOfMatrix& Gradient_Reconstruction; /*!< \brief Reference to the gradient of the primitive variables for MUSCL
                                                reconstruction for the convective term */
   CVectorOfMatrix

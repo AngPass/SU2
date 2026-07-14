@@ -1116,7 +1116,6 @@ private:
     su2double stochFdThreshold;             /*!< \brief Shielding function lower threshold for application of Stochastic Backscatter Model. */
     bool useMeanTurbKE;                     /*!< \brief Option for using mean turbulent kinetic energy in the definition of the random source term (SST model). */
     unsigned short stochSourceType;         /*!< \brief Kind of stochastic source term included in the balance equations. */
-    bool filterStresses;                    /*!< \brief Option for filtering the modeled stresses in time. */
   } SBSParam;
   bool enforceLES;                          /*!< \brief Option to enforce LES mode in hybrid RANS-LES simulations. */
   su2double LES_FilterWidth;                /*!< \brief LES filter width for hybrid RANS-LES simulations. */
