@@ -1743,9 +1743,61 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
   const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
   const su2double tol = -5.0;
   const su2double sourceLim = 5.0;
-  const su2double omega = 0.99;
+  /*--- Over-relaxation factor for the Jacobi update. The reaction term in the underlying
+        Helmholtz operator (the "+1" in diag = 1 + sum(a_ij)) guarantees diagonal dominance and
+        therefore unconditional convergence of the plain (omega=1) Jacobi iteration regardless of
+        mesh quality; omega > 1 accelerates convergence further. Kept below 2 for robustness margin
+        against the (unbounded, mesh-dependent) explicit non-orthogonal correction term. ---*/
+  const su2double omega = 1.5;
+  /*--- The non-orthogonal correction only needs to be refreshed periodically (its role is to
+        accelerate/correct convergence to the true gradient-based solution, not to change the fixed
+        point), so its extra point loop and MPI round-trip are skipped on iterations in between. ---*/
+  const unsigned short gradRefreshInterval = 5;
   unsigned long timeIter = config->GetTimeIter();
   unsigned long restartIter = config->GetRestart_Iter();
+
+  /*--- Assemble system matrix: the orthogonal (implicit) coefficient a_ij, unchanged, plus the
+        non-orthogonal correction vector betaVec used to reconstruct the full gradient-based
+        diffusive flux across each face (deferred correction, see the SOR loop below). ---*/
+
+  if (timeIter == restartIter) {
+    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+    for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+      su2double maxDelta = (LES_FilterWidth > 0.0) ? LES_FilterWidth : geometry->nodes->GetMaxLength(iPoint);
+      su2double b2 = cDelta * maxDelta * maxDelta;
+      su2double volume_iPoint = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
+      auto coord_i = geometry->nodes->GetCoord(iPoint);
+      for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
+        auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
+        auto coord_j = geometry->nodes->GetCoord(jPoint);
+        auto iEdge = geometry->nodes->GetEdge(iPoint, iNode);
+        auto* normal = geometry->edges->GetNormal(iEdge);
+        su2double area = GeometryToolbox::Norm(nDim, normal);
+        su2double dx_ij_vec[3];
+        for (unsigned short index = 0; index < nDim; index++)
+          dx_ij_vec[index] = coord_j[index] - coord_i[index];
+        su2double distance = GeometryToolbox::Norm(nDim, dx_ij_vec);
+        su2double dist_ij_2 = max(distance*distance, 1e-10);
+        su2double dot_nd = 0.0;
+        for (unsigned short index = 0; index < nDim; index++)
+          dot_nd += normal[index] * dx_ij_vec[index];
+        su2double sign = (geometry->edges->GetNode(iEdge, 0) == iPoint) ? 1.0 : -1.0;
+        su2double d_normal = sign * dot_nd / max(area*distance, 1e-10);
+        su2double a_ij = area/volume_iPoint * fabs(d_normal) * b2/max(distance, 1e-10);
+        nodes->SetSmoothingMatrixCoeff(iPoint, iNode, a_ij);
+
+        /*--- betaVec = (b2/V_i) * sign * (normal - (dot_nd/dist_ij_2)*edge_vector), the coefficient
+              such that mean_grad_face . betaVec gives the non-orthogonal (tangential) part of the
+              gradient-based diffusive flux, consistent with CAvgGrad_Base::CorrectGradient. ---*/
+
+        for (unsigned short index = 0; index < nDim; index++) {
+          su2double betaVec = (b2/volume_iPoint) * sign * (normal[index] - (dot_nd/dist_ij_2) * dx_ij_vec[index]);
+          nodes->SetSmoothingBetaVec(iPoint, iNode, index, betaVec);
+        }
+      }
+    }
+    END_SU2_OMP_SAFE_GLOBAL_ACCESS
+  }
 
   /*--- Start SOR algorithm for the Laplacian smoothing. ---*/
 
@@ -1758,6 +1810,38 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
       InitiateComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
       CompleteComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
 
+      /*--- Green-Gauss gradient of the field being smoothed this sweep, used to reconstruct the
+            non-orthogonal part of the gradient-based diffusive flux (deferred correction: the
+            gradient is evaluated at the start of the sweep, before the point values below are
+            updated). Refreshed only every gradRefreshInterval iterations: it only affects the
+            convergence rate of the Jacobi iteration, not the converged solution, so reusing the
+            last computed gradient in between saves an extra point loop and MPI round-trip. ---*/
+
+      if (iter % gradRefreshInterval == 0) {
+        BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+        for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+          su2double source_i = nodes->GetLangevinSourceTerms(iPoint, iDim);
+          su2double volume_iPoint = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
+          su2double grad_i[3] = {0.0, 0.0, 0.0};
+          for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
+            auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
+            auto iEdge = geometry->nodes->GetEdge(iPoint, iNode);
+            auto* normal = geometry->edges->GetNormal(iEdge);
+            su2double sign = (geometry->edges->GetNode(iEdge, 0) == iPoint) ? 1.0 : -1.0;
+            su2double source_j = nodes->GetLangevinSourceTerms(jPoint, iDim);
+            su2double phi_face = 0.5*(source_i + source_j);
+            for (unsigned short index = 0; index < nDim; index++)
+              grad_i[index] += sign * phi_face * normal[index];
+          }
+          for (unsigned short index = 0; index < nDim; index++)
+            nodes->SetLangevinSourceGrad(iPoint, index, grad_i[index] / max(volume_iPoint, 1e-10));
+        }
+        END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+        InitiateComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG_GRAD);
+        CompleteComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG_GRAD);
+      }
+
       su2double localResNorm = 0.0;
       unsigned long local_nPointLES = 0;
 
@@ -1766,35 +1850,25 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
         su2double source_i_old = nodes->GetLangevinSourceTermsOld(iPoint, iDim);
         if (source_i_old > 3.0*sourceLim) continue;
         local_nPointLES += 1;
-        su2double maxDelta = (LES_FilterWidth > 0.0) ? LES_FilterWidth : geometry->nodes->GetMaxLength(iPoint);
-        su2double b2 = cDelta * maxDelta * maxDelta;
-        su2double volume_iPoint = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
         su2double source_i = nodes->GetLangevinSourceTerms(iPoint, iDim);
-        auto coord_i = geometry->nodes->GetCoord(iPoint);
 
-        /*--- Assemble system matrix. ---*/
+        /*--- Solve system. ---*/
 
         su2double diag = 1.0;
         su2double sum = 0.0;
         for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
           auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
-          auto coord_j = geometry->nodes->GetCoord(jPoint);
-          auto iEdge = geometry->nodes->GetEdge(iPoint, iNode);
-          auto* normal = geometry->edges->GetNormal(iEdge);
-          su2double area = GeometryToolbox::Norm(nDim, normal);
-          su2double dx_ij_vec[3];
-          for (unsigned short index = 0; index < nDim; index++)
-            dx_ij_vec[index] = coord_j[index] - coord_i[index];
-          su2double distance = GeometryToolbox::Norm(nDim, dx_ij_vec);
-          su2double dot_nd = 0.0;
-          for (unsigned short index = 0; index < nDim; index++)
-            dot_nd += normal[index] * dx_ij_vec[index];
-          su2double sign = (geometry->edges->GetNode(iEdge, 0) == iPoint) ? 1.0 : -1.0;
-          su2double d_normal = sign * dot_nd / max(area*distance, 1e-10);
           su2double source_j = nodes->GetLangevinSourceTerms(jPoint, iDim);
-          su2double a_ij = area/volume_iPoint * fabs(d_normal) * b2/max(distance, 1e-10);
+          su2double a_ij = nodes->GetSmoothingMatrixCoeff(iPoint, iNode);
           diag += a_ij;
           sum += a_ij * source_j;
+
+          su2double tangential_ij = 0.0;
+          for (unsigned short index = 0; index < nDim; index++) {
+            su2double mean_grad = 0.5*(nodes->GetLangevinSourceGrad(iPoint, index) + nodes->GetLangevinSourceGrad(jPoint, index));
+            tangential_ij += mean_grad * nodes->GetSmoothingBetaVec(iPoint, iNode, index);
+          }
+          sum += tangential_ij;
         }
 
         /*--- Update the solution. ---*/

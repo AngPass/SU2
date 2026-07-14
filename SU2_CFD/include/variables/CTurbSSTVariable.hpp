@@ -54,6 +54,8 @@ protected:
   VectorType sbsInBox;
   VectorType besselIntegral;
   MatrixType smoothMatrix;
+  MatrixType smoothBetaVec;      /*!< \brief Non-orthogonal correction coefficients (packed per neighbor as 3 components) for the gradient-corrected Laplacian smoothing. */
+  MatrixType langevinSourceGrad; /*!< \brief Green-Gauss gradient of the stochastic source term component currently being smoothed. */
   su2double MAXNNEIGHBORS = 32;
 public:
   /*!
@@ -148,6 +150,42 @@ public:
    */
   inline void SetSmoothingMatrixCoeff(unsigned long iPoint, unsigned short iNode, su2double val_smoothmat) override { smoothMatrix(iPoint, iNode) = val_smoothmat; }
 
+  /*!
+   * \brief Get a component of the non-orthogonal correction coefficient for the gradient-corrected
+   *        Laplacian smoothing of the stochastic source term.
+   * \param[in] iPoint - Point index.
+   * \param[in] iNode - Neighbor index.
+   * \param[in] iDim - Dimension index.
+   */
+  inline su2double GetSmoothingBetaVec(unsigned long iPoint, unsigned short iNode, unsigned short iDim) const override {
+    return smoothBetaVec(iPoint, iNode*3 + iDim);
+  }
+
+  /*!
+   * \brief Set a component of the non-orthogonal correction coefficient for the gradient-corrected
+   *        Laplacian smoothing of the stochastic source term.
+   */
+  inline void SetSmoothingBetaVec(unsigned long iPoint, unsigned short iNode, unsigned short iDim, su2double val_betavec) override {
+    smoothBetaVec(iPoint, iNode*3 + iDim) = val_betavec;
+  }
+
+  /*!
+   * \brief Get a component of the Green-Gauss gradient of the stochastic source term currently
+   *        being smoothed.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   */
+  inline su2double GetLangevinSourceGrad(unsigned long iPoint, unsigned short iDim) const override {
+    return langevinSourceGrad(iPoint, iDim);
+  }
+
+  /*!
+   * \brief Set a component of the Green-Gauss gradient of the stochastic source term currently
+   *        being smoothed.
+   */
+  inline void SetLangevinSourceGrad(unsigned long iPoint, unsigned short iDim, su2double val_grad) override {
+    langevinSourceGrad(iPoint, iDim) = val_grad;
+  }
 
   /*!
    * \brief Get the value of the stochastic variable resulting from the Ornstein-Uhlenbeck process.

@@ -2758,6 +2758,7 @@ enum class MPI_QUANTITIES {
   MEAN_TKE             ,  /*!< \brief Mean turbulent kinetic energy communication. */
   MEAN_MODELED_STRESS  ,  /*!< \brief Mean modeled stress tensor communication. */
   STOCH_SOURCE_LANG    ,  /*!< \brief Stochastic source term for Langevin equations communication. */
+  STOCH_SOURCE_LANG_GRAD, /*!< \brief Gradient of the stochastic source term being Laplacian-smoothed. */
   DES_LENGTHSCALE      ,  /*!< \brief DES length scale communication. */
   LES_SENSOR           ,  /*!< \brief LES sensor communication. */
   OU_PROCESS           ,  /*!< \brief Ornstein-Uhlenbeck process. */
