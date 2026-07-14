@@ -455,6 +455,22 @@ public:
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
    * \param[in] iDim - Dimension index.
+   */
+  inline virtual su2double GetLangevinSourceGrad(unsigned long iPoint, unsigned short iDim) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   * \param[in] val_grad - Component of the Green-Gauss gradient of the stochastic source term
+   *                        currently being smoothed.
+   */
+  inline virtual void SetLangevinSourceGrad(unsigned long iPoint, unsigned short iDim, su2double val_grad) {}
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
    * \return Value of the stochastic variable resulting from Ornstein-Uhlenbeck process.
    */
   inline virtual su2double GetOU_Process(unsigned long iPoint, unsigned short iDim) const { return 0.0; }

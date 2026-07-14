@@ -161,22 +161,6 @@ public:
   inline virtual void SetSmoothingBetaVec(unsigned long iPoint, unsigned short iNode, unsigned short iDim, su2double val_betavec) {}
 
   /*!
-   * \brief A virtual member.
-   * \param[in] iPoint - Point index.
-   * \param[in] iDim - Dimension index.
-   */
-  inline virtual su2double GetLangevinSourceGrad(unsigned long iPoint, unsigned short iDim) const { return 0.0; }
-
-  /*!
-   * \brief A virtual member.
-   * \param[in] iPoint - Point index.
-   * \param[in] iDim - Dimension index.
-   * \param[in] val_grad - Component of the Green-Gauss gradient of the stochastic source term
-   *                        currently being smoothed.
-   */
-  inline virtual void SetLangevinSourceGrad(unsigned long iPoint, unsigned short iDim, su2double val_grad) {}
-
-  /*!
    * \brief Mark the points where the Stochastic Backscatter Model is active.
    */
   inline virtual void SetSBSInBox(unsigned long iPoint, su2double val_sbsInBox) {}
