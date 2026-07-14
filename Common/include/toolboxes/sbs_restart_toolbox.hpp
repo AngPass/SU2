@@ -2,7 +2,7 @@
  * \file sbs_restart_toolbox.hpp
  * \brief Utilities to persist the per-point, time-averaged ("TIME_AVERAGE"/"BACKSCATTER" volume
  *        output group) fields used by the Stochastic Backscatter Model across restarts, in a small
- *        companion ASCII file separate from the main restart file, together with the number of
+ *        companion binary file separate from the main restart file, together with the number of
  *        samples already accumulated so the running average can continue coherently.
  * \version 8.5.0 "Harrier"
  *
@@ -29,11 +29,12 @@
 
 #pragma once
 
+#include <cstdint>
 #include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
 #include <functional>
+#include "../basic_types/datatype_structure.hpp"
 #include "../geometry/CGeometry.hpp"
 #include "../parallelization/mpi_structure.hpp"
 
@@ -42,10 +43,19 @@ namespace SBSRestartToolbox {
 /// @{
 
 /*!
- * \brief Write a set of named per-point fields to a small companion ASCII file, one row per owned
- *        point, keyed by global point index. Ranks write their own points in turn (round-robin),
- *        mirroring the pattern used by CSU2FileWriter for the native restart format. The first line
- *        stores the number of samples already accumulated in the averages being written.
+ * \brief Binary layout written by WriteMeanFields and read by ReadMeanFields:
+ *        uint64 nSamples;
+ *        uint64 nFields;
+ *        repeated nFields times: uint64 nameLength; char name[nameLength];
+ *        repeated once per point (any order): uint64 globalPointIndex; passivedouble value[nFields];
+ *        Values are always written/read as passivedouble (i.e. the AD value stripped of derivative
+ *        information, same convention used by the native SU2 restart file writers), regardless of
+ *        the datatype SU2 was built with. The file is not portable across endianness/precision. ---*/
+
+/*!
+ * \brief Write a set of named per-point fields to a small companion binary file, one record per
+ *        owned point, keyed by global point index. Ranks write their own points in turn
+ *        (round-robin), mirroring the pattern used by CSU2FileWriter for the native restart format.
  * \param[in] filename - Full path of the file to write (overwritten if it exists).
  * \param[in] geometry - Geometry, used to look up global point indices.
  * \param[in] nPointDomain - Number of points owned by this rank.
@@ -61,23 +71,29 @@ inline void WriteMeanFields(const std::string& filename, const CGeometry* geomet
   const auto nFields = fieldNames.size();
 
   if (rank == 0) {
-    std::ofstream file(filename);
-    file << "# N_SAMPLES " << nSamples << "\n";
-    file << "\"PointID\"";
-    for (const auto& name : fieldNames) file << ",\"" << name << "\"";
-    file << "\n";
+    std::ofstream file(filename, std::ios::binary | std::ios::trunc);
+    const uint64_t nSamples64 = nSamples;
+    file.write(reinterpret_cast<const char*>(&nSamples64), sizeof(nSamples64));
+    const uint64_t nFields64 = nFields;
+    file.write(reinterpret_cast<const char*>(&nFields64), sizeof(nFields64));
+    for (const auto& name : fieldNames) {
+      const uint64_t nameLength = name.size();
+      file.write(reinterpret_cast<const char*>(&nameLength), sizeof(nameLength));
+      file.write(name.data(), nameLength);
+    }
   }
 
   for (int iProcessor = 0; iProcessor < size; iProcessor++) {
     if (rank == iProcessor) {
-      std::ofstream file(filename, std::ios::app);
-      file.precision(15);
+      std::ofstream file(filename, std::ios::binary | std::ios::app);
       std::vector<su2double> row(nFields, 0.0);
+      std::vector<passivedouble> passiveRow(nFields);
       for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
         fillRow(iPoint, row.data());
-        file << geometry->nodes->GetGlobalIndex(iPoint);
-        for (const auto& value : row) file << ", " << std::scientific << value;
-        file << "\n";
+        const uint64_t globalIndex = geometry->nodes->GetGlobalIndex(iPoint);
+        file.write(reinterpret_cast<const char*>(&globalIndex), sizeof(globalIndex));
+        for (size_t iVar = 0; iVar < nFields; iVar++) passiveRow[iVar] = SU2_TYPE::GetValue(row[iVar]);
+        file.write(reinterpret_cast<const char*>(passiveRow.data()), nFields * sizeof(passivedouble));
       }
     }
     SU2_MPI::Barrier(SU2_MPI::GetComm());
@@ -86,7 +102,7 @@ inline void WriteMeanFields(const std::string& filename, const CGeometry* geomet
 
 /*!
  * \brief Read a companion mean-fields file written by WriteMeanFields, if present, and apply the
- *        rows owned by this rank via the given callback. Every rank reads the whole file
+ *        records owned by this rank via the given callback. Every rank reads the whole file
  *        independently and keeps only the points it owns; this is simple and robust, at the cost of
  *        some redundant I/O, acceptable since this happens once at startup for a small file.
  * \param[in] filename - Full path of the file to read.
@@ -99,50 +115,33 @@ inline void WriteMeanFields(const std::string& filename, const CGeometry* geomet
  */
 inline bool ReadMeanFields(const std::string& filename, const CGeometry* geometry, unsigned long& outNSamples,
                            const std::function<void(unsigned long, const std::string&, su2double)>& applyRow) {
-  std::ifstream file(filename);
+  std::ifstream file(filename, std::ios::binary);
   if (!file.is_open()) return false;
 
-  std::string line;
+  uint64_t nSamples64 = 0;
+  file.read(reinterpret_cast<char*>(&nSamples64), sizeof(nSamples64));
+  outNSamples = nSamples64;
 
-  /*--- First line: "# N_SAMPLES <value>". ---*/
-  std::getline(file, line);
-  {
-    std::istringstream iss(line);
-    std::string hash, tag;
-    iss >> hash >> tag >> outNSamples;
-  }
-
-  /*--- Second line: comma-separated, quoted field names, "PointID" first. ---*/
-  std::getline(file, line);
-  std::vector<std::string> fieldNames;
-  {
-    std::istringstream iss(line);
-    std::string token;
-    while (std::getline(iss, token, ',')) {
-      /*--- Strip surrounding quotes. ---*/
-      const auto first = token.find('"');
-      const auto last = token.rfind('"');
-      if (first != std::string::npos && last != std::string::npos && last > first)
-        fieldNames.push_back(token.substr(first + 1, last - first - 1));
-    }
+  uint64_t nFields64 = 0;
+  file.read(reinterpret_cast<char*>(&nFields64), sizeof(nFields64));
+  std::vector<std::string> fieldNames(nFields64);
+  for (auto& name : fieldNames) {
+    uint64_t nameLength = 0;
+    file.read(reinterpret_cast<char*>(&nameLength), sizeof(nameLength));
+    name.resize(nameLength);
+    if (nameLength > 0) file.read(&name[0], nameLength);
   }
   if (fieldNames.empty()) return true;
-  fieldNames.erase(fieldNames.begin()); /*--- Drop "PointID", the remaining entries are the data fields. ---*/
 
-  while (std::getline(file, line)) {
-    if (line.empty()) continue;
-    for (char& c : line)
-      if (c == ',') c = ' ';
-    std::istringstream iss(line);
-
-    unsigned long globalIndex;
-    iss >> globalIndex;
-
+  const auto nFields = fieldNames.size();
+  std::vector<passivedouble> row(nFields);
+  uint64_t globalIndex = 0;
+  while (file.read(reinterpret_cast<char*>(&globalIndex), sizeof(globalIndex))) {
+    if (!file.read(reinterpret_cast<char*>(row.data()), nFields * sizeof(passivedouble))) break;
     const long iPointLocal = geometry->GetGlobal_to_Local_Point(globalIndex);
-    for (const auto& name : fieldNames) {
-      su2double value;
-      iss >> value;
-      if (iPointLocal > -1) applyRow(static_cast<unsigned long>(iPointLocal), name, value);
+    if (iPointLocal > -1) {
+      for (size_t iVar = 0; iVar < nFields; iVar++)
+        applyRow(static_cast<unsigned long>(iPointLocal), fieldNames[iVar], row[iVar]);
     }
   }
   return true;

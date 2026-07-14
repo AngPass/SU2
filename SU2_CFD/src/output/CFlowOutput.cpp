@@ -2603,7 +2603,7 @@ void CFlowOutput::WriteAveragedFields(CConfig *config, CGeometry *geometry) {
   }
   if (fieldNames.empty()) return;
 
-  const string filename = config->GetRestart_FileName() + "_avg_fields.csv";
+  const string filename = config->GetRestart_FileName() + "_avg_fields.dat";
 
   if (rank == MASTER_NODE) cout << "Writing time-averaged fields restart file: " << filename << "." << endl;
 
@@ -2617,7 +2617,7 @@ void CFlowOutput::WriteAveragedFields(CConfig *config, CGeometry *geometry) {
 
 void CFlowOutput::RestoreAveragedFields(CConfig *config, CGeometry *geometry) {
 
-  const string filename = config->GetSolution_FileName() + "_avg_fields.csv";
+  const string filename = config->GetSolution_FileName() + "_avg_fields.dat";
   unsigned long nSamples = 0;
 
   const bool found = SBSRestartToolbox::ReadMeanFields(filename, geometry, nSamples,
