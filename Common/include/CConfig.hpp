@@ -727,6 +727,7 @@ private:
   Read_Binary_Restart,                /*!< \brief Read binary SU2 native restart files.*/
   Wrt_Restart_Overwrite,              /*!< \brief Overwrite restart files or append iteration number.*/
   Wrt_Restart_Averages,               /*!< \brief Persist TIME_AVERAGE/BACKSCATTER volume output fields in a companion file and restore them on restart. */
+  Restart_Average,                    /*!< \brief Restore the WRT_RESTART_AVERAGES companion file on restart. Defaults to RESTART_SOL. */
   Wrt_Surface_Overwrite,              /*!< \brief Overwrite surface output files or append iteration number.*/
   Wrt_Volume_Overwrite,               /*!< \brief Overwrite volume output files or append iteration number.*/
   PyCustomSource,                     /*!< \brief Use a user-defined custom source term .*/
@@ -5607,6 +5608,12 @@ public:
    * \return Restart information, if <code>TRUE</code> then the code will use the solution as restart.
    */
   bool GetRestart(void) const { return Restart; }
+
+  /*!
+   * \brief Flag for whether the WRT_RESTART_AVERAGES companion file is restored on restart.
+   * \return Restart-averages information, if <code>TRUE</code> the running averages are restored. Defaults to RESTART_SOL.
+   */
+  bool GetRestart_Average(void) const { return Restart_Average; }
 
   /*!
    * \brief Flag for whether binary SU2 native restart files are read.

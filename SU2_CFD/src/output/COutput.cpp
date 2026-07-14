@@ -843,12 +843,13 @@ bool COutput::SetResultFiles(CGeometry *geometry, CConfig *config, CSolver** sol
   AllocateDataSorters(config, geometry);
 
   /*--- Restore TIME_AVERAGE/BACKSCATTER fields from a previous run, if requested, before the first
-        volume data load of the run so the running averages continue coherently (WRT_RESTART_AVERAGES).
+        volume data load of the run so the running averages continue coherently (WRT_RESTART_AVERAGES,
+        gated by RESTART_AVERAGE so a fresh, non-restarted run does not pick up a stale companion file).
         This has to happen exactly once, and before LoadDataIntoSorter below computes the first sample
         of this run for each field. ---*/
   if (!averagedFieldsRestoreAttempted) {
     averagedFieldsRestoreAttempted = true;
-    if (config->GetWrt_Restart_Averages()) RestoreAveragedFields(config, geometry);
+    if (config->GetWrt_Restart_Averages() && config->GetRestart_Average()) RestoreAveragedFields(config, geometry);
   }
 
   for (unsigned short iFile = 0; iFile < nVolumeFiles; iFile++) {

@@ -1199,6 +1199,8 @@ void CConfig::SetConfig_Options() {
   addBoolOption("WRT_RESTART_OVERWRITE", Wrt_Restart_Overwrite, true);
   /*!\brief WRT_RESTART_AVERAGES \n DESCRIPTION: Persist TIME_AVERAGE/BACKSCATTER volume output fields (running averages) in a companion file, and restore them on restart so the averages continue instead of resetting. \n Options: NO, YES \ingroup Config */
   addBoolOption("WRT_RESTART_AVERAGES", Wrt_Restart_Averages, false);
+  /*!\brief RESTART_AVERAGE \n DESCRIPTION: Restore the WRT_RESTART_AVERAGES companion file on restart. Defaults to RESTART_SOL. \n Options: NO, YES \ingroup Config */
+  addBoolOption("RESTART_AVERAGE", Restart_Average, false);
   /*!\brief WRT_SURFACE_OVERWRITE \n DESCRIPTION: overwrite visualisation files or append iteration number. \n Options: YES, NO \ingroup Config */
   addBoolOption("WRT_SURFACE_OVERWRITE", Wrt_Surface_Overwrite, true);
   /*!\brief WRT_VOLUME_OVERWRITE \n DESCRIPTION: overwrite visualisation files or append iteration number. \n Options: YES, NO \ingroup Config */
@@ -4054,6 +4056,12 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     HistoryWrtFreq[0] = 1;
 
     if (TimeMarching != TIME_MARCHING::HARMONIC_BALANCE) { TimeMarching = TIME_MARCHING::STEADY; }
+  }
+
+  /*--- RESTART_AVERAGE defaults to RESTART_SOL, so the running averages are restored whenever the
+        solution itself is restarted, unless the user explicitly requests otherwise. ---*/
+  if (!OptionIsSet("RESTART_AVERAGE")) {
+    Restart_Average = Restart;
   }
 
   /*--- RESTART_ITER_AVERAGE defaults to RESTART_ITER, so the running averages restart from the
