@@ -161,6 +161,22 @@ public:
   inline virtual void SetSmoothingBetaVec(unsigned long iPoint, unsigned short iNode, unsigned short iDim, su2double val_betavec) {}
 
   /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \return Diagonal coefficient (1 + sum of the orthogonal neighbor coefficients) of the system
+   *         matrix for the Laplacian smoothing of the stochastic source term.
+   */
+  inline virtual su2double GetSmoothingDiag(unsigned long iPoint) const { return 1.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] val_diag - Diagonal coefficient of the system matrix for the Laplacian smoothing
+   *                        of the stochastic source term.
+   */
+  inline virtual void SetSmoothingDiag(unsigned long iPoint, su2double val_diag) {}
+
+  /*!
    * \brief Mark the points where the Stochastic Backscatter Model is active.
    */
   inline virtual void SetSBSInBox(unsigned long iPoint, su2double val_sbsInBox) {}

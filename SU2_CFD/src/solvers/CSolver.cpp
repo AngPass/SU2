@@ -1385,6 +1385,14 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       COUNT_PER_POINT  = nDim;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
+    case MPI_QUANTITIES::SMOOTH_PHAT:
+      COUNT_PER_POINT  = nDim;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      break;
+    case MPI_QUANTITIES::SMOOTH_SHAT:
+      COUNT_PER_POINT  = nDim;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      break;
     case MPI_QUANTITIES::DES_LENGTHSCALE:
       COUNT_PER_POINT  = 1;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
@@ -1538,6 +1546,14 @@ void CSolver::InitiateComms(CGeometry *geometry,
           case MPI_QUANTITIES::STOCH_SOURCE_LANG_GRAD:
             for (iDim = 0; iDim < nDim; iDim++)
               bufDSend[buf_offset+iDim] = base_nodes->GetLangevinSourceGrad(iPoint, iDim);
+            break;
+          case MPI_QUANTITIES::SMOOTH_PHAT:
+            for (iDim = 0; iDim < nDim; iDim++)
+              bufDSend[buf_offset+iDim] = base_nodes->GetSmoothPhat(iPoint, iDim);
+            break;
+          case MPI_QUANTITIES::SMOOTH_SHAT:
+            for (iDim = 0; iDim < nDim; iDim++)
+              bufDSend[buf_offset+iDim] = base_nodes->GetSmoothShat(iPoint, iDim);
             break;
           case MPI_QUANTITIES::DES_LENGTHSCALE:
             bufDSend[buf_offset] = base_nodes->GetDES_LengthScale(iPoint);
@@ -1712,6 +1728,14 @@ void CSolver::CompleteComms(CGeometry *geometry,
           case MPI_QUANTITIES::STOCH_SOURCE_LANG_GRAD:
             for (iDim = 0; iDim < nDim; iDim++)
               base_nodes->SetLangevinSourceGrad(iPoint, iDim, bufDRecv[buf_offset+iDim]);
+            break;
+          case MPI_QUANTITIES::SMOOTH_PHAT:
+            for (iDim = 0; iDim < nDim; iDim++)
+              base_nodes->SetSmoothPhat(iPoint, iDim, bufDRecv[buf_offset+iDim]);
+            break;
+          case MPI_QUANTITIES::SMOOTH_SHAT:
+            for (iDim = 0; iDim < nDim; iDim++)
+              base_nodes->SetSmoothShat(iPoint, iDim, bufDRecv[buf_offset+iDim]);
             break;
           case MPI_QUANTITIES::DES_LENGTHSCALE:
             base_nodes->SetDES_LengthScale(iPoint, bufDRecv[buf_offset]);

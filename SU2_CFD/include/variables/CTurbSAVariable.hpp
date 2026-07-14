@@ -50,6 +50,9 @@ private:
   MatrixType smoothMatrix;
   MatrixType smoothBetaVec;      /*!< \brief Non-orthogonal correction coefficients (packed per neighbor as 3 components) for the gradient-corrected Laplacian smoothing. */
   MatrixType langevinSourceGrad; /*!< \brief Green-Gauss gradient of the stochastic source term component currently being smoothed. */
+  VectorType smoothDiag;         /*!< \brief Diagonal coefficient of the system matrix for the Laplacian smoothing. */
+  MatrixType smoothPhat;         /*!< \brief Jacobi-preconditioned BiCGSTAB search direction "p" for the Laplacian smoothing. */
+  MatrixType smoothShat;         /*!< \brief Jacobi-preconditioned BiCGSTAB stabilizer direction "s" for the Laplacian smoothing. */
   su2double MAXNNEIGHBORS = 32;
 
 public:
@@ -167,6 +170,43 @@ public:
   inline void SetLangevinSourceGrad(unsigned long iPoint, unsigned short iDim, su2double val_grad) override {
     langevinSourceGrad(iPoint, iDim) = val_grad;
   }
+
+  /*!
+   * \brief Get the diagonal coefficient of the system matrix for the Laplacian smoothing of the
+   *        stochastic source term.
+   * \param[in] iPoint - Point index.
+   */
+  inline su2double GetSmoothingDiag(unsigned long iPoint) const override { return smoothDiag(iPoint); }
+
+  /*!
+   * \brief Set the diagonal coefficient of the system matrix for the Laplacian smoothing of the
+   *        stochastic source term.
+   */
+  inline void SetSmoothingDiag(unsigned long iPoint, su2double val_diag) override { smoothDiag(iPoint) = val_diag; }
+
+  /*!
+   * \brief Get a component of the Jacobi-preconditioned BiCGSTAB search direction "p".
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   */
+  inline su2double GetSmoothPhat(unsigned long iPoint, unsigned short iDim) const override { return smoothPhat(iPoint, iDim); }
+
+  /*!
+   * \brief Set a component of the Jacobi-preconditioned BiCGSTAB search direction "p".
+   */
+  inline void SetSmoothPhat(unsigned long iPoint, unsigned short iDim, su2double val_phat) override { smoothPhat(iPoint, iDim) = val_phat; }
+
+  /*!
+   * \brief Get a component of the Jacobi-preconditioned BiCGSTAB stabilizer direction "s".
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   */
+  inline su2double GetSmoothShat(unsigned long iPoint, unsigned short iDim) const override { return smoothShat(iPoint, iDim); }
+
+  /*!
+   * \brief Set a component of the Jacobi-preconditioned BiCGSTAB stabilizer direction "s".
+   */
+  inline void SetSmoothShat(unsigned long iPoint, unsigned short iDim, su2double val_shat) override { smoothShat(iPoint, iDim) = val_shat; }
 
   /*!
    * \brief Get the value of the stochastic variable resulting from the Ornstein-Uhlenbeck process.

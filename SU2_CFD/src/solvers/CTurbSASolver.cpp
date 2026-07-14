@@ -1737,29 +1737,35 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
   static su2double globalResNorm;
   static unsigned long global_nPointLES;
   static std::array<su2double, 6> globalChecks;
+  /*--- Scalars driving BiCGSTAB control flow (loop conditions/break). These must be "static" (as
+        in the original Jacobi implementation) rather than plain locals: the whole point-loop and
+        Allreduce machinery below runs master-thread-only per MPI rank (BEGIN/END_SU2_OMP_SAFE_
+        GLOBAL_ACCESS), but the while-loop conditions and breakdown checks are plain code executed
+        redundantly by every OpenMP thread sharing this parallel region, so they must all observe
+        the exact same, already-synchronized value that only the master thread computed. ---*/
+  static su2double globalRho, globalRhoPrev, globalAlpha, globalOmega, globalR0V, globalTS, globalTT;
+  static bool breakdown;
 
   const su2double LES_FilterWidth = config->GetLES_FilterWidth();
   const su2double cDelta = config->GetSBSParam().SBS_Cdelta;
   const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
   const su2double tol = -5.0;
   const su2double sourceLim = 5.0;
-  /*--- Relaxation factor for the Jacobi update. Diagonal dominance from the reaction term (the
-        "+1" in diag = 1 + sum(a_ij)) only guarantees unconditional convergence up to omega=1; the
-        actual stability limit omega < 2/lambda_max shrinks towards 1 as sum(a_ij) grows (e.g. fine
-        mesh relative to the filter width), so over-relaxing (omega>1) a Jacobi update like this one
-        is not safe in general (unlike true Gauss-Seidel-based SOR). The explicit non-orthogonal
-        correction term adds further, unquantified sensitivity on top of that. Keep omega<=1. ---*/
-  const su2double omega = 0.99;
+  const su2double eps_breakdown = 1e-50;
   /*--- The non-orthogonal correction only needs to be refreshed periodically (its role is to
         accelerate/correct convergence to the true gradient-based solution, not to change the fixed
-        point), so its extra point loop and MPI round-trip are skipped on iterations in between. ---*/
+        point), so its extra point loop and MPI round-trip are skipped on iterations in between. It
+        also defines the RHS of the linear system solved below, which must stay fixed while BiCGSTAB
+        builds its Krylov subspace, so a refresh restarts (warm-started from the current solution)
+        the Krylov iteration. ---*/
   const unsigned short gradRefreshInterval = 5;
   unsigned long timeIter = config->GetTimeIter();
   unsigned long restartIter = config->GetRestart_Iter();
 
-  /*--- Assemble system matrix: the orthogonal (implicit) coefficient a_ij, unchanged, plus the
+  /*--- Assemble system matrix: the orthogonal (implicit) coefficient a_ij and the diagonal
+        diag_i = 1 + sum(a_ij), both purely geometric (independent of iDim), plus the
         non-orthogonal correction vector betaVec used to reconstruct the full gradient-based
-        diffusive flux across each face (deferred correction, see the SOR loop below). ---*/
+        diffusive flux across each face (deferred correction, folded into the RHS, see below). */
 
   if (timeIter == restartIter) {
     BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
@@ -1768,6 +1774,7 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
       su2double b2 = cDelta * maxDelta * maxDelta;
       su2double volume_iPoint = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
       auto coord_i = geometry->nodes->GetCoord(iPoint);
+      su2double diag = 1.0;
       for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
         auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
         auto coord_j = geometry->nodes->GetCoord(jPoint);
@@ -1786,6 +1793,7 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
         su2double d_normal = sign * dot_nd / max(area*distance, 1e-10);
         su2double a_ij = area/volume_iPoint * fabs(d_normal) * b2/max(distance, 1e-10);
         nodes->SetSmoothingMatrixCoeff(iPoint, iNode, a_ij);
+        diag += a_ij;
 
         /*--- betaVec = (b2/V_i) * sign * (normal - (dot_nd/dist_ij_2)*edge_vector), the coefficient
               such that mean_grad_face . betaVec gives the non-orthogonal (tangential) part of the
@@ -1796,54 +1804,111 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
           nodes->SetSmoothingBetaVec(iPoint, iNode, index, betaVec);
         }
       }
+      nodes->SetSmoothingDiag(iPoint, diag);
     }
     END_SU2_OMP_SAFE_GLOBAL_ACCESS
   }
 
-  /*--- Start SOR algorithm for the Laplacian smoothing. ---*/
+  /*--- Matrix-free operator A(x)_i = diag_i*x_i - sum_j(a_ij*x_j), the only part of the discrete
+        system that is a genuine matrix (the tangential/non-orthogonal term below is a fixed RHS
+        contribution between gradient refreshes, not part of A). GetInput reads whichever field is
+        currently being multiplied by A (the solution itself to form the initial residual, or the
+        preconditioned BiCGSTAB directions phat/shat); the result is written into a local, rank-
+        private (never used as a neighbor, so never halo-exchanged) work vector. Runs master-thread-
+        only per rank, exactly like the original Jacobi sweep. ---*/
+
+  auto ComputeMatVec = [&](unsigned short iDim, auto&& GetInput, std::vector<su2double>& out) {
+    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+    for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+      if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
+      su2double diag = nodes->GetSmoothingDiag(iPoint);
+      su2double sum = 0.0;
+      for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
+        auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
+        su2double a_ij = nodes->GetSmoothingMatrixCoeff(iPoint, iNode);
+        sum += a_ij * GetInput(jPoint);
+      }
+      out[iPoint] = diag*GetInput(iPoint) - sum;
+    }
+    END_SU2_OMP_SAFE_GLOBAL_ACCESS
+  };
+
+  /*--- Dot product between two rank-private work vectors, restricted to the points actually being
+        solved for (points outside the active LES region are frozen at 0 and never enter the linear
+        system, mirroring the exclusion in the original Jacobi sweep), reduced over all MPI ranks.
+        Writes into the static scalar "out" so every OpenMP thread sharing this parallel region
+        observes the same, already-synchronized value once outside the master-only block. ---*/
+
+  auto DotActive = [&](unsigned short iDim, const std::vector<su2double>& a, const std::vector<su2double>& b,
+                       su2double& out) {
+    su2double local = 0.0;
+    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+    for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+      if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
+      local += a[iPoint]*b[iPoint];
+    }
+    END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+    SU2_MPI::Allreduce(&local, &out, 1, MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
+    END_SU2_OMP_SAFE_GLOBAL_ACCESS
+  };
+
+  /*--- Solve, for each spatial dimension, diag_i*x_i - sum_j(a_ij*x_j) = source_i_old + tangential_i
+        with a matrix-free, Jacobi(diagonal)-preconditioned BiCGSTAB, restarting the Krylov subspace
+        (warm-started from the current solution) every time the tangential/gradient RHS term is
+        refreshed, so the matrix and RHS are always fixed for the duration of a Krylov subspace. ---*/
 
   for (unsigned short iDim = 0; iDim < nDim; iDim++) {
 
-    for (unsigned short iter = 0; iter < maxIter; iter++) {
+    std::vector<su2double> bRhs(nPointDomain, 0.0), rVec(nPointDomain, 0.0), rhat0Vec(nPointDomain, 0.0);
+    std::vector<su2double> pVec(nPointDomain, 0.0), vVec(nPointDomain, 0.0);
+    std::vector<su2double> sVec(nPointDomain, 0.0), tVec(nPointDomain, 0.0);
 
-      /*--- MPI communication. ---*/
+    unsigned short totalIter = 0;
+    bool converged = false;
+
+    SU2_OMP_MASTER
+    if (rank == MASTER_NODE) {
+      cout << "\nResidual of Laplacian smoothing along dimension " << iDim+1
+           << "\n---------------------------------"
+           << "\n   Iter       RMS Residual"
+           << "\n---------------------------------" << endl;
+    }
+    END_SU2_OMP_MASTER
+
+    while (!converged && totalIter < maxIter) {
+
+      /*--- Start (or restart) of a block: refresh the halo values of the solution, recompute the
+            Green-Gauss gradient used for the non-orthogonal RHS correction, and rebuild the initial
+            residual r0 = b - A*x (warm-started from the current solution estimate). ---*/
 
       InitiateComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
       CompleteComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
 
-      /*--- Green-Gauss gradient of the field being smoothed this sweep, used to reconstruct the
-            non-orthogonal part of the gradient-based diffusive flux (deferred correction: the
-            gradient is evaluated at the start of the sweep, before the point values below are
-            updated). Refreshed only every gradRefreshInterval iterations: it only affects the
-            convergence rate of the Jacobi iteration, not the converged solution, so reusing the
-            last computed gradient in between saves an extra point loop and MPI round-trip. ---*/
-
-      if (iter % gradRefreshInterval == 0) {
-        BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
-        for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-          su2double source_i = nodes->GetLangevinSourceTerms(iPoint, iDim);
-          su2double volume_iPoint = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
-          su2double grad_i[3] = {0.0, 0.0, 0.0};
-          for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
-            auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
-            auto iEdge = geometry->nodes->GetEdge(iPoint, iNode);
-            auto* normal = geometry->edges->GetNormal(iEdge);
-            su2double sign = (geometry->edges->GetNode(iEdge, 0) == iPoint) ? 1.0 : -1.0;
-            su2double source_j = nodes->GetLangevinSourceTerms(jPoint, iDim);
-            su2double phi_face = 0.5*(source_i + source_j);
-            for (unsigned short index = 0; index < nDim; index++)
-              grad_i[index] += sign * phi_face * normal[index];
-          }
+      BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+      for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+        su2double source_i = nodes->GetLangevinSourceTerms(iPoint, iDim);
+        su2double volume_iPoint = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
+        su2double grad_i[3] = {0.0, 0.0, 0.0};
+        for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
+          auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
+          auto iEdge = geometry->nodes->GetEdge(iPoint, iNode);
+          auto* normal = geometry->edges->GetNormal(iEdge);
+          su2double sign = (geometry->edges->GetNode(iEdge, 0) == iPoint) ? 1.0 : -1.0;
+          su2double source_j = nodes->GetLangevinSourceTerms(jPoint, iDim);
+          su2double phi_face = 0.5*(source_i + source_j);
           for (unsigned short index = 0; index < nDim; index++)
-            nodes->SetLangevinSourceGrad(iPoint, index, grad_i[index] / max(volume_iPoint, 1e-10));
+            grad_i[index] += sign * phi_face * normal[index];
         }
-        END_SU2_OMP_SAFE_GLOBAL_ACCESS
-
-        InitiateComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG_GRAD);
-        CompleteComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG_GRAD);
+        for (unsigned short index = 0; index < nDim; index++)
+          nodes->SetLangevinSourceGrad(iPoint, index, grad_i[index] / max(volume_iPoint, 1e-10));
       }
+      END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
-      su2double localResNorm = 0.0;
+      InitiateComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG_GRAD);
+      CompleteComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG_GRAD);
+
       unsigned long local_nPointLES = 0;
 
       BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
@@ -1851,77 +1916,141 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
         su2double source_i_old = nodes->GetLangevinSourceTermsOld(iPoint, iDim);
         if (source_i_old > 3.0*sourceLim) continue;
         local_nPointLES += 1;
-        su2double source_i = nodes->GetLangevinSourceTerms(iPoint, iDim);
 
-        /*--- Solve system. ---*/
-
-        su2double diag = 1.0;
-        su2double sum = 0.0;
+        su2double tangential_i = 0.0;
         for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
           auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
-          su2double source_j = nodes->GetLangevinSourceTerms(jPoint, iDim);
-          su2double a_ij = nodes->GetSmoothingMatrixCoeff(iPoint, iNode);
-          diag += a_ij;
-          sum += a_ij * source_j;
-
           su2double tangential_ij = 0.0;
           for (unsigned short index = 0; index < nDim; index++) {
             su2double mean_grad = 0.5*(nodes->GetLangevinSourceGrad(iPoint, index) + nodes->GetLangevinSourceGrad(jPoint, index));
             tangential_ij += mean_grad * nodes->GetSmoothingBetaVec(iPoint, iNode, index);
           }
-          sum += tangential_ij;
+          tangential_i += tangential_ij;
         }
-
-        /*--- Update the solution. ---*/
-
-        su2double residual = source_i_old - (source_i * diag - sum);
-        localResNorm += pow(residual, 2);
-        su2double source_tmp = (source_i_old + sum) / diag;
-        source_i = (1.0-omega)*source_i + omega*source_tmp;
-        nodes->SetLangevinSourceTerms(iPoint, iDim, source_i);
-
+        bRhs[iPoint] = source_i_old + tangential_i;
       }
       END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
-      /*--- Stop integration if residual drops below tolerance. ---*/
+      BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+      SU2_MPI::Allreduce(&local_nPointLES, &global_nPointLES, 1, MPI_UNSIGNED_LONG, MPI_SUM, SU2_MPI::GetComm());
+      END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
-      BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS {
-        SU2_MPI::Allreduce(&local_nPointLES, &global_nPointLES, 1, MPI_UNSIGNED_LONG, MPI_SUM, SU2_MPI::GetComm());
-        SU2_MPI::Allreduce(&localResNorm, &globalResNorm, 1, MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
-        globalResNorm = (global_nPointLES==0) ? su2double(0.0) : sqrt(globalResNorm / global_nPointLES);
+      ComputeMatVec(iDim, [&](unsigned long j){ return nodes->GetLangevinSourceTerms(j, iDim); }, rVec);
+
+      BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+      for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+        if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
+        rVec[iPoint] = bRhs[iPoint] - rVec[iPoint];
+        rhat0Vec[iPoint] = rVec[iPoint];
+        /*--- p_0 = v_0 = 0 (standard BiCGSTAB init): with rho_prev=alpha=omega=1 reset below, the
+              first inner iteration's p update (p = r + beta*(p-omega*v)) then correctly reduces to
+              p_1 = r_0 regardless of beta, since the (p_0 - omega*v_0) term vanishes. ---*/
+        pVec[iPoint] = 0.0;
+        vVec[iPoint] = 0.0;
       }
       END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
-      SU2_OMP_MASTER
-      if (rank == MASTER_NODE) {
-        if (iter == 0) {
-          cout << "\nResidual of Laplacian smoothing along dimension " << iDim+1
-               << "\n---------------------------------"
-               << "\n   Iter       RMS Residual"
-               << "\n---------------------------------" << endl;
-        }
-        if (iter%50 == 0) {
-          cout << "  "
-               << std::setw(5) << iter
-               << "       "
-               << std::setw(12) << std::fixed << std::setprecision(6) << log10(globalResNorm)
-               << endl;
-        }
-      }
-      END_SU2_OMP_MASTER
+      /*--- Account for the cost of this refresh/restart against the iteration budget: this
+            guarantees the outer (block/restart) loop always makes progress towards maxIter, even
+            in the degenerate case where every restarted Krylov subspace breaks down immediately
+            (e.g. an already-converged residual, for which rho would be ~0 by construction). ---*/
+      totalIter++;
 
-      if (log10(globalResNorm) < tol || iter == maxIter-1) {
+      su2double r0NormSq = 0.0;
+      DotActive(iDim, rVec, rVec, r0NormSq);
+      SU2_OMP_SAFE_GLOBAL_ACCESS(
+        globalResNorm = (global_nPointLES==0) ? su2double(0.0) : sqrt(r0NormSq / global_nPointLES);
+      )
+      if (log10(globalResNorm) < tol) converged = true;
+
+      SU2_OMP_SAFE_GLOBAL_ACCESS(globalRho = 1.0; globalAlpha = 1.0; globalOmega = 1.0; breakdown = false;)
+
+      unsigned short blockIter = 0;
+      while (!breakdown && !converged && blockIter < gradRefreshInterval && totalIter < maxIter) {
+
+        SU2_OMP_SAFE_GLOBAL_ACCESS(globalRhoPrev = globalRho;)
+        DotActive(iDim, rhat0Vec, rVec, globalRho);
+
+        if (fabs(globalRho) < eps_breakdown) { breakdown = true; break; }
+
+        su2double beta = (globalRho/globalRhoPrev) * (globalAlpha/globalOmega);
+
+        BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+        for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+          if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
+          pVec[iPoint] = rVec[iPoint] + beta*(pVec[iPoint] - globalOmega*vVec[iPoint]);
+          nodes->SetSmoothPhat(iPoint, iDim, pVec[iPoint] / nodes->GetSmoothingDiag(iPoint));
+        }
+        END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+        InitiateComms(geometry, config, MPI_QUANTITIES::SMOOTH_PHAT);
+        CompleteComms(geometry, config, MPI_QUANTITIES::SMOOTH_PHAT);
+
+        ComputeMatVec(iDim, [&](unsigned long j){ return nodes->GetSmoothPhat(j, iDim); }, vVec);
+
+        DotActive(iDim, rhat0Vec, vVec, globalR0V);
+        if (fabs(globalR0V) < eps_breakdown) { breakdown = true; break; }
+        SU2_OMP_SAFE_GLOBAL_ACCESS(globalAlpha = globalRho / globalR0V;)
+
+        BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+        for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+          if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
+          sVec[iPoint] = rVec[iPoint] - globalAlpha*vVec[iPoint];
+          nodes->SetSmoothShat(iPoint, iDim, sVec[iPoint] / nodes->GetSmoothingDiag(iPoint));
+        }
+        END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+        InitiateComms(geometry, config, MPI_QUANTITIES::SMOOTH_SHAT);
+        CompleteComms(geometry, config, MPI_QUANTITIES::SMOOTH_SHAT);
+
+        ComputeMatVec(iDim, [&](unsigned long j){ return nodes->GetSmoothShat(j, iDim); }, tVec);
+
+        DotActive(iDim, tVec, sVec, globalTS);
+        DotActive(iDim, tVec, tVec, globalTT);
+        if (fabs(globalTT) < eps_breakdown) { breakdown = true; break; }
+        SU2_OMP_SAFE_GLOBAL_ACCESS(globalOmega = globalTS / globalTT;)
+
+        su2double localResNorm = 0.0;
+        BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+        for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+          if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
+          su2double source_i = nodes->GetLangevinSourceTerms(iPoint, iDim);
+          su2double phat = nodes->GetSmoothPhat(iPoint, iDim);
+          su2double shat = nodes->GetSmoothShat(iPoint, iDim);
+          source_i += globalAlpha*phat + globalOmega*shat;
+          nodes->SetLangevinSourceTerms(iPoint, iDim, source_i);
+          rVec[iPoint] = sVec[iPoint] - globalOmega*tVec[iPoint];
+          localResNorm += pow(rVec[iPoint], 2);
+        }
+        END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+        BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS {
+          SU2_MPI::Allreduce(&localResNorm, &globalResNorm, 1, MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
+          globalResNorm = (global_nPointLES==0) ? su2double(0.0) : sqrt(globalResNorm / global_nPointLES);
+        }
+        END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+        blockIter++; totalIter++;
 
         SU2_OMP_MASTER
         if (rank == MASTER_NODE) {
           cout << "  "
-               << std::setw(5) << iter
+               << std::setw(5) << totalIter-1
                << "       "
-               << std::setw(12) << std::fixed << ::setprecision(6) << log10(globalResNorm)
+               << std::setw(12) << std::fixed << std::setprecision(6) << log10(globalResNorm)
                << endl;
-          cout << "---------------------------------" << endl;
         }
         END_SU2_OMP_MASTER
+
+        if (log10(globalResNorm) < tol || totalIter == maxIter) converged = true;
+      }
+    }
+
+    SU2_OMP_MASTER
+    if (rank == MASTER_NODE) cout << "---------------------------------" << endl;
+    END_SU2_OMP_MASTER
+
+    {
 
         /*--- Scale source terms for variance preservation. ---*/
 
@@ -2067,10 +2196,6 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
           cout << "\n   Smoothed after scaling  --> " << ((config->GetSBSParam().besselScaleFactor) ? var_check_new : 1.0) << '\n' << endl;
         }
         END_SU2_OMP_MASTER
-
-        /*--- Converged or maximum number of iterations reached. ---*/
-        break;
-      }
     }
   }
 

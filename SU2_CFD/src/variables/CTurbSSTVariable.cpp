@@ -71,6 +71,9 @@ CTurbSSTVariable::CTurbSSTVariable(su2double kine, su2double omega, su2double mu
       smoothMatrix.resize(nPoint, MAXNNEIGHBORS) = su2double(0.0);
       smoothBetaVec.resize(nPoint, MAXNNEIGHBORS*3) = su2double(0.0);
       langevinSourceGrad.resize(nPoint, 3) = su2double(0.0);
+      smoothDiag.resize(nPoint) = su2double(1.0);
+      smoothPhat.resize(nPoint, 3) = su2double(0.0);
+      smoothShat.resize(nPoint, 3) = su2double(0.0);
     }
   }
 }

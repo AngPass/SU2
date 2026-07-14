@@ -471,6 +471,40 @@ public:
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
    * \param[in] iDim - Dimension index.
+   * \return Component of the Jacobi-preconditioned BiCGSTAB search direction "p" used while
+   *         Laplacian-smoothing the stochastic source term.
+   */
+  inline virtual su2double GetSmoothPhat(unsigned long iPoint, unsigned short iDim) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   * \param[in] val_phat - Component of the Jacobi-preconditioned BiCGSTAB search direction "p".
+   */
+  inline virtual void SetSmoothPhat(unsigned long iPoint, unsigned short iDim, su2double val_phat) {}
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   * \return Component of the Jacobi-preconditioned BiCGSTAB stabilizer direction "s" used while
+   *         Laplacian-smoothing the stochastic source term.
+   */
+  inline virtual su2double GetSmoothShat(unsigned long iPoint, unsigned short iDim) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   * \param[in] val_shat - Component of the Jacobi-preconditioned BiCGSTAB stabilizer direction "s".
+   */
+  inline virtual void SetSmoothShat(unsigned long iPoint, unsigned short iDim, su2double val_shat) {}
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
    * \return Value of the stochastic variable resulting from Ornstein-Uhlenbeck process.
    */
   inline virtual su2double GetOU_Process(unsigned long iPoint, unsigned short iDim) const { return 0.0; }

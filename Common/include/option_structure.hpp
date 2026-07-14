@@ -2759,6 +2759,8 @@ enum class MPI_QUANTITIES {
   MEAN_MODELED_STRESS  ,  /*!< \brief Mean modeled stress tensor communication. */
   STOCH_SOURCE_LANG    ,  /*!< \brief Stochastic source term for Langevin equations communication. */
   STOCH_SOURCE_LANG_GRAD, /*!< \brief Gradient of the stochastic source term being Laplacian-smoothed. */
+  SMOOTH_PHAT          ,  /*!< \brief Preconditioned search direction (BiCGSTAB) for the Langevin source Laplacian smoothing. */
+  SMOOTH_SHAT          ,  /*!< \brief Preconditioned stabilizer direction (BiCGSTAB) for the Langevin source Laplacian smoothing. */
   DES_LENGTHSCALE      ,  /*!< \brief DES length scale communication. */
   LES_SENSOR           ,  /*!< \brief LES sensor communication. */
   OU_PROCESS           ,  /*!< \brief Ornstein-Uhlenbeck process. */
