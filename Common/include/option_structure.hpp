@@ -1535,7 +1535,10 @@ enum ENUM_HYBRIDRANSLES {
   SA_DDES  = 2,          /*!< \brief Kind of Hybrid RANS/LES (SA - Delayed DES (DDES) with Delta_max SGS ). */
   SA_ZDES  = 3,          /*!< \brief Kind of Hybrid RANS/LES (SA - Delayed DES (DDES) with Vorticity based SGS like Zonal DES). */
   SA_EDDES = 4,          /*!< \brief Kind of Hybrid RANS/LES (SA - Delayed DES (DDES) with Shear Layer Adapted SGS: Enhanced DDES). */
-  SST_DDES = 5           /*!< \brief Kinf of Hybrid RANS/LES (SST - Delayed DES (DDES) with Delta_max SGS). */
+  SST_DDES  = 5,         /*!< \brief Kind of Hybrid RANS/LES (SST - Delayed DES (DDES) with Delta_max SGS). */
+  SST_DES   = 6,         /*!< \brief Kind of Hybrid RANS/LES (SST - Detached Eddy Simulation (DES)). */
+  SST_ZDES  = 7,         /*!< \brief Kind of Hybrid RANS/LES (SST - Delayed DES (DDES) with Vorticity based SGS like Zonal DES). */
+  SST_EDDES = 8          /*!< \brief Kind of Hybrid RANS/LES (SST - Delayed DES (DDES) with Shear Layer Adapted SGS: Enhanced DDES). */
 };
 static const MapType<std::string, ENUM_HYBRIDRANSLES> HybridRANSLES_Map = {
   MakePair("NONE", NO_HYBRIDRANSLES)
@@ -1544,7 +1547,20 @@ static const MapType<std::string, ENUM_HYBRIDRANSLES> HybridRANSLES_Map = {
   MakePair("SA_ZDES", SA_ZDES)
   MakePair("SA_EDDES", SA_EDDES)
   MakePair("SST_DDES", SST_DDES)
+  MakePair("SST_DES", SST_DES)
+  MakePair("SST_ZDES", SST_ZDES)
+  MakePair("SST_EDDES", SST_EDDES)
 };
+
+/*!
+ * \brief Whether a Hybrid RANS/LES kind belongs to the SST family (as opposed to the SA family),
+ *        i.e. it selects the k-omega SST RANS branch instead of the Spalart-Allmaras equation.
+ *        The SST_* enum values are contiguous, so this also holds for future additions placed
+ *        after SST_EDDES.
+ */
+inline bool IsHybridRANSLES_SST(unsigned short kindHybridRANSLES) {
+  return kindHybridRANSLES >= SST_DDES;
+}
 
 /*!
  * \brief Types of stochastic source terms (Stochastic Backscatter Model)

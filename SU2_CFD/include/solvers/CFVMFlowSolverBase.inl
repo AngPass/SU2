@@ -490,7 +490,7 @@ void CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsigned long iEdge, CGeome
   /*--- Stochastic variables from Langevin equations (Stochastic Backscatter Model). ---*/
 
   if (backscatter) {
-    unsigned short startVar = (config->GetKind_HybridRANSLES() == SST_DDES) ? 2 : 1;
+    unsigned short startVar = IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) ? 2 : 1;
     if (config->GetSBSParam().stochSourceType == LANGEVIN) {
       for (unsigned short iDim = 0; iDim < nDim; iDim++)
         numerics->SetStochVar(iDim, turbNodes->GetSolution(iPoint, iDim+startVar),
@@ -504,10 +504,10 @@ void CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsigned long iEdge, CGeome
         numerics->SetStochVar(iDim, turbNodes->GetLangevinSourceTerms(iPoint, iDim),
                                     turbNodes->GetLangevinSourceTerms(jPoint, iDim));
     }
-    if (config->GetKind_HybridRANSLES() != SST_DDES) {
-      numerics->SetMaxDelta(geometry->nodes->GetMaxLength(iPoint), geometry->nodes->GetMaxLength(jPoint));
+    if (!IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
+      numerics->SetMaxDelta(turbNodes->GetDES_FilterWidth(iPoint), turbNodes->GetDES_FilterWidth(jPoint));
     }
-    if (config->GetKind_HybridRANSLES() == SST_DDES && config->GetSBSParam().useMeanTurbKE) {
+    if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().useMeanTurbKE) {
       numerics->SetAvgTurbKineticEnergy(turbNodes->GetMeanTurbKinEnergy(iPoint), turbNodes->GetMeanTurbKinEnergy(jPoint));
     }
     numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), nodes->GetLES_Mode(jPoint));

@@ -397,6 +397,23 @@ public:
   inline virtual void SetDES_LengthScale(unsigned long iPoint, su2double val_des_lengthscale) {}
 
   /*!
+   * \brief A virtual member: get the LES filter width (Delta) implied by the Hybrid RANS/LES
+   *        variant selected via HYBRID_RANSLES, as computed by SetDES_LengthScale (e.g. the
+   *        vorticity-based Delta for *_ZDES, the vortex-tilting-based Delta for *_EDDES), so that
+   *        other DES-related routines (stochastic backscatter smoothing, Ornstein-Uhlenbeck
+   *        process, ...) use a filter width consistent with the chosen variant instead of always
+   *        falling back to the raw, isotropic cell length.
+   * \param[in] iPoint - Point index.
+   */
+  inline virtual su2double GetDES_FilterWidth(unsigned long iPoint) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   */
+  inline virtual void SetDES_FilterWidth(unsigned long iPoint, su2double val_des_filterwidth) {}
+
+  /*!
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
    */

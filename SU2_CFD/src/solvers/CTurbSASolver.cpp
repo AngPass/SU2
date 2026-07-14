@@ -439,7 +439,7 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
             numerics->SetStochSource(nodes->GetOU_Process(iPoint, iDim), iDim);
         }
         numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), 0.0);
-        numerics->SetMaxDelta(geometry->nodes->GetMaxLength(iPoint), 0.0);
+        numerics->SetMaxDelta(nodes->GetDES_FilterWidth(iPoint), 0.0);
         numerics->SetWallDistance(geometry->nodes->GetWall_Distance(iPoint), 0.0);
       }
 
@@ -1476,7 +1476,7 @@ void CTurbSASolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, CC
     su2double psi_2 = (1.0 - (cb1/(cw1*k2*fw_star))*(ft2 + (1.0 - ft2)*fv2))/(fv1 * max(1.0e-10,1.0-ft2));
     psi_2 = min(100.0,psi_2);
 
-    su2double lengthScale = 0.0, lesSensor = 0.0;
+    su2double lengthScale = 0.0, lesSensor = 0.0, desFilterWidth = 0.0;
 
     const su2double LES_FilterWidth = config->GetLES_FilterWidth();
 
@@ -1487,11 +1487,11 @@ void CTurbSASolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, CC
         1997
         ---*/
 
-        su2double maxDelta = geometry->nodes->GetMaxLength(iPoint);
+        desFilterWidth = geometry->nodes->GetMaxLength(iPoint);
         if (LES_FilterWidth > 0.0){
-          maxDelta = LES_FilterWidth;
+          desFilterWidth = LES_FilterWidth;
         }
-        const su2double distDES = constDES * maxDelta;
+        const su2double distDES = constDES * desFilterWidth;
         lengthScale = min(distDES,wallDistance);
         lesSensor = (wallDistance<=distDES) ? 0.0 : 1.0;
 
@@ -1508,15 +1508,15 @@ void CTurbSASolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, CC
          Theoretical and Computational Fluid Dynamics - 2006
          ---*/
 
-        su2double maxDelta = geometry->nodes->GetMaxLength(iPoint);
+        desFilterWidth = geometry->nodes->GetMaxLength(iPoint);
         if (LES_FilterWidth > 0.0){
-          maxDelta = LES_FilterWidth;
+          desFilterWidth = LES_FilterWidth;
         }
 
         const su2double r_d = (kinematicViscosityTurb+kinematicViscosity)/(uijuij*k2*pow(wallDistance, 2.0));
         const su2double f_d = 1.0-tanh(pow(8.0*r_d,3.0));
 
-        const su2double distDES = constDES * maxDelta;
+        const su2double distDES = constDES * desFilterWidth;
         lengthScale = wallDistance-f_d*max(0.0,(wallDistance-distDES));
         lesSensor = (wallDistance<=distDES) ? 0.0 : f_d;
 
@@ -1551,21 +1551,21 @@ void CTurbSASolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, CC
           ratioOmega[iDim] = vorticity[iDim]/omega;
         }
 
-        su2double maxDelta = sqrt(pow(ratioOmega[0], 2)*delta[1]*delta[2] +
-                                  pow(ratioOmega[1], 2)*delta[0]*delta[2] +
-                                  pow(ratioOmega[2], 2)*delta[0]*delta[1]);
+        desFilterWidth = sqrt(pow(ratioOmega[0], 2)*delta[1]*delta[2] +
+                              pow(ratioOmega[1], 2)*delta[0]*delta[2] +
+                              pow(ratioOmega[2], 2)*delta[0]*delta[1]);
 
         const su2double r_d = (kinematicViscosityTurb+kinematicViscosity)/(uijuij*k2*pow(wallDistance, 2.0));
         const su2double f_d = 1.0-tanh(pow(8.0*r_d,3.0));
 
         if (f_d < 0.99){
-          maxDelta = deltaDDES;
+          desFilterWidth = deltaDDES;
         }
 
         if (LES_FilterWidth > 0.0){
-          maxDelta = LES_FilterWidth;
+          desFilterWidth = LES_FilterWidth;
         }
-        const su2double distDES = constDES * maxDelta;
+        const su2double distDES = constDES * desFilterWidth;
         lengthScale = wallDistance-f_d*max(0.0,(wallDistance-distDES));
         lesSensor = (wallDistance<=distDES) ? 0.0 : f_d;
 
@@ -1618,15 +1618,15 @@ void CTurbSASolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, CC
         const su2double r_d = (kinematicViscosityTurb+kinematicViscosity)/(uijuij*k2*pow(wallDistance, 2.0));
         const su2double f_d = 1.0-tanh(pow(8.0*r_d,3.0));
 
-        su2double maxDelta = (ln_max/sqrt(3.0)) * f_kh;
+        desFilterWidth = (ln_max/sqrt(3.0)) * f_kh;
         if (f_d < 0.999){
-          maxDelta = deltaDDES;
+          desFilterWidth = deltaDDES;
         }
 
         if (LES_FilterWidth > 0.0){
-          maxDelta = LES_FilterWidth;
+          desFilterWidth = LES_FilterWidth;
         }
-        const su2double distDES = constDES * maxDelta;
+        const su2double distDES = constDES * desFilterWidth;
         lengthScale = wallDistance-f_d*max(0.0,(wallDistance-distDES));
         lesSensor = (wallDistance<=distDES) ? 0.0 : f_d;
 
@@ -1641,6 +1641,7 @@ void CTurbSASolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, CC
 
     nodes->SetDES_LengthScale(iPoint, lengthScale);
     nodes->SetLES_Mode(iPoint, lesSensor);
+    nodes->SetDES_FilterWidth(iPoint, desFilterWidth);
 
   }
   END_SU2_OMP_FOR
@@ -1712,7 +1713,7 @@ void CTurbSASolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeomet
 
   SU2_OMP_FOR_STAT(omp_chunk_size)
   for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-    su2double maxDelta = geometry->nodes->GetMaxLength(iPoint);
+    su2double maxDelta = nodes->GetDES_FilterWidth(iPoint);
     su2double nuT = nodes->GetmuT(iPoint) / flowNodes->GetDensity(iPoint);
     su2double turbTime = fabs(config->GetSBSParam().SBS_Ctau) * maxDelta*maxDelta / max(nuT, 1e-10);
     su2double timeRatio = timeStep/turbTime;
@@ -1746,7 +1747,6 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
   static su2double globalRho, globalRhoPrev, globalAlpha, globalOmega, globalR0V, globalTS, globalTT;
   static bool breakdown;
 
-  const su2double LES_FilterWidth = config->GetLES_FilterWidth();
   const su2double cDelta = config->GetSBSParam().SBS_Cdelta;
   const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
   const su2double tol = -5.0;
@@ -1770,7 +1770,7 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
   if (timeIter == restartIter) {
     BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
     for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-      su2double maxDelta = (LES_FilterWidth > 0.0) ? LES_FilterWidth : geometry->nodes->GetMaxLength(iPoint);
+      su2double maxDelta = nodes->GetDES_FilterWidth(iPoint);
       su2double b2 = cDelta * maxDelta * maxDelta;
       su2double volume_iPoint = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
       auto coord_i = geometry->nodes->GetCoord(iPoint);
@@ -2045,7 +2045,7 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
           SU2_OMP_MASTER
           if (rank == MASTER_NODE) {
             cout << "  "
-                 << std::setw(5) << totalIter-1
+                 << std::setw(5) << printIter
                  << "       "
                  << std::setw(12) << std::fixed << std::setprecision(6) << log10(globalResNorm)
                  << endl;
@@ -2086,7 +2086,7 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
           for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
             su2double integral = 0.0;
             if (timeIter==restartIter) {
-              su2double maxDelta = (LES_FilterWidth > 0.0) ? LES_FilterWidth : geometry->nodes->GetMaxLength(iPoint);
+              su2double maxDelta = nodes->GetDES_FilterWidth(iPoint);
               su2double b2 = cDelta * maxDelta * maxDelta;
               su2double M[3][3] = {{0.0}};
               for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {

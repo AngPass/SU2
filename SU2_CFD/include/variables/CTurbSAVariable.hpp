@@ -40,6 +40,7 @@ class CTurbSAVariable final : public CTurbVariable {
 
 private:
   VectorType DES_LengthScale;
+  VectorType DES_FilterWidth;
   VectorType lesMode;
   MatrixType stochSource;
   MatrixType stochSourceOld;
@@ -85,6 +86,19 @@ public:
    * \param[in] iPoint - Point index.
    */
   inline void SetDES_LengthScale(unsigned long iPoint, su2double val_des_lengthscale) override { DES_LengthScale(iPoint) = val_des_lengthscale; }
+
+  /*!
+   * \brief Get the LES filter width implied by the selected Hybrid RANS/LES variant.
+   * \param[in] iPoint - Point index.
+   * \return Value of the LES filter width.
+   */
+  inline su2double GetDES_FilterWidth(unsigned long iPoint) const override { return DES_FilterWidth(iPoint); }
+
+  /*!
+   * \brief Set the LES filter width implied by the selected Hybrid RANS/LES variant.
+   * \param[in] iPoint - Point index.
+   */
+  inline void SetDES_FilterWidth(unsigned long iPoint, su2double val_des_filterwidth) override { DES_FilterWidth(iPoint) = val_des_filterwidth; }
 
   /*!
    * \brief Get the source terms for the stochastic equations.

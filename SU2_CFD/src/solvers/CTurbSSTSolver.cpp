@@ -219,7 +219,24 @@ void CTurbSSTSolver::Preprocessing(CGeometry *geometry, CSolver **solver_contain
   /*--- Upwind second order reconstruction and gradients ---*/
   CommonPreprocessing(geometry, config, Output);
   
-  if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) {
+  const auto kind_hybridRANSLES = config->GetKind_HybridRANSLES();
+
+  if (kind_hybridRANSLES != NO_HYBRIDRANSLES) {
+
+    /*--- Set the vortex tilting coefficient at every node if required ---*/
+
+    if (kind_hybridRANSLES == SST_EDDES){
+      auto* flowNodes = su2staticcast_p<CFlowVariable*>(solver_container[FLOW_SOL]->GetNodes());
+
+      SU2_OMP_FOR_STAT(omp_chunk_size)
+      for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++){
+        auto Vorticity = flowNodes->GetVorticity(iPoint);
+        auto PrimGrad_Flow = flowNodes->GetGradient_Primitive(iPoint);
+        auto Laminar_Viscosity = flowNodes->GetLaminarViscosity(iPoint);
+        nodes->SetVortex_Tilting(iPoint, PrimGrad_Flow, Vorticity, Laminar_Viscosity);
+      }
+      END_SU2_OMP_FOR
+    }
 
     /*--- Compute the DES length scale ---*/
 
@@ -441,7 +458,7 @@ void CTurbSSTSolver::Source_Residual(CGeometry *geometry, CSolver **solver_conta
             numerics->SetStochSource(nodes->GetOU_Process(iPoint, iDim), iDim);
         }
         numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), 0.0);
-        numerics->SetMaxDelta(geometry->nodes->GetMaxLength(iPoint), 0.0);
+        numerics->SetMaxDelta(nodes->GetDES_FilterWidth(iPoint), 0.0);
         if (config->GetSBSParam().useMeanTurbKE) numerics->SetAvgTurbKineticEnergy(nodes->GetMeanTurbKinEnergy(iPoint), 0.0);
       }
     }
@@ -657,18 +674,24 @@ void CTurbSSTSolver::SetTurbVars_WF(CGeometry *geometry, CSolver **solver_contai
 void CTurbSSTSolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, CConfig *config){
   SU2_ZONE_SCOPED
 
+  const auto kindHybridRANSLES = config->GetKind_HybridRANSLES();
+
   const su2double cDES_1 = config->GetConst_DES_1();
   const su2double cDES_2 = config->GetConst_DES_2();
   const su2double beta_star = constants[6];
   const su2double k2 = pow(0.41, 2);
+  const su2double f_max = 1.0, f_min = 0.1, a1 = 0.15, a2 = 0.3;
 
   auto* flowNodes = su2staticcast_p<CFlowVariable*>(solver[FLOW_SOL]->GetNodes());
 
   SU2_OMP_FOR_DYN(omp_chunk_size)
   for (auto iPoint = 0ul; iPoint < nPointDomain; iPoint++){
 
+    const auto coord_i       = geometry->nodes->GetCoord(iPoint);
+    const auto nNeigh        = geometry->nodes->GetnPoint(iPoint);
     const auto wallDistance  = geometry->nodes->GetWall_Distance(iPoint);
     const auto velocityGrad  = flowNodes->GetVelocityGradient(iPoint);
+    const auto vorticity     = flowNodes->GetVorticity(iPoint);
     const auto density       = flowNodes->GetDensity(iPoint);
     const auto laminarViscosity = flowNodes->GetLaminarViscosity(iPoint);
     const auto eddyViscosity    = nodes->GetmuT(iPoint);
@@ -677,7 +700,8 @@ void CTurbSSTSolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, C
     const su2double k = nodes->GetSolution(iPoint, 0);
     const su2double omega = max(nodes->GetSolution(iPoint, 1), 1e-10);
     const su2double F1 = nodes->GetF1blending(iPoint);
-    su2double constDES = cDES_1*F1 + cDES_2*(1.0-F1);
+    const su2double constDES = cDES_1*F1 + cDES_2*(1.0-F1);
+    const su2double distRANS = sqrt(k)/(omega*beta_star);
 
     su2double uijuij = 0.0;
     for(auto iDim = 0u; iDim < nDim; iDim++){
@@ -689,23 +713,162 @@ void CTurbSSTSolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, C
     uijuij = max(uijuij,1e-10);
 
     const su2double LES_FilterWidth = config->GetLES_FilterWidth();
-    su2double maxDelta = (LES_FilterWidth > 0.0) ? LES_FilterWidth : geometry->nodes->GetMaxLength(iPoint);
 
-    const su2double r_d = (kinematicViscosityTurb+kinematicViscosity)/(uijuij*k2*pow(wallDistance, 2.0));
-    const su2double f_d = 1.0-tanh(pow(20.0*r_d,3.0));
+    su2double lengthScale = 0.0, lesSensor = 0.0, desFilterWidth = 0.0;
 
-    const su2double distDES = constDES * maxDelta;
-    const su2double distRANS = sqrt(k)/(omega*beta_star);
-    su2double lengthScale = distRANS-f_d*max(0.0,(distRANS-distDES));
-    su2double lesSensor = (distRANS<=distDES) ? 0.0 : f_d;
+    switch(kindHybridRANSLES){
+      case SST_DES: {
+        /*--- Detached Eddy Simulation (DES97), SST counterpart of SA_DES. ---*/
 
-    if (config->GetEnforceLES()) {
-      lengthScale = distDES;
-      lesSensor = 1.0;
+        desFilterWidth = geometry->nodes->GetMaxLength(iPoint);
+        if (LES_FilterWidth > 0.0){
+          desFilterWidth = LES_FilterWidth;
+        }
+        const su2double distDES = constDES * desFilterWidth;
+        lengthScale = min(distDES,distRANS);
+        lesSensor = (distRANS<=distDES) ? 0.0 : 1.0;
+
+        if (config->GetEnforceLES()) {
+          lengthScale = distDES;
+          lesSensor = 1.0;
+        }
+
+        break;
+      }
+      case SST_DDES: {
+        /*--- Delayed DES with Delta_max SGS, Gritskevich et al.,
+         Flow Turbulence Combust - 2012 ---*/
+
+        desFilterWidth = geometry->nodes->GetMaxLength(iPoint);
+        if (LES_FilterWidth > 0.0){
+          desFilterWidth = LES_FilterWidth;
+        }
+
+        const su2double r_d = (kinematicViscosityTurb+kinematicViscosity)/(uijuij*k2*pow(wallDistance, 2.0));
+        const su2double f_d = 1.0-tanh(pow(20.0*r_d,3.0));
+
+        const su2double distDES = constDES * desFilterWidth;
+        lengthScale = distRANS-f_d*max(0.0,(distRANS-distDES));
+        lesSensor = (distRANS<=distDES) ? 0.0 : f_d;
+
+        if (config->GetEnforceLES()) {
+          lengthScale = distDES;
+          lesSensor = 1.0;
+        }
+
+        break;
+      }
+      case SST_ZDES: {
+        /*--- Zonal DES: Delayed DES with Vorticity based SGS, Deck,
+         Theoretical and Computational Fluid Dynamics - 2012 ---*/
+
+        const su2double deltaDDES = geometry->nodes->GetMaxLength(iPoint);
+
+        su2double delta[MAXNDIM] = {}, ratioOmega[MAXNDIM] = {};
+
+        for (const auto jPoint : geometry->nodes->GetPoints(iPoint)) {
+          const auto coord_j = geometry->nodes->GetCoord(jPoint);
+          for (auto iDim = 0u; iDim < nDim; iDim++){
+            const su2double deltaAux = abs(coord_j[iDim] - coord_i[iDim]);
+            delta[iDim] = max(delta[iDim], deltaAux);
+          }
+        }
+
+        const su2double omegaNorm = GeometryToolbox::Norm(3, vorticity);
+
+        for (auto iDim = 0u; iDim < 3; iDim++){
+          ratioOmega[iDim] = vorticity[iDim]/omegaNorm;
+        }
+
+        desFilterWidth = sqrt(pow(ratioOmega[0], 2)*delta[1]*delta[2] +
+                              pow(ratioOmega[1], 2)*delta[0]*delta[2] +
+                              pow(ratioOmega[2], 2)*delta[0]*delta[1]);
+
+        const su2double r_d = (kinematicViscosityTurb+kinematicViscosity)/(uijuij*k2*pow(wallDistance, 2.0));
+        const su2double f_d = 1.0-tanh(pow(20.0*r_d,3.0));
+
+        if (f_d < 0.99){
+          desFilterWidth = deltaDDES;
+        }
+
+        if (LES_FilterWidth > 0.0){
+          desFilterWidth = LES_FilterWidth;
+        }
+        const su2double distDES = constDES * desFilterWidth;
+        lengthScale = distRANS-f_d*max(0.0,(distRANS-distDES));
+        lesSensor = (distRANS<=distDES) ? 0.0 : f_d;
+
+        if (config->GetEnforceLES()) {
+          lengthScale = distDES;
+          lesSensor = 1.0;
+        }
+
+        break;
+      }
+      case SST_EDDES: {
+        /*--- Enhanced DDES with Shear Layer Adapted SGS, Shur et al.,
+         Flow Turbulence Combust - 2015 ---*/
+
+        su2double vortexTiltingMeasure = nodes->GetVortex_Tilting(iPoint);
+
+        const su2double omegaNorm = GeometryToolbox::Norm(3, vorticity);
+
+        su2double ratioOmega[MAXNDIM] = {};
+
+        for (auto iDim = 0; iDim < 3; iDim++){
+          ratioOmega[iDim] = vorticity[iDim]/omegaNorm;
+        }
+
+        const su2double deltaDDES = geometry->nodes->GetMaxLength(iPoint);
+
+        su2double ln_max = 0.0;
+        for (const auto jPoint : geometry->nodes->GetPoints(iPoint)) {
+          const auto coord_j = geometry->nodes->GetCoord(jPoint);
+          su2double delta[MAXNDIM] = {};
+          for (auto iDim = 0u; iDim < nDim; iDim++){
+            delta[iDim] = fabs(coord_j[iDim] - coord_i[iDim]);
+          }
+          su2double ln[3];
+          ln[0] = delta[1]*ratioOmega[2] - delta[2]*ratioOmega[1];
+          ln[1] = delta[2]*ratioOmega[0] - delta[0]*ratioOmega[2];
+          ln[2] = delta[0]*ratioOmega[1] - delta[1]*ratioOmega[0];
+          const su2double aux_ln = sqrt(ln[0]*ln[0] + ln[1]*ln[1] + ln[2]*ln[2]);
+          ln_max = max(ln_max, aux_ln);
+          vortexTiltingMeasure += nodes->GetVortex_Tilting(jPoint);
+        }
+        vortexTiltingMeasure /= (nNeigh + 1);
+
+        const su2double f_kh = max(f_min,
+                                   min(f_max,
+                                       f_min + ((f_max - f_min)/(a2 - a1)) * (vortexTiltingMeasure - a1)));
+
+        const su2double r_d = (kinematicViscosityTurb+kinematicViscosity)/(uijuij*k2*pow(wallDistance, 2.0));
+        const su2double f_d = 1.0-tanh(pow(20.0*r_d,3.0));
+
+        desFilterWidth = (ln_max/sqrt(3.0)) * f_kh;
+        if (f_d < 0.999){
+          desFilterWidth = deltaDDES;
+        }
+
+        if (LES_FilterWidth > 0.0){
+          desFilterWidth = LES_FilterWidth;
+        }
+        const su2double distDES = constDES * desFilterWidth;
+        lengthScale = distRANS-f_d*max(0.0,(distRANS-distDES));
+        lesSensor = (distRANS<=distDES) ? 0.0 : f_d;
+
+        if (config->GetEnforceLES()) {
+          lengthScale = distDES;
+          lesSensor = 1.0;
+        }
+
+        break;
+      }
     }
 
     nodes->SetDES_LengthScale(iPoint, lengthScale);
     nodes->SetLES_Mode(iPoint, lesSensor);
+    nodes->SetDES_FilterWidth(iPoint, desFilterWidth);
 
   }
   END_SU2_OMP_FOR
@@ -777,7 +940,7 @@ void CTurbSSTSolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeome
 
   SU2_OMP_FOR_STAT(omp_chunk_size)
   for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-    su2double maxDelta = geometry->nodes->GetMaxLength(iPoint);
+    su2double maxDelta = nodes->GetDES_FilterWidth(iPoint);
     su2double tke = (config->GetSBSParam().useMeanTurbKE) ? nodes->GetMeanTurbKinEnergy(iPoint) : nodes->GetSolution(iPoint, 0);
     su2double timeLES = config->GetSBSParam().SBS_Ctau * maxDelta / sqrt(max(tke, 1e-10));
     su2double timeRANS = 1.0 / (beta*max(nodes->GetSolution(iPoint, 1), 1e-10));
@@ -814,7 +977,6 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
   static su2double globalRho, globalRhoPrev, globalAlpha, globalOmega, globalR0V, globalTS, globalTT;
   static bool breakdown;
 
-  const su2double LES_FilterWidth = config->GetLES_FilterWidth();
   const su2double cDelta = config->GetSBSParam().SBS_Cdelta;
   const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
   const su2double tol = -5.0;
@@ -838,7 +1000,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
   if (timeIter == restartIter) {
     BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
     for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-      su2double maxDelta = (LES_FilterWidth > 0.0) ? LES_FilterWidth : geometry->nodes->GetMaxLength(iPoint);
+      su2double maxDelta = nodes->GetDES_FilterWidth(iPoint);
       su2double b2 = cDelta * maxDelta * maxDelta;
       su2double volume_iPoint = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
       auto coord_i = geometry->nodes->GetCoord(iPoint);
@@ -1113,7 +1275,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
           SU2_OMP_MASTER
           if (rank == MASTER_NODE) {
             cout << "  "
-                 << std::setw(5) << totalIter-1
+                 << std::setw(5) << printIter
                  << "       "
                  << std::setw(12) << std::fixed << std::setprecision(6) << log10(globalResNorm)
                  << endl;
@@ -1154,7 +1316,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
           for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
             su2double integral = 0.0;
             if (timeIter==restartIter) {
-              su2double maxDelta = (LES_FilterWidth > 0.0) ? LES_FilterWidth : geometry->nodes->GetMaxLength(iPoint);
+              su2double maxDelta = nodes->GetDES_FilterWidth(iPoint);
               su2double b2 = cDelta * maxDelta * maxDelta;
               su2double M[3][3] = {{0.0}};
               for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {

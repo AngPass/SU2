@@ -1753,7 +1753,7 @@ void CFlowOutput::LoadVolumeDataScalar(const CConfig* config, const CSolver* con
     SetVolumeOutputValue("LES_SENSOR", iPoint, Node_Flow->GetLES_Mode(iPoint));
     if (config->GetSBSParam().StochasticBackscatter) {
       if (config->GetSBSParam().stochSourceType == LANGEVIN) {
-        unsigned short startVar = (config->GetKind_HybridRANSLES() == SST_DDES) ? 1 : 0;
+        unsigned short startVar = IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) ? 1 : 0;
         SetVolumeOutputValue("STOCHVAR_X", iPoint, Node_Turb->GetSolution(iPoint, 1+startVar));
         SetVolumeOutputValue("STOCHVAR_Y", iPoint, Node_Turb->GetSolution(iPoint, 2+startVar));
         SetVolumeOutputValue("STOCHVAR_Z", iPoint, Node_Turb->GetSolution(iPoint, 3+startVar));
@@ -4349,7 +4349,7 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
 
     if (config->GetKind_Turb_Model() == TURB_MODEL::SST) {
       SetAvgVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint, Node_Turb->GetSolution(iPoint, 0));
-      if (config->GetKind_HybridRANSLES() == SST_DDES && config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().useMeanTurbKE) {
+      if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().useMeanTurbKE) {
         Node_Turb->SetMeanTurbKinEnergy(iPoint, GetVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint));
       }
     }
@@ -4359,7 +4359,7 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
       const su2double mag = config->GetSBSParam().SBS_Cmag;
       const su2double threshold = config->GetSBSParam().stochFdThreshold;
       su2double tke_estim = 0.0;
-      if (config->GetKind_HybridRANSLES() == SST_DDES) {
+      if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
         su2double tke = (config->GetSBSParam().useMeanTurbKE) ? Node_Turb->GetMeanTurbKinEnergy(iPoint) : Node_Turb->GetSolution(iPoint, 0);
         tke_estim = (lesSensor > threshold) ? tke: 0.0;
       } else {
@@ -4368,7 +4368,7 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
       }
       su2double csi_x, csi_y, csi_z;
       if (config->GetSBSParam().stochSourceType == LANGEVIN) {
-        unsigned short startVar = (config->GetKind_HybridRANSLES() == SST_DDES) ? 1 : 0;
+        unsigned short startVar = IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) ? 1 : 0;
         csi_x = Node_Turb->GetSolution(iPoint, 1+startVar);
         csi_y = Node_Turb->GetSolution(iPoint, 2+startVar);
         csi_z = Node_Turb->GetSolution(iPoint, 3+startVar);

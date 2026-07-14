@@ -46,8 +46,10 @@ protected:
   VectorType CDkw;  /*!< \brief Cross-diffusion. */
   SST_ParsedOptions sstParsedOptions;
   VectorType DES_LengthScale;
+  VectorType DES_FilterWidth;
   VectorType MeanTurbKE;
   VectorType lesMode;
+  VectorType Vortex_Tilting;
   MatrixType stochSource;
   MatrixType stochSourceOld;
   MatrixType OU_Process;
@@ -92,6 +94,19 @@ public:
    * \param[in] iPoint - Point index.
    */
   inline void SetDES_LengthScale(unsigned long iPoint, su2double val_des_lengthscale) override { DES_LengthScale(iPoint) = val_des_lengthscale; }
+
+  /*!
+   * \brief Get the LES filter width implied by the selected Hybrid RANS/LES variant.
+   * \param[in] iPoint - Point index.
+   * \return Value of the LES filter width.
+   */
+  inline su2double GetDES_FilterWidth(unsigned long iPoint) const override { return DES_FilterWidth(iPoint); }
+
+  /*!
+   * \brief Set the LES filter width implied by the selected Hybrid RANS/LES variant.
+   * \param[in] iPoint - Point index.
+   */
+  inline void SetDES_FilterWidth(unsigned long iPoint, su2double val_des_filterwidth) override { DES_FilterWidth(iPoint) = val_des_filterwidth; }
 
   /*!
    * \brief Get the mean turbulent kinetic energy.
@@ -264,6 +279,20 @@ public:
    * \return One if the Stochastic Backscatter Model is active.
    */
   inline su2double GetSBSInBox(unsigned long iPoint) const override { return sbsInBox(iPoint); }
+
+  /*!
+   * \brief Set the vortex tilting measure for computation of the EDDES length scale
+   * \param[in] iPoint - Point index.
+   */
+  void SetVortex_Tilting(unsigned long iPoint, CMatrixView<const su2double>,
+                         const su2double* Vorticity, su2double LaminarViscosity) override;
+
+  /*!
+   * \brief Get the vortex tilting measure for computation of the EDDES length scale
+   * \param[in] iPoint - Point index.
+   * \return Value of the DES length Scale
+   */
+  inline su2double GetVortex_Tilting(unsigned long iPoint) const override { return Vortex_Tilting(iPoint); }
 
   /*!
    * \brief Set the integral of the product of three Bessel functions appearing in Laplacian smoothing.

@@ -6574,10 +6574,13 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
         cout << "Hybrid RANS/LES: ";
         switch (Kind_HybridRANSLES) {
           case NO_HYBRIDRANSLES: cout << "No Hybrid RANS/LES" << endl; break;
-          case SA_DES:   cout << "Detached Eddy Simulation (DES97) " << endl; break;
+          case SA_DES:
+          case SST_DES:   cout << "Detached Eddy Simulation (DES97) " << endl; break;
           case SST_DDES:
           case SA_DDES:  cout << "Delayed Detached Eddy Simulation (DDES) with Standard SGS" << endl; break;
+          case SST_ZDES:
           case SA_ZDES:  cout << "Delayed Detached Eddy Simulation (DDES) with Vorticity-based SGS" << endl; break;
+          case SST_EDDES:
           case SA_EDDES: cout << "Delayed Detached Eddy Simulation (DDES) with Shear-layer Adapted SGS" << endl; break;
         }
         if (Kind_HybridRANSLES != NO_HYBRIDRANSLES) {
@@ -6629,7 +6632,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
               cout << "|  Z: " << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[4] << " , "
                               << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[5] << endl;
             }
-            if (Kind_HybridRANSLES != SA_DES)
+            if (Kind_HybridRANSLES != SA_DES && Kind_HybridRANSLES != SST_DES)
               cout << "| Stochastic source terms suppressed where the shielding function is lower than: " << setw(4) << setprecision(4) << SBSParam.stochFdThreshold << endl;
             if (SBSParam.filterStresses)
               cout << "| Modeled stress tensor high-pass filtered where the shielding function is above: " << setw(4) << setprecision(4) << SBSParam.stochFdThreshold << endl;

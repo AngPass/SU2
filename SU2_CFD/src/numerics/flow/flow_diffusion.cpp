@@ -177,7 +177,7 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
   su2double tke_i = 0.0, tke_j = 0.0;
   su2double sensorThreshold = config->GetSBSParam().stochFdThreshold;
   
-  if (config->GetKind_HybridRANSLES() == SST_DDES) {
+  if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
     su2double turbKinEn_i = (config->GetSBSParam().useMeanTurbKE) ? avg_turb_ke_i : turb_ke_i;
     su2double turbKinEn_j = (config->GetSBSParam().useMeanTurbKE) ? avg_turb_ke_j : turb_ke_j;
     tke_i = (lesMode_i > sensorThreshold) ? turbKinEn_i : 0.0;

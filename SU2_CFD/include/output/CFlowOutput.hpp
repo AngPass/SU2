@@ -392,18 +392,18 @@ protected:
     su2double tkeEstim_i = 0.0;
     const su2double lesSensor_i = node_flow->GetLES_Mode(iPoint);
 
-    if (config->GetKind_HybridRANSLES() == SST_DDES) {
+    if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
       su2double tke_i = (config->GetSBSParam().useMeanTurbKE) ? node_turb->GetMeanTurbKinEnergy(iPoint) : node_turb->GetSolution(iPoint, 0);
       tkeEstim_i = (lesSensor_i > threshold) ? tke_i : 0.0;
     } else {
       const su2double rho_i = node_flow->GetDensity(iPoint);
       const su2double nuT_i = node_flow->GetEddyViscosity(iPoint) / rho_i;
-      const su2double lengthscale_i = config->GetConst_DES() * geometry->nodes->GetMaxLength(iPoint);
+      const su2double lengthscale_i = config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint);
       tkeEstim_i = (lesSensor_i > threshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
     }
 
     su2double stochVec_i[3] = {0.0};
-    unsigned short startVar = (config->GetKind_HybridRANSLES() == SST_DDES) ? 2 : 1;
+    unsigned short startVar = IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) ? 2 : 1;
     for (unsigned short iDim = 0; iDim < nDim; iDim++) {
       if (config->GetSBSParam().stochSourceType == LANGEVIN)
         stochVec_i[iDim] = node_turb->GetSolution(iPoint, iDim+startVar);
@@ -429,13 +429,13 @@ protected:
       su2double tkeEstim_j = 0.0;
       const su2double lesSensor_j = node_flow->GetLES_Mode(jPoint);
 
-      if (config->GetKind_HybridRANSLES() == SST_DDES) {
+      if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
         su2double tke_j = (config->GetSBSParam().useMeanTurbKE) ? node_turb->GetMeanTurbKinEnergy(jPoint) : node_turb->GetSolution(jPoint, 0);
         tkeEstim_j = (lesSensor_j > threshold) ? tke_j : 0.0;
       } else {
         const su2double rho_j = node_flow->GetDensity(jPoint);
         const su2double nuT_j = node_flow->GetEddyViscosity(jPoint) / rho_j;
-        const su2double lengthscale_j = config->GetConst_DES() * geometry->nodes->GetMaxLength(jPoint);
+        const su2double lengthscale_j = config->GetConst_DES() * node_turb->GetDES_FilterWidth(jPoint);
         tkeEstim_j = (lesSensor_j > threshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
       }
 
@@ -492,18 +492,18 @@ protected:
     su2double tkeEstim_i = 0.0;
     const su2double lesSensor_i = node_flow->GetLES_Mode(iPoint);
 
-    if (config->GetKind_HybridRANSLES() == SST_DDES) {
+    if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
       su2double tke_i = (config->GetSBSParam().useMeanTurbKE) ? node_turb->GetMeanTurbKinEnergy(iPoint) : node_turb->GetSolution(iPoint, 0);
       tkeEstim_i = (lesSensor_i > threshold) ? tke_i : 0.0;
     } else {
       const su2double rho_i = node_flow->GetDensity(iPoint);
       const su2double nuT_i = node_flow->GetEddyViscosity(iPoint) / rho_i;
-      const su2double lengthscale_i = config->GetConst_DES() * geometry->nodes->GetMaxLength(iPoint);
+      const su2double lengthscale_i = config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint);
       tkeEstim_i = (lesSensor_i > threshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
     }
 
     su2double stochVec_i[3] = {0.0};
-    unsigned short startVar = (config->GetKind_HybridRANSLES() == SST_DDES) ? 2 : 1;
+    unsigned short startVar = IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) ? 2 : 1;
     for (unsigned short iDim = 0; iDim < nDim; iDim++) {
       if (config->GetSBSParam().stochSourceType == LANGEVIN)
         stochVec_i[iDim] = node_turb->GetSolution(iPoint, iDim+startVar);
