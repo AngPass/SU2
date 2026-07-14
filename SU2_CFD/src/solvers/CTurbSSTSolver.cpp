@@ -1100,17 +1100,24 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
 
         blockIter++; totalIter++;
 
-        SU2_OMP_MASTER
-        if (rank == MASTER_NODE) {
-          cout << "  "
-               << std::setw(5) << totalIter-1
-               << "       "
-               << std::setw(12) << std::fixed << std::setprecision(6) << log10(globalResNorm)
-               << endl;
-        }
-        END_SU2_OMP_MASTER
+        /*--- Print convergence at the first iteration, then every 10, and finally once more at
+              whichever iteration ends the loop (converged or maxIter reached). ---*/
+        const bool isConverged = (log10(globalResNorm) < tol || totalIter == maxIter);
+        const bool printConvergence = (totalIter == 1) || (totalIter % 10 == 0) || isConverged;
 
-        if (log10(globalResNorm) < tol || totalIter == maxIter) converged = true;
+        if (printConvergence) {
+          SU2_OMP_MASTER
+          if (rank == MASTER_NODE) {
+            cout << "  "
+                 << std::setw(5) << totalIter-1
+                 << "       "
+                 << std::setw(12) << std::fixed << std::setprecision(6) << log10(globalResNorm)
+                 << endl;
+          }
+          END_SU2_OMP_MASTER
+        }
+
+        converged = isConverged;
       }
     }
 
