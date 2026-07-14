@@ -35,6 +35,8 @@
 #include "../../../Common/include/geometry/CGeometry.hpp"
 #include "../../../Common/include/adt/CADTPointsOnlyClass.hpp"
 #include "../../../Common/include/toolboxes/geometry_toolbox.hpp"
+#include "../../../Common/include/toolboxes/sbs_restart_toolbox.hpp"
+#include "../../include/output/filewriter/CParallelDataSorter.hpp"
 #include "../../include/solvers/CSolver.hpp"
 #include "../../include/variables/CPrimitiveIndices.hpp"
 #include "../../include/fluid/CCoolProp.hpp"
@@ -2568,6 +2570,57 @@ void CFlowOutput::WriteAdditionalFiles(CConfig *config, CGeometry *geometry, CSo
     WriteForcesBreakdown(config, solver_container[FLOW_SOL]);
   }
 
+  WriteAveragedFields(config, geometry);
+
+}
+
+void CFlowOutput::WriteAveragedFields(CConfig *config, CGeometry *geometry) {
+
+  if (!config->GetWrt_Restart_Averages()) return;
+
+  /*--- Collect the currently active TIME_AVERAGE/BACKSCATTER fields (i.e. those with a valid
+        offset, meaning they were actually requested for this run) to persist. ---*/
+
+  vector<string> fieldNames;
+  vector<short> offsets;
+  for (const auto& name : volumeOutput_List) {
+    const auto& field = volumeOutput_Map.at(name);
+    if (field.offset == -1) continue;
+    if (field.outputGroup != "TIME_AVERAGE" && field.outputGroup != "BACKSCATTER") continue;
+    fieldNames.push_back(name);
+    offsets.push_back(field.offset);
+  }
+  if (fieldNames.empty()) return;
+
+  const string filename = config->GetRestart_FileName() + "_avg_fields.csv";
+
+  if (rank == MASTER_NODE) cout << "Writing time-averaged fields restart file: " << filename << "." << endl;
+
+  SBSRestartToolbox::WriteMeanFields(filename, geometry, geometry->GetnPointDomain(), fieldNames,
+      curAbsTimeIter + priorAvgSamples + 1,
+      [&](unsigned long iPoint, su2double* row) {
+        for (size_t iVar = 0; iVar < offsets.size(); iVar++)
+          row[iVar] = volumeDataSorter->GetUnsortedData(iPoint, static_cast<unsigned short>(offsets[iVar]));
+      });
+}
+
+void CFlowOutput::RestoreAveragedFields(CConfig *config, CGeometry *geometry) {
+
+  const string filename = config->GetSolution_FileName() + "_avg_fields.csv";
+  unsigned long nSamples = 0;
+
+  const bool found = SBSRestartToolbox::ReadMeanFields(filename, geometry, nSamples,
+      [&](unsigned long iPoint, const string& fieldName, su2double value) {
+        const auto it = volumeOutput_Map.find(fieldName);
+        if (it == volumeOutput_Map.end() || it->second.offset == -1) return;
+        volumeDataSorter->SetUnsortedData(iPoint, static_cast<unsigned short>(it->second.offset), value);
+      });
+
+  if (found) {
+    priorAvgSamples = nSamples;
+    if (rank == MASTER_NODE)
+      cout << "Restored time-averaged fields from " << filename << " (" << nSamples << " prior samples)." << endl;
+  }
 }
 
 void CFlowOutput::WriteMetaData(const CConfig *config){
@@ -4271,6 +4324,17 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
       SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_XZ", iPoint, -tau_xz);
       SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_YZ", iPoint, -tau_yz);
     }
+
+    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses) {
+      /*--- The Stochastic Backscatter Model is only supported for 3D flows. ---*/
+      Node_Flow->SetMeanModeledStress(iPoint, 0, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_XX", iPoint));
+      Node_Flow->SetMeanModeledStress(iPoint, 1, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_YY", iPoint));
+      Node_Flow->SetMeanModeledStress(iPoint, 2, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_ZZ", iPoint));
+      Node_Flow->SetMeanModeledStress(iPoint, 3, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_XY", iPoint));
+      Node_Flow->SetMeanModeledStress(iPoint, 4, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_XZ", iPoint));
+      Node_Flow->SetMeanModeledStress(iPoint, 5, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_YZ", iPoint));
+    }
+
     const su2double strainMag = Node_Flow->GetStrainMag(iPoint);
     SetAvgVolumeOutputValue("MEAN_TURBULENT_PRODUCTION", iPoint, nu_t*strainMag*strainMag);
 

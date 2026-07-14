@@ -836,6 +836,15 @@ bool COutput::SetResultFiles(CGeometry *geometry, CConfig *config, CSolver** sol
   /*--- Check if the data sorters are allocated, if not, allocate them. --- */
   AllocateDataSorters(config, geometry);
 
+  /*--- Restore TIME_AVERAGE/BACKSCATTER fields from a previous run, if requested, before the first
+        volume data load of the run so the running averages continue coherently (WRT_RESTART_AVERAGES).
+        This has to happen exactly once, and before LoadDataIntoSorter below computes the first sample
+        of this run for each field. ---*/
+  if (!averagedFieldsRestoreAttempted) {
+    averagedFieldsRestoreAttempted = true;
+    if (config->GetWrt_Restart_Averages()) RestoreAveragedFields(config, geometry);
+  }
+
   for (unsigned short iFile = 0; iFile < nVolumeFiles; iFile++) {
 
     /*--- Collect the volume data from the solvers.
@@ -1768,7 +1777,7 @@ su2double COutput::GetVolumeOutputValue(const string& name, unsigned long iPoint
 
 void COutput::SetAvgVolumeOutputValue(const string& name, unsigned long iPoint, su2double value){
 
-  const su2double scaling = 1.0 / su2double(curAbsTimeIter + 1);
+  const su2double scaling = 1.0 / su2double(curAbsTimeIter + priorAvgSamples + 1);
 
   if (buildFieldIndexCache) {
     /*--- Build up the offset cache to speed up subsequent

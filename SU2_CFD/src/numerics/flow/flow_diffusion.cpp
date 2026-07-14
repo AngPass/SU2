@@ -147,6 +147,30 @@ void CAvgGrad_Base::SetStressTensor(const su2double *val_primvar,
       for (unsigned short jDim = 0 ; jDim < nDim; jDim++)
         tau[iDim][jDim] -= stochStressTensor[iDim][jDim];
   }
+
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses) {
+    /*--- High-pass filter the modeled stress tensor where the LES sensor is active: subtract the
+          time-averaged (low-frequency) part of the modeled stress from the instantaneous tau. Note
+          MODELED_REYNOLDS_STRESS_* (CFlowOutput) is stored as minus the kinematic turbulent stress,
+          so recovering it (with the correct sign) here requires adding Density*MeanModeledStress. ---*/
+    const su2double sensorThreshold = config->GetSBSParam().stochFdThreshold;
+    su2double meanStress_i[6], meanStress_j[6];
+    for (unsigned short iVar = 0; iVar < 6; iVar++) {
+      meanStress_i[iVar] = (lesMode_i > sensorThreshold) ? meanModeledStress_i[iVar] : 0.0;
+      meanStress_j[iVar] = (lesMode_j > sensorThreshold) ? meanModeledStress_j[iVar] : 0.0;
+    }
+    su2double meanStress[3][3];
+    meanStress[0][0] = 0.5*(meanStress_i[0]+meanStress_j[0]);
+    meanStress[1][1] = 0.5*(meanStress_i[1]+meanStress_j[1]);
+    meanStress[2][2] = 0.5*(meanStress_i[2]+meanStress_j[2]);
+    meanStress[0][1] = meanStress[1][0] = 0.5*(meanStress_i[3]+meanStress_j[3]);
+    meanStress[0][2] = meanStress[2][0] = 0.5*(meanStress_i[4]+meanStress_j[4]);
+    meanStress[1][2] = meanStress[2][1] = 0.5*(meanStress_i[5]+meanStress_j[5]);
+
+    for (unsigned short iDim = 0 ; iDim < nDim; iDim++)
+      for (unsigned short jDim = 0 ; jDim < nDim; jDim++)
+        tau[iDim][jDim] += Density * meanStress[iDim][jDim];
+  }
 }
 
 void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {

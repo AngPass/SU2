@@ -1197,6 +1197,8 @@ void CConfig::SetConfig_Options() {
   addBoolOption("READ_BINARY_RESTART", Read_Binary_Restart, true);
   /*!\brief WRT_RESTART_OVERWRITE \n DESCRIPTION: overwrite restart files or append iteration number. \n Options: YES, NO \ingroup Config */
   addBoolOption("WRT_RESTART_OVERWRITE", Wrt_Restart_Overwrite, true);
+  /*!\brief WRT_RESTART_AVERAGES \n DESCRIPTION: Persist TIME_AVERAGE/BACKSCATTER volume output fields (running averages) in a companion file, and restore them on restart so the averages continue instead of resetting. \n Options: NO, YES \ingroup Config */
+  addBoolOption("WRT_RESTART_AVERAGES", Wrt_Restart_Averages, false);
   /*!\brief WRT_SURFACE_OVERWRITE \n DESCRIPTION: overwrite visualisation files or append iteration number. \n Options: YES, NO \ingroup Config */
   addBoolOption("WRT_SURFACE_OVERWRITE", Wrt_Surface_Overwrite, true);
   /*!\brief WRT_VOLUME_OVERWRITE \n DESCRIPTION: overwrite visualisation files or append iteration number. \n Options: YES, NO \ingroup Config */
@@ -3039,6 +3041,9 @@ void CConfig::SetConfig_Options() {
 
   /* DESCRIPTION: Use mean turbulent kinetic energy in the definition of the stochastic source term. */
   addBoolOption("SBS_USE_MEAN_TKE", SBSParam.useMeanTurbKE, false);
+
+  /* DESCRIPTION: High-pass filter the modeled (subgrid) stress tensor where the LES sensor is active. */
+  addBoolOption("SBS_FILTER_STRESSES", SBSParam.filterStresses, false);
 
   /* DESCRIPTION: Filter width for LES (if negative, it is computed based on the local cell size) */
   addDoubleOption("LES_FILTER_WIDTH", LES_FilterWidth, -1.0);
@@ -6593,6 +6598,8 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
             }
             if (Kind_HybridRANSLES != SA_DES)
               cout << "| Stochastic source terms suppressed where the shielding function is lower than: " << setw(4) << setprecision(4) << SBSParam.stochFdThreshold << endl;
+            if (SBSParam.filterStresses)
+              cout << "| Modeled stress tensor high-pass filtered where the shielding function is above: " << setw(4) << setprecision(4) << SBSParam.stochFdThreshold << endl;
           } else {
             cout << "OFF" << endl;
           }

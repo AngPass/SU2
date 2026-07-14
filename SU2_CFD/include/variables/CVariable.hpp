@@ -411,6 +411,21 @@ public:
   /*!
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
+   * \param[in] iVar - Component index of the symmetric tensor (0=xx, 1=yy, 2=zz, 3=xy, 4=xz, 5=yz).
+   */
+  inline virtual su2double GetMeanModeledStress(unsigned long iPoint, unsigned short iVar) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] iVar - Component index of the symmetric tensor (0=xx, 1=yy, 2=zz, 3=xy, 4=xz, 5=yz).
+   * \param[in] val_mean_stress - Mean stress tensor component.
+   */
+  inline virtual void SetMeanModeledStress(unsigned long iPoint, unsigned short iVar, su2double val_mean_stress) {}
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
    */
   inline virtual su2double GetLES_Mode(unsigned long iPoint) const { return 0.0; }
 

@@ -93,6 +93,14 @@ protected:
   curOuterIter,                   /*!< \brief Current value of the outer iteration index */
   curInnerIter;                   /*!< \brief Current value of the inner iteration index */
 
+  unsigned long priorAvgSamples = 0; /*!< \brief Number of samples already accumulated in the
+                                           TIME_AVERAGE/BACKSCATTER fields before this run, restored
+                                           from a previous run (WRT_RESTART_AVERAGES) so running
+                                           averages continue coherently across restarts. Zero (the
+                                           default) leaves the averaging behavior unchanged. */
+  bool averagedFieldsRestoreAttempted = false; /*!< \brief Guards the one-time restore attempt done
+                                                     right after the data sorters are allocated. */
+
   su2double PrevStopTime;         /*!< \brief Previous stop time for iteration timing. */
 
   string historyFilename;   /*!< \brief The history filename*/
@@ -1029,6 +1037,16 @@ protected:
    * \param[in] solver_container - The container holding all solution data.
    */
   inline virtual void WriteAdditionalFiles(CConfig *config, CGeometry* geometry, CSolver** solver_container){}
+
+  /*!
+   * \brief Restore TIME_AVERAGE/BACKSCATTER volume output fields (running averages) from a
+   *        companion file written by a previous run (WRT_RESTART_AVERAGES), if present, so the
+   *        averages continue coherently instead of resetting. Called once, right after the data
+   *        sorters are allocated and before the first volume data load of the run.
+   * \param[in] config - Definition of the particular problem per zone.
+   * \param[in] geometry - Geometrical definition of the problem.
+   */
+  inline virtual void RestoreAveragedFields(CConfig *config, CGeometry* geometry){}
 
   /*!
    * \brief Write any additional output defined for the current solver.

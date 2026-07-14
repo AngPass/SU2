@@ -2756,6 +2756,7 @@ enum class MPI_QUANTITIES {
   GRID_VELOCITY        ,  /*!< \brief Grid velocity communication. */
   SOLUTION_EDDY        ,  /*!< \brief Turbulent solution plus eddy viscosity communication. */
   MEAN_TKE             ,  /*!< \brief Mean turbulent kinetic energy communication. */
+  MEAN_MODELED_STRESS  ,  /*!< \brief Mean modeled stress tensor communication. */
   STOCH_SOURCE_LANG    ,  /*!< \brief Stochastic source term for Langevin equations communication. */
   DES_LENGTHSCALE      ,  /*!< \brief DES length scale communication. */
   LES_SENSOR           ,  /*!< \brief LES sensor communication. */

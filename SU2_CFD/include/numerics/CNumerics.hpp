@@ -202,6 +202,9 @@ protected:
   stochVar_i[3] = {0.0}, /*!< \brief Stochastic variables at point i for Stochastic Backscatter Model. */
   stochVar_j[3] = {0.0}; /*!< \brief Stochastic variables at point j for Stochastic Backscatter Model. */
   su2double
+  meanModeledStress_i[6] = {0.0}, /*!< \brief Mean modeled stress tensor at point i, packed as (xx,yy,zz,xy,xz,yz). */
+  meanModeledStress_j[6] = {0.0}; /*!< \brief Mean modeled stress tensor at point j, packed as (xx,yy,zz,xy,xz,yz). */
+  su2double
   lesMode_i = 0.0, /*!< \brief LES sensor at point i for hybrid RANS-LES methods. */
   lesMode_j = 0.0; /*!< \brief LES sensor at point j for hybrid RANS-LES methods. */
   SST_ParsedOptions sstParsedOptions; /*!< \brief additional options for the SST turbulence model */
@@ -877,6 +880,17 @@ public:
   inline void SetStochVar(unsigned short iDim, su2double val_stochvar_i, su2double val_stochvar_j) {
     stochVar_i[iDim] = val_stochvar_i;
     stochVar_j[iDim] = val_stochvar_j;
+  }
+
+  /*!
+   * \brief Set a component of the mean modeled stress tensor (Stochastic Backscatter Model, stress filtering).
+   * \param[in] iVar - Component index (0=xx, 1=yy, 2=zz, 3=xy, 4=xz, 5=yz).
+   * \param[in] val_meanstress_i - Value of the mean modeled stress component at point i.
+   * \param[in] val_meanstress_j - Value of the mean modeled stress component at point j.
+   */
+  inline void SetMeanModeledStress(unsigned short iVar, su2double val_meanstress_i, su2double val_meanstress_j) {
+    meanModeledStress_i[iVar] = val_meanstress_i;
+    meanModeledStress_j[iVar] = val_meanstress_j;
   }
 
   /*!

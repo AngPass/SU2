@@ -321,6 +321,23 @@ protected:
   void WriteAdditionalFiles(CConfig *config, CGeometry *geometry, CSolver **solver_container) override;
 
   /*!
+   * \brief Write all currently active TIME_AVERAGE/BACKSCATTER volume output fields to a small
+   *        companion ASCII file (together with the number of samples accumulated so far), so they
+   *        can be restored on restart instead of restarting the running averages from scratch.
+   * \param[in] config - Definition of the particular problem per zone.
+   * \param[in] geometry - Geometrical definition of the problem.
+   */
+  void WriteAveragedFields(CConfig *config, CGeometry *geometry);
+
+  /*!
+   * \brief Restore all TIME_AVERAGE/BACKSCATTER volume output fields from the companion file
+   *        written by WriteAveragedFields, if present.
+   * \param[in] config - Definition of the particular problem per zone.
+   * \param[in] geometry - Geometrical definition of the problem.
+   */
+  void RestoreAveragedFields(CConfig *config, CGeometry *geometry) override;
+
+  /*!
    * \brief Determines if the the volume output should be written.
    * \param[in] config - Definition of the particular problem.
    * \param[in] Iter - Current iteration index.

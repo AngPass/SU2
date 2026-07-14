@@ -511,6 +511,14 @@ void CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsigned long iEdge, CGeome
       numerics->SetAvgTurbKineticEnergy(turbNodes->GetMeanTurbKinEnergy(iPoint), turbNodes->GetMeanTurbKinEnergy(jPoint));
     }
     numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), nodes->GetLES_Mode(jPoint));
+
+    /*--- Mean modeled stress tensor, used to high-pass filter the modeled stresses (Stochastic Backscatter Model). ---*/
+
+    if (config->GetSBSParam().filterStresses) {
+      for (unsigned short iVar = 0; iVar < 6; iVar++)
+        numerics->SetMeanModeledStress(iVar, nodes->GetMeanModeledStress(iPoint, iVar),
+                                             nodes->GetMeanModeledStress(jPoint, iVar));
+    }
   }
 
   /*--- Wall shear stress values (wall functions) ---*/

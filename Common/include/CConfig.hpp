@@ -726,6 +726,7 @@ private:
   Wrt_Restart_Compact,                /*!< \brief Write compact restart files with minimum nr. of variables. */
   Read_Binary_Restart,                /*!< \brief Read binary SU2 native restart files.*/
   Wrt_Restart_Overwrite,              /*!< \brief Overwrite restart files or append iteration number.*/
+  Wrt_Restart_Averages,               /*!< \brief Persist TIME_AVERAGE/BACKSCATTER volume output fields in a companion file and restore them on restart. */
   Wrt_Surface_Overwrite,              /*!< \brief Overwrite surface output files or append iteration number.*/
   Wrt_Volume_Overwrite,               /*!< \brief Overwrite volume output files or append iteration number.*/
   PyCustomSource,                     /*!< \brief Use a user-defined custom source term .*/
@@ -1116,6 +1117,7 @@ private:
     su2double stochFdThreshold;             /*!< \brief Shielding function lower threshold for application of Stochastic Backscatter Model. */
     bool useMeanTurbKE;                     /*!< \brief Option for using mean turbulent kinetic energy in the definition of the random source term (SST model). */
     unsigned short stochSourceType;         /*!< \brief Kind of stochastic source term included in the balance equations. */
+    bool filterStresses;                    /*!< \brief Option for high-pass filtering the modeled (subgrid) stress tensor where the LES sensor is active. */
   } SBSParam;
   bool enforceLES;                          /*!< \brief Option to enforce LES mode in hybrid RANS-LES simulations. */
   su2double LES_FilterWidth;                /*!< \brief LES filter width for hybrid RANS-LES simulations. */
@@ -5620,6 +5622,13 @@ public:
    * \return Flag for overwriting. If Flag=false, iteration nr is appended to filename
    */
   bool GetWrt_Restart_Overwrite(void) const { return Wrt_Restart_Overwrite; }
+
+  /*!
+   * \brief Flag for whether TIME_AVERAGE/BACKSCATTER volume output fields are persisted to a
+   *        companion file and restored on restart, so the running averages continue coherently.
+   * \return Flag for restoring/persisting averaged fields across restarts.
+   */
+  bool GetWrt_Restart_Averages(void) const { return Wrt_Restart_Averages; }
 
     /*!
    * \brief Flag for whether visualization files are overwritten.

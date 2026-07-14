@@ -42,6 +42,7 @@ private:
   VectorType DES_LengthScale; /*!< \brief DES Length Scale. */
   VectorType lesMode;         /*!< \brief Sensor for local simulation mode (0=RANS, 1=LES).*/
   VectorType MeanTurbKE;      /*!< \brief Mean turbulent kinetic energy. */
+  MatrixType MeanModeledStress; /*!< \brief Mean modeled stress tensor, packed as (xx,yy,zz,xy,xz,yz). */
   const bool Energy;          /*!< \brief Flag for Energy equation in incompressible flows. */
 
 public:
@@ -146,6 +147,23 @@ public:
    * \brief Set the mean turbulent kinetic energy.
    */
   inline void SetMeanTurbKinEnergy(unsigned long iPoint, su2double val_mean_tke) override { MeanTurbKE(iPoint) = val_mean_tke; }
+
+  /*!
+   * \brief Get a component of the mean modeled stress tensor.
+   * \param[in] iPoint - Point index.
+   * \param[in] iVar - Component index (0=xx, 1=yy, 2=zz, 3=xy, 4=xz, 5=yz).
+   * \return Mean stress tensor component.
+   */
+  inline su2double GetMeanModeledStress(unsigned long iPoint, unsigned short iVar) const override {
+    return MeanModeledStress(iPoint, iVar);
+  }
+
+  /*!
+   * \brief Set a component of the mean modeled stress tensor.
+   */
+  inline void SetMeanModeledStress(unsigned long iPoint, unsigned short iVar, su2double val_mean_stress) override {
+    MeanModeledStress(iPoint, iVar) = val_mean_stress;
+  }
 
   /*!
    * \brief Set the LES sensor.

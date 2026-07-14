@@ -83,6 +83,14 @@ void CNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, C
 
   CommonPreprocessing(geometry, solver_container, config, iMesh, iRKStep, RunTime_EqSystem, Output);
 
+  /*--- Exchange the mean modeled stress tensor once per physical time step, since it is only
+        updated once per physical time step (Stochastic Backscatter Model, stress filtering). ---*/
+
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses && InnerIter == 0) {
+    InitiateComms(geometry, config, MPI_QUANTITIES::MEAN_MODELED_STRESS);
+    CompleteComms(geometry, config, MPI_QUANTITIES::MEAN_MODELED_STRESS);
+  }
+
   /*--- Compute gradient for MUSCL reconstruction, for output (i.e. the
    turbulence solver, and post) only temperature and velocity are needed ---*/
 

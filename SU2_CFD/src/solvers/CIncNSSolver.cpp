@@ -59,6 +59,7 @@ CIncNSSolver::CIncNSSolver(CGeometry *geometry, CConfig *config, unsigned short 
   if (config->GetKind_Streamwise_Periodic() != ENUM_STREAMWISE_PERIODIC::NONE)
     // Note during restarts, the flow.meta is read first. But that sets the cfg-value so we are good here.
     SPvals.Streamwise_Periodic_PressureDrop = config->GetStreamwise_Periodic_PressureDrop();
+
 }
 
 void CIncNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, CConfig *config, unsigned short iMesh,
@@ -75,6 +76,14 @@ void CIncNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container
   /*--- Common preprocessing steps (implemented by CEulerSolver) ---*/
 
   CommonPreprocessing(geometry, solver_container, config, iMesh, iRKStep, RunTime_EqSystem, Output);
+
+  /*--- Exchange the mean modeled stress tensor once per physical time step, since it is only
+        updated once per physical time step (Stochastic Backscatter Model, stress filtering). ---*/
+
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses && InnerIter == 0) {
+    InitiateComms(geometry, config, MPI_QUANTITIES::MEAN_MODELED_STRESS);
+    CompleteComms(geometry, config, MPI_QUANTITIES::MEAN_MODELED_STRESS);
+  }
 
   /*--- Compute gradient for MUSCL reconstruction ---*/
 
