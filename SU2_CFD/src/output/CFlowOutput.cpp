@@ -2570,8 +2570,6 @@ void CFlowOutput::WriteAdditionalFiles(CConfig *config, CGeometry *geometry, CSo
     WriteForcesBreakdown(config, solver_container[FLOW_SOL]);
   }
 
-  WriteAveragedFields(config, geometry);
-
 }
 
 void CFlowOutput::WriteAveragedFields(CConfig *config, CGeometry *geometry) {

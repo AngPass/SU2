@@ -1049,6 +1049,16 @@ protected:
   inline virtual void RestoreAveragedFields(CConfig *config, CGeometry* geometry){}
 
   /*!
+   * \brief Write TIME_AVERAGE/BACKSCATTER volume output fields (running averages) to a companion
+   *        restart file (WRT_RESTART_AVERAGES), if requested. Called once per SetResultFiles
+   *        invocation, after all requested volume output files have been written, regardless of
+   *        how many of them were actually written this iteration.
+   * \param[in] config - Definition of the particular problem per zone.
+   * \param[in] geometry - Geometrical definition of the problem.
+   */
+  inline virtual void WriteAveragedFields(CConfig *config, CGeometry* geometry){}
+
+  /*!
    * \brief Write any additional output defined for the current solver.
    * \param[in] config - Definition of the particular problem per zone.
    */

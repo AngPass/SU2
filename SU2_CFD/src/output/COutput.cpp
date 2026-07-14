@@ -881,6 +881,10 @@ bool COutput::SetResultFiles(CGeometry *geometry, CConfig *config, CSolver** sol
     isFileWrite = true;
   }
 
+  /*--- Write the running-average restart file (WRT_RESTART_AVERAGES) once per call, after all
+        requested volume output files have been written, rather than once per file. ---*/
+  if (isFileWrite) WriteAveragedFields(config, geometry);
+
   if (rank == MASTER_NODE && isFileWrite) {
     fileWritingTable->PrintFooter();
     headerNeeded = true;

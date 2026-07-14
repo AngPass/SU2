@@ -327,7 +327,7 @@ protected:
    * \param[in] config - Definition of the particular problem per zone.
    * \param[in] geometry - Geometrical definition of the problem.
    */
-  void WriteAveragedFields(CConfig *config, CGeometry *geometry);
+  void WriteAveragedFields(CConfig *config, CGeometry *geometry) override;
 
   /*!
    * \brief Restore all TIME_AVERAGE/BACKSCATTER volume output fields from the companion file
