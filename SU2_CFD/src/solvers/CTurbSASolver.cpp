@@ -1743,12 +1743,13 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
   const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
   const su2double tol = -5.0;
   const su2double sourceLim = 5.0;
-  /*--- Over-relaxation factor for the Jacobi update. The reaction term in the underlying
-        Helmholtz operator (the "+1" in diag = 1 + sum(a_ij)) guarantees diagonal dominance and
-        therefore unconditional convergence of the plain (omega=1) Jacobi iteration regardless of
-        mesh quality; omega > 1 accelerates convergence further. Kept below 2 for robustness margin
-        against the (unbounded, mesh-dependent) explicit non-orthogonal correction term. ---*/
-  const su2double omega = 1.5;
+  /*--- Relaxation factor for the Jacobi update. Diagonal dominance from the reaction term (the
+        "+1" in diag = 1 + sum(a_ij)) only guarantees unconditional convergence up to omega=1; the
+        actual stability limit omega < 2/lambda_max shrinks towards 1 as sum(a_ij) grows (e.g. fine
+        mesh relative to the filter width), so over-relaxing (omega>1) a Jacobi update like this one
+        is not safe in general (unlike true Gauss-Seidel-based SOR). The explicit non-orthogonal
+        correction term adds further, unquantified sensitivity on top of that. Keep omega<=1. ---*/
+  const su2double omega = 0.99;
   /*--- The non-orthogonal correction only needs to be refreshed periodically (its role is to
         accelerate/correct convergence to the true gradient-based solution, not to change the fixed
         point), so its extra point loop and MPI round-trip are skipped on iterations in between. ---*/

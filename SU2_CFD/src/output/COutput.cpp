@@ -1557,6 +1557,21 @@ void COutput::PreprocessVolumeOutput(CConfig *config){
      }
   }
 
+  /*--- Fields/groups requested via RESTART_AVG_FIELDS (WRT_RESTART_AVERAGES) must be part of the
+        active volume output selection, otherwise their running average is never computed. Force-add
+        any that are missing, so persisting a field for restart does not also require separately
+        adding it to VOLUME_OUTPUT. ---*/
+  if (config->GetWrt_Restart_Averages()) {
+    for (unsigned short iField = 0; iField < config->GetnRestartAvgFields(); iField++) {
+      const string& name = config->GetRestartAvgFields_Field(iField);
+      auto itAvg = std::find(requestedVolumeFields.begin(), requestedVolumeFields.end(), name);
+      if (itAvg == requestedVolumeFields.end()) {
+        requestedVolumeFields.emplace_back(name);
+        nRequestedVolumeFields++;
+      }
+    }
+  }
+
   std::vector<bool> FoundField(nRequestedVolumeFields, false);
   vector<string> FieldsToRemove;
 

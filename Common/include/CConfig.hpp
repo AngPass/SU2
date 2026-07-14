@@ -1260,6 +1260,8 @@ private:
   *HistoryOutput, *VolumeOutput;  /*!< \brief Kind of the output printed to the history file. */
   unsigned short nScreenOutput,   /*!< \brief Number of screen output variables (max: 6). */
   nHistoryOutput, nVolumeOutput;  /*!< \brief Number of variables printed to the history file. */
+  string *RestartAvgFields;          /*!< \brief Fields (group or field names) persisted across restarts by WRT_RESTART_AVERAGES. */
+  unsigned short nRestartAvgFields;  /*!< \brief Number of fields/groups requested via RESTART_AVG_FIELDS. */
   bool Multizone_Residual;        /*!< \brief Determines if memory should be allocated for the multizone residual. */
   SST_ParsedOptions sstParsedOptions; /*!< \brief Additional parameters for the SST turbulence model. */
   SA_ParsedOptions saParsedOptions;   /*!< \brief Additional parameters for the SA turbulence model. */
@@ -9981,6 +9983,16 @@ public:
    * \brief Get the history output field iField
    */
   string GetVolumeOutput_Field(unsigned short iField) const { return VolumeOutput[iField]; }
+
+  /*!
+   * \brief Get the number of fields/groups requested via RESTART_AVG_FIELDS.
+   */
+  unsigned short GetnRestartAvgFields(void) const { return nRestartAvgFields; }
+
+  /*!
+   * \brief Get the RESTART_AVG_FIELDS entry iField (a volume output field or group name).
+   */
+  string GetRestartAvgFields_Field(unsigned short iField) const { return RestartAvgFields[iField]; }
 
   /*!
   * \brief Get the convergence fields for monitoring

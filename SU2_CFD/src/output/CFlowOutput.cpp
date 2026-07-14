@@ -2578,15 +2578,26 @@ void CFlowOutput::WriteAveragedFields(CConfig *config, CGeometry *geometry) {
 
   if (!config->GetWrt_Restart_Averages()) return;
 
-  /*--- Collect the currently active TIME_AVERAGE/BACKSCATTER fields (i.e. those with a valid
-        offset, meaning they were actually requested for this run) to persist. ---*/
+  /*--- Collect the fields/groups requested via RESTART_AVG_FIELDS (matched the same way as
+        VOLUME_OUTPUT: by group name or by individual field name). Only fields with a valid offset
+        (i.e. actually part of the active volume output selection) can be persisted, but
+        PreprocessVolumeOutput already force-adds any missing RESTART_AVG_FIELDS entry so this
+        should always hold. ---*/
 
   vector<string> fieldNames;
   vector<short> offsets;
   for (const auto& name : volumeOutput_List) {
     const auto& field = volumeOutput_Map.at(name);
     if (field.offset == -1) continue;
-    if (field.outputGroup != "TIME_AVERAGE" && field.outputGroup != "BACKSCATTER") continue;
+    bool requested = false;
+    for (unsigned short iField = 0; iField < config->GetnRestartAvgFields(); iField++) {
+      const string& requestedField = config->GetRestartAvgFields_Field(iField);
+      if (requestedField == field.outputGroup || requestedField == name) {
+        requested = true;
+        break;
+      }
+    }
+    if (!requested) continue;
     fieldNames.push_back(name);
     offsets.push_back(field.offset);
   }

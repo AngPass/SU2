@@ -3093,6 +3093,9 @@ void CConfig::SetConfig_Options() {
   addStringListOption("HISTORY_OUTPUT", nHistoryOutput, HistoryOutput);
   /* DESCRIPTION: Type of output printed to the volume solution file */
   addStringListOption("VOLUME_OUTPUT", nVolumeOutput, VolumeOutput);
+  /* DESCRIPTION: Volume output fields/groups persisted across restarts when WRT_RESTART_AVERAGES=YES.
+     If left empty, defaults to MEAN_TURB_KIN_ENERGY and the MODELED_REYNOLDS_STRESS_* components. */
+  addStringListOption("RESTART_AVG_FIELDS", nRestartAvgFields, RestartAvgFields);
 
   /* DESCRIPTION: History writing frequency (INNER_ITER) */
   addUnsignedLongOption("HISTORY_WRT_FREQ_INNER", HistoryWrtFreq[2], 1);
@@ -3669,6 +3672,20 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     if(VolumeOutput[iField].find("MULTIGRID") != string::npos) {
       Wrt_MultiGrid = true;
     }
+  }
+
+  /*--- If WRT_RESTART_AVERAGES is on and the user did not specify RESTART_AVG_FIELDS, default to
+        persisting the mean turbulent kinetic energy and the mean modeled stress tensor (the fields
+        used by SBS_USE_MEAN_TKE/SBS_FILTER_STRESSES). ---*/
+  if (Wrt_Restart_Averages && nRestartAvgFields == 0) {
+    static const string defaultRestartAvgFields[] = {
+      "MEAN_TURB_KIN_ENERGY", "MODELED_REYNOLDS_STRESS_XX", "MODELED_REYNOLDS_STRESS_YY",
+      "MODELED_REYNOLDS_STRESS_ZZ", "MODELED_REYNOLDS_STRESS_XY", "MODELED_REYNOLDS_STRESS_XZ",
+      "MODELED_REYNOLDS_STRESS_YZ"};
+    nRestartAvgFields = 7;
+    RestartAvgFields = new string[nRestartAvgFields];
+    for (unsigned short iField = 0; iField < nRestartAvgFields; iField++)
+      RestartAvgFields[iField] = defaultRestartAvgFields[iField];
   }
 
   if (Kind_Solver == MAIN_SOLVER::NAVIER_STOKES && Kind_Turb_Model != TURB_MODEL::NONE){
