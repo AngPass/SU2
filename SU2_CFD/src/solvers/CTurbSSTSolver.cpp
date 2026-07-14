@@ -934,6 +934,10 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
     std::vector<su2double> sVec(nPointDomain, 0.0), tVec(nPointDomain, 0.0);
 
     unsigned short totalIter = 0;
+    /*--- Counts only real BiCGSTAB update steps (unlike totalIter, which also advances once per
+          block restart to bound the outer loop), so the "first iteration" print check below fires
+          on the first actual step regardless of how many restarts preceded it. ---*/
+    unsigned short printIter = 0;
     bool converged = false;
 
     SU2_OMP_MASTER
@@ -1098,12 +1102,12 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
         }
         END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
-        blockIter++; totalIter++;
+        blockIter++; totalIter++; printIter++;
 
         /*--- Print convergence at the first iteration, then every 10, and finally once more at
               whichever iteration ends the loop (converged or maxIter reached). ---*/
         const bool isConverged = (log10(globalResNorm) < tol || totalIter == maxIter);
-        const bool printConvergence = (totalIter == 1) || (totalIter % 10 == 0) || isConverged;
+        const bool printConvergence = (printIter == 1) || (printIter % 10 == 0) || isConverged;
 
         if (printConvergence) {
           SU2_OMP_MASTER
