@@ -779,7 +779,7 @@ void CTurbSSTSolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeome
   for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
     su2double maxDelta = geometry->nodes->GetMaxLength(iPoint);
     su2double tke = (config->GetSBSParam().useMeanTurbKE) ? nodes->GetMeanTurbKinEnergy(iPoint) : nodes->GetSolution(iPoint, 0);
-    su2double timeLES = fabs(config->GetSBSParam().SBS_Ctau) * maxDelta / sqrt(max(tke, 1e-10));
+    su2double timeLES = config->GetSBSParam().SBS_Ctau * maxDelta / sqrt(max(tke, 1e-10));
     su2double timeRANS = 1.0 / (beta*max(nodes->GetSolution(iPoint, 1), 1e-10));
     su2double lesMode = nodes->GetLES_Mode(iPoint);
     su2double timeBlended = min(timeRANS, 10.0*timeStep) * (1.0-lesMode) + timeLES * lesMode;

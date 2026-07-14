@@ -1400,6 +1400,7 @@ void CSolver::GetCommCountAndType(const CConfig* config,
     case MPI_QUANTITIES::OU_PROCESS:
       COUNT_PER_POINT  = nDim;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
+      break;
     case MPI_QUANTITIES::LES_SENSOR:
       COUNT_PER_POINT  = 1;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
