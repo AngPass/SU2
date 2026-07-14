@@ -830,6 +830,12 @@ bool COutput::SetResultFiles(CGeometry *geometry, CConfig *config, CSolver** sol
                               unsigned long iter, bool force_writing) {
 
   bool isFileWrite = false, dataIsLoaded = false;
+  /*--- Tracks whether this call writes a "genuine" output iteration (periodic multiple of the
+        output frequency, or an explicit force_writing request), as opposed to the extra N-1
+        iteration that CFlowOutput::WriteVolumeOutput also triggers for DT_STEPPING_2ND restart
+        files so that both prior solutions are available on restart. The averages restart file
+        does not need that extra copy, so it is only written on genuine iterations. ---*/
+  bool isPrimaryOutputIter = false;
   const auto nVolumeFiles = config->GetnVolumeOutputFiles();
   const auto* VolumeFiles = config->GetVolumeOutputFiles();
 
@@ -858,6 +864,10 @@ bool COutput::SetResultFiles(CGeometry *geometry, CConfig *config, CSolver** sol
     }
     if (!write_file) continue;
 
+    /*--- Determine if this write corresponds to a genuine output iteration, using the base-class
+          frequency check directly (bypassing any derived-class DT_STEPPING_2ND N-1 relaxation). ---*/
+    if (COutput::WriteVolumeOutput(config, iter, force_writing || cauchyTimeConverged, iFile)) isPrimaryOutputIter = true;
+
     /*--- Partition and sort the data --- */
 
     volumeDataSorter->SortOutputData();
@@ -882,8 +892,9 @@ bool COutput::SetResultFiles(CGeometry *geometry, CConfig *config, CSolver** sol
   }
 
   /*--- Write the running-average restart file (WRT_RESTART_AVERAGES) once per call, after all
-        requested volume output files have been written, rather than once per file. ---*/
-  if (isFileWrite) WriteAveragedFields(config, geometry);
+        requested volume output files have been written, rather than once per file, and only on
+        genuine output iterations (skip the DT_STEPPING_2ND N-1 restart-continuity duplicate). ---*/
+  if (isFileWrite && isPrimaryOutputIter) WriteAveragedFields(config, geometry);
 
   if (rank == MASTER_NODE && isFileWrite) {
     fileWritingTable->PrintFooter();

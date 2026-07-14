@@ -2691,6 +2691,8 @@ void CConfig::SetConfig_Options() {
   addUnsignedLongOption("ITER", nIter, 1000);
   /* DESCRIPTION: Restart iteration in the multizone problem. */
   addUnsignedLongOption("RESTART_ITER", Restart_Iter, 1);
+  /* DESCRIPTION: Iteration from which the WRT_RESTART_AVERAGES companion file is restored, defaults to RESTART_ITER. */
+  addUnsignedLongOption("RESTART_ITER_AVERAGE", Restart_Iter_Average, 1);
   /* DESCRIPTION: Minimum error threshold for the linear solver for the implicit formulation */
   addDoubleOption("TIME_STEP", Time_Step, 0.0);
   /* DESCRIPTION: Total Physical Time for time-domain problems (s) */
@@ -4052,6 +4054,12 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     HistoryWrtFreq[0] = 1;
 
     if (TimeMarching != TIME_MARCHING::HARMONIC_BALANCE) { TimeMarching = TIME_MARCHING::STEADY; }
+  }
+
+  /*--- RESTART_ITER_AVERAGE defaults to RESTART_ITER, so the running averages restart from the
+        same iteration as the solution unless the user explicitly requests otherwise. ---*/
+  if (!OptionIsSet("RESTART_ITER_AVERAGE")) {
+    Restart_Iter_Average = Restart_Iter;
   }
 
   if (Time_Domain && !GetWrt_Restart_Overwrite()){

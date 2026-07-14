@@ -1240,7 +1240,8 @@ private:
   nInnerIter,                    /*!< \brief Determines the number of inner iterations in each multizone block */
   nTimeIter,                     /*!< \brief Determines the number of time iterations in the multizone problem */
   nIter,                         /*!< \brief Determines the number of pseudo-time iterations in a single-zone problem */
-  Restart_Iter;                  /*!< \brief Determines the restart iteration in the multizone problem */
+  Restart_Iter,                  /*!< \brief Determines the restart iteration in the multizone problem */
+  Restart_Iter_Average;          /*!< \brief Iteration from which the WRT_RESTART_AVERAGES companion file is restored, defaults to Restart_Iter */
   su2double Time_Step;           /*!< \brief Determines the time step for the multizone problem */
   su2double Max_Time;            /*!< \brief Determines the maximum time for the time-domain problems */
 
@@ -9825,6 +9826,12 @@ public:
    * \return Iteration for the restart of multizone problems
    */
   unsigned long GetRestart_Iter(void) const { return Restart_Iter; }
+
+  /*!
+   * \brief Get the iteration from which the WRT_RESTART_AVERAGES companion file is restored.
+   * \return Iteration used to build the solution_avg_fields filename (defaults to RESTART_ITER).
+   */
+  unsigned long GetRestart_Iter_Average(void) const { return Restart_Iter_Average; }
 
   /*!
    * \brief Get the time step for multizone problems
