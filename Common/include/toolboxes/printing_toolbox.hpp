@@ -127,6 +127,14 @@ class CTablePrinter {
   void AddColumn(const std::string& header_name, int column_width);
 
   /*!
+   * \brief Get the width of a column, e.g. to truncate a value before printing it so an
+   *        overly long entry (a long filename, say) cannot push a row's right border past
+   *        the table's fixed width and misalign it with the header/footer lines.
+   * \param[in] i - Index of the column.
+   */
+  int GetColumnWidth(int i) const { return column_widths_.at(i); }
+
+  /*!
    * \brief Print the header.
    */
   void PrintHeader();

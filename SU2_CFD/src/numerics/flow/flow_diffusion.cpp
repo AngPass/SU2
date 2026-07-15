@@ -167,9 +167,14 @@ void CAvgGrad_Base::SetStressTensor(const su2double *val_primvar,
     meanStress[0][2] = meanStress[2][0] = 0.5*(meanStress_i[4]+meanStress_j[4]);
     meanStress[1][2] = meanStress[2][1] = 0.5*(meanStress_i[5]+meanStress_j[5]);
 
+    /*--- modeledFraction_i/j default to 1 (no effect) unless the SST-based Stochastic Backscatter
+          Model is active, in which case they scale this term by the fraction of turbulent kinetic
+          energy that is modeled rather than resolved (see CFlowOutput). ---*/
+    const su2double modeledFraction = 0.5 * (modeledFraction_i + modeledFraction_j);
+
     for (unsigned short iDim = 0 ; iDim < nDim; iDim++)
       for (unsigned short jDim = 0 ; jDim < nDim; jDim++)
-        tau[iDim][jDim] += Density * meanStress[iDim][jDim];
+        tau[iDim][jDim] += Density * meanStress[iDim][jDim] * modeledFraction;
   }
 }
 
@@ -191,13 +196,17 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
     tke_j = (lesMode_j > sensorThreshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
   }
   
-  su2double intensityCoeff = config->GetSBSParam().SBS_Cmag;
+  /*--- modeledFraction_i/j default to 1 (no effect) unless SBS_HYBRID_TRANSITION is active on the
+        SST branch, in which case they scale the stochastic source term by the fraction of
+        turbulent kinetic energy that is modeled rather than resolved (see CFlowOutput). ---*/
+  su2double intensityCoeff = config->GetSBSParam().SBS_Cmag * 0.5 * (modeledFraction_i + modeledFraction_j);
   su2double density = Mean_PrimVar[nDim+2];
 
   /*--- Hybrid RANS/LES transition correction: instead of cmag*k*curl(stochVec), use
-        cmag*k*curl(stochVec)*(1 + beta_star*omega*(F_DES-1)/(stochVec.vorticity)), computed at
-        points i and j and averaged, so that the stochastic source term is progressively
-        reintroduced across the RANS/LES interface (SST-based hybrid models only). ---*/
+        cmag*k*curl(stochVec)*scaleFactor, with
+        scaleFactor = beta_star*omega*min(1-F_DES,0)/(stochVec.vorticity), computed at points i
+        and j and averaged, so that the stochastic source term is progressively reintroduced
+        across the RANS/LES interface (SST-based hybrid models only). ---*/
 
   su2double hybridTransitionFactor = 1.0;
   if (config->GetSBSParam().hybridTransition && IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) &&
@@ -207,9 +216,9 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
     const su2double stochDotVort_j = GeometryToolbox::DotProduct(3, stochVar_j, Vorticity_j);
     const su2double denom_i = (stochDotVort_i >= 0.0) ? max(stochDotVort_i, EPS) : min(stochDotVort_i, -EPS);
     const su2double denom_j = (stochDotVort_j >= 0.0) ? max(stochDotVort_j, EPS) : min(stochDotVort_j, -EPS);
-    const su2double factor_i = 1.0 + beta_star*turbFreq_i*(FDDES_i-1.0)/denom_i;
-    const su2double factor_j = 1.0 + beta_star*turbFreq_j*(FDDES_j-1.0)/denom_j;
-    hybridTransitionFactor = 0.5 * (factor_i + factor_j);
+    const su2double scaleFactor_i = beta_star*turbFreq_i*min(1.0-FDDES_i, 0.0)/denom_i;
+    const su2double scaleFactor_j = beta_star*turbFreq_j*min(1.0-FDDES_j, 0.0)/denom_j;
+    hybridTransitionFactor = 0.5 * (scaleFactor_i + scaleFactor_j);
   }
 
   stochStressTensor[0][0] = stochStressTensor[1][1] = stochStressTensor[2][2] = 0.0;

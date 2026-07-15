@@ -121,6 +121,9 @@ protected:
   su2double
   FDDES_i, /*!< \brief Ratio of RANS to DDES lengthscale at point i (SST turbulence model). */
   FDDES_j; /*!< \brief Ratio of RANS to DDES lengthscale at point j (SST turbulence model). */
+  su2double
+  modeledFraction_i = 1.0, /*!< \brief Fraction of turbulent kinetic energy that is modeled at point i, used to scale the Stochastic Backscatter Model source terms (SST turbulence model). */
+  modeledFraction_j = 1.0; /*!< \brief Fraction of turbulent kinetic energy that is modeled at point j, used to scale the Stochastic Backscatter Model source terms (SST turbulence model). */
   const su2double
   *Und_Lapl_i,  /*!< \brief Undivided laplacians at point i. */
   *Und_Lapl_j;  /*!< \brief Undivided laplacians at point j. */
@@ -955,6 +958,17 @@ public:
   void SetFDDES(su2double val_FDDES_i, su2double val_FDDES_j) {
     FDDES_i = val_FDDES_i;
     FDDES_j = val_FDDES_j;
+  }
+
+  /*!
+   * \brief Set the fraction of turbulent kinetic energy that is modeled, used to scale the
+   *        Stochastic Backscatter Model source terms (SST turbulence model).
+   * \param[in] val_modeledFraction_i - Value of the modeled fraction at point i.
+   * \param[in] val_modeledFraction_j - Value of the modeled fraction at point j.
+   */
+  void SetModeledFraction(su2double val_modeledFraction_i, su2double val_modeledFraction_j) {
+    modeledFraction_i = val_modeledFraction_i;
+    modeledFraction_j = val_modeledFraction_j;
   }
 
   /*!

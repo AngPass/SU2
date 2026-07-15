@@ -6648,6 +6648,11 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
               cout << "| Stochastic source terms suppressed where the shielding function is lower than: " << setw(4) << setprecision(4) << SBSParam.stochFdThreshold << endl;
             if (SBSParam.filterStresses)
               cout << "| Modeled stress tensor high-pass filtered where the shielding function is above: " << setw(4) << setprecision(4) << SBSParam.stochFdThreshold << endl;
+            if (SBSParam.hybridTransition) {
+              cout << "| Hybrid RANS/LES transition correction of the stochastic source terms active." << endl;
+              if (SBSParam.useMeanTurbKE)
+                SU2_MPI::Error("SBS_HYBRID_TRANSITION is not compatible with SBS_USE_MEAN_TKE=YES.", CURRENT_FUNCTION);
+            }
           } else {
             cout << "OFF" << endl;
           }

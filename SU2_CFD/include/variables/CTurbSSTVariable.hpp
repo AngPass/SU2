@@ -48,6 +48,7 @@ protected:
   VectorType DES_LengthScale;
   VectorType DES_FilterWidth;
   VectorType F_DES;
+  VectorType ModeledFraction;
   VectorType MeanTurbKE;
   VectorType lesMode;
   VectorType Vortex_Tilting;
@@ -121,6 +122,19 @@ public:
    * \param[in] iPoint - Point index.
    */
   inline void SetF_DES(unsigned long iPoint, su2double val_F_DES) override { F_DES(iPoint) = val_F_DES; }
+
+  /*!
+   * \brief Get the fraction of turbulent kinetic energy that is modeled (as opposed to resolved).
+   * \param[in] iPoint - Point index.
+   * \return Value of the modeled fraction.
+   */
+  inline su2double GetModeledFraction(unsigned long iPoint) const override { return ModeledFraction(iPoint); }
+
+  /*!
+   * \brief Set the fraction of turbulent kinetic energy that is modeled (as opposed to resolved).
+   * \param[in] iPoint - Point index.
+   */
+  inline void SetModeledFraction(unsigned long iPoint, su2double val_modeled_fraction) override { ModeledFraction(iPoint) = val_modeled_fraction; }
 
   /*!
    * \brief Get the mean turbulent kinetic energy.

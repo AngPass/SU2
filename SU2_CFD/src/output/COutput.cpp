@@ -384,10 +384,18 @@ void COutput::WriteToFile(CConfig *config, CGeometry *geometry, OUTPUT_TYPE form
 
   /*--- Write output information to screen ---*/
 
+  /*--- Truncate to the column width so an overly long message or filename cannot push a row's
+        right border past the table's fixed width and misalign it with the header/footer. ---*/
+  auto TruncateForTable = [&](const std::string& value, int iCol) {
+    const auto width = static_cast<size_t>(fileWritingTable->GetColumnWidth(iCol));
+    return (value.size() > width) ? value.substr(0, width) : value;
+  };
+
   auto LogOutputFiles = [&](const std::string& message) {
     if (rank == MASTER_NODE) {
-      (*fileWritingTable) << message << fileName + extension;
-      if (!filename_iter.empty()) (*fileWritingTable) << message + " + iter" << filename_iter + extension;
+      (*fileWritingTable) << TruncateForTable(message, 0) << TruncateForTable(fileName + extension, 1);
+      if (!filename_iter.empty())
+        (*fileWritingTable) << TruncateForTable(message + " + iter", 0) << TruncateForTable(filename_iter + extension, 1);
     }
   };
 
@@ -1243,7 +1251,7 @@ void COutput::PreprocessHistoryOutput(CConfig *config, bool wrt){
 
   /*--- We use a fixed size of the file output summary table ---*/
 
-  int total_width = 72;
+  int total_width = 84;
   fileWritingTable->AddColumn("File Writing Summary", (total_width)/2-1);
   fileWritingTable->AddColumn("Filename", total_width/2-1);
   fileWritingTable->SetAlign(PrintingToolbox::CTablePrinter::LEFT);
@@ -1290,7 +1298,7 @@ void COutput::PreprocessMultizoneHistoryOutput(COutput **output, CConfig **confi
 
   /*--- We use a fixed size of the file output summary table ---*/
 
-  int total_width = 72;
+  int total_width = 84;
   fileWritingTable->AddColumn("File Writing Summary", (total_width-1)/2);
   fileWritingTable->AddColumn("Filename", total_width/2);
   fileWritingTable->SetAlign(PrintingToolbox::CTablePrinter::LEFT);

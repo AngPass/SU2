@@ -428,6 +428,22 @@ public:
   inline virtual void SetF_DES(unsigned long iPoint, su2double val_F_DES) {}
 
   /*!
+   * \brief A virtual member: get the fraction of turbulent kinetic energy that is modeled
+   *        (as opposed to resolved), used to scale the stochastic source terms of the Hybrid
+   *        RANS/LES transition correction (SST-based hybrid models only). Defaults to 1 (fully
+   *        modeled), which leaves the stochastic source terms unaffected for turbulence models
+   *        other than SST.
+   * \param[in] iPoint - Point index.
+   */
+  inline virtual su2double GetModeledFraction(unsigned long iPoint) const { return 1.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   */
+  inline virtual void SetModeledFraction(unsigned long iPoint, su2double val_modeled_fraction) {}
+
+  /*!
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
    */

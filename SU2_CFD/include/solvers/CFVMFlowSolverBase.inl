@@ -521,6 +521,14 @@ void CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsigned long iEdge, CGeome
       numerics->SetVorticity(nodes->GetVorticity(iPoint), nodes->GetVorticity(jPoint));
     }
 
+    /*--- Fraction of turbulent kinetic energy that is modeled (as opposed to resolved), used to
+          scale the stochastic momentum source term (Stochastic Backscatter Model, SST-based
+          hybrid models only). Independent of the hybrid transition correction above. ---*/
+
+    if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
+      numerics->SetModeledFraction(turbNodes->GetModeledFraction(iPoint), turbNodes->GetModeledFraction(jPoint));
+    }
+
     /*--- Mean modeled stress tensor, used to high-pass filter the modeled stresses (Stochastic Backscatter Model). ---*/
 
     if (config->GetSBSParam().filterStresses) {

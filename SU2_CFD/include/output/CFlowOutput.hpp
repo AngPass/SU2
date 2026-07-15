@@ -376,7 +376,8 @@ protected:
   /*!
    * \brief Compute the hybrid RANS/LES transition correction factor for the stochastic momentum
    *        source term (Stochastic Backscatter Model, SST-based hybrid models only): 1.0 if the
-   *        correction is disabled, otherwise 1 + beta_star*omega*(F_DES-1)/(stochVec.vorticity).
+   *        correction is disabled, otherwise exactly scaleFactor, with
+   *        scaleFactor = beta_star*omega*min(1-F_DES,0)/(stochVec.vorticity).
    * \param iPoint - Index of the point.
    * \param config - Definition of the particular problem.
    * \param node_flow - Flow solver solution.
@@ -397,7 +398,7 @@ protected:
     const su2double omega = node_turb->GetSolution(iPoint, 1);
     const su2double F_DES = node_turb->GetF_DES(iPoint);
 
-    return 1.0 + beta_star*omega*(F_DES-1.0)/denom;
+    return beta_star*omega*min(1.0-F_DES, 0.0)/denom;
   }
 
   /*!

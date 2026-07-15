@@ -444,6 +444,12 @@ void CTurbSSTSolver::Source_Residual(CGeometry *geometry, CSolver **solver_conta
       /*--- Compute source terms in Langevin equations (Stochastic Basckscatter Model) ---*/
 
       if (config->GetSBSParam().StochasticBackscatter) {
+        /*--- Fraction of turbulent kinetic energy that is modeled (as opposed to resolved), used
+              to scale the stochastic source term added to the k and omega production terms
+              (SST-based hybrid models only). ---*/
+        if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
+          numerics->SetModeledFraction(nodes->GetModeledFraction(iPoint), 0.0);
+        }
         if (config->GetSBSParam().stochSourceType == LANGEVIN || config->GetSBSParam().stochSourceType == WHITE_NOISE) {
           for (unsigned short iDim = 0; iDim < nDim; iDim++)
             numerics->SetStochSource(nodes->GetLangevinSourceTerms(iPoint, iDim), iDim);

@@ -2603,7 +2603,12 @@ void CFlowOutput::WriteAveragedFields(CConfig *config, CGeometry *geometry) {
 
   const string filename = config->GetFilename(config->GetRestart_FileName() + "_average", ".dat", curTimeIter);
 
-  if (rank == MASTER_NODE) cout << "Writing time-averaged fields restart file: " << filename << "." << endl;
+  if (rank == MASTER_NODE) {
+    /*--- Truncate to the column width so an overly long filename cannot push this row's right
+          border past the table's fixed width and misalign it with the header/footer. ---*/
+    const auto width = static_cast<size_t>(fileWritingTable->GetColumnWidth(1));
+    (*fileWritingTable) << "SU2 binary average restart" << (filename.size() > width ? filename.substr(0, width) : filename);
+  }
 
   SBSRestartToolbox::WriteMeanFields(filename, geometry, geometry->GetnPointDomain(), fieldNames,
       curAbsTimeIter + priorAvgSamples + 1,
@@ -4349,8 +4354,19 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
 
     if (config->GetKind_Turb_Model() == TURB_MODEL::SST) {
       SetAvgVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint, Node_Turb->GetSolution(iPoint, 0));
-      if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().useMeanTurbKE) {
-        Node_Turb->SetMeanTurbKinEnergy(iPoint, GetVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint));
+      if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().StochasticBackscatter) {
+        if (config->GetSBSParam().useMeanTurbKE) {
+          Node_Turb->SetMeanTurbKinEnergy(iPoint, GetVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint));
+        }
+        /*--- Fraction of turbulent kinetic energy that is modeled (as opposed to resolved by the
+              mean flow), used to scale the stochastic source terms: modeled_fraction =
+              k_mean / (k_mean + 0.5*(u'u'+v'v'+w'w')), with the resolved velocity variances
+              computed above (UUPRIME, VVPRIME, WWPRIME). The Stochastic Backscatter Model is only
+              available for 3D flows (checked in CConfig.cpp), so WWPRIME is always available here. ---*/
+        const su2double kMean = GetVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint);
+        const su2double resolvedTKE = 0.5 * (GetVolumeOutputValue("UUPRIME", iPoint) + GetVolumeOutputValue("VVPRIME", iPoint) +
+                                             GetVolumeOutputValue("WWPRIME", iPoint));
+        Node_Turb->SetModeledFraction(iPoint, kMean / max(kMean + resolvedTKE, EPS));
       }
     }
 
