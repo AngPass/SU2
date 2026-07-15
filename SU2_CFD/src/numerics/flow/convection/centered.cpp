@@ -312,7 +312,7 @@ CNumerics::ResidualType<> CCentJSTInc_Flow::ComputeResidual(const CConfig* confi
   su2double U_i[5] = {0.0}, U_j[5] = {0.0};
   su2double ProjGridVel = 0.0;
   bool LD2_Scheme = (config->GetKind_Centered_Flow() == CENTERED::LD2);
-  const su2double alpha_LD2 = 1./3.;
+  const su2double alpha_LD2 = 0.36;
 
   /*--- Primitive variables at point i and j ---*/
 

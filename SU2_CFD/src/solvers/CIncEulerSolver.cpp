@@ -1024,6 +1024,7 @@ void CIncEulerSolver::Preprocessing(CGeometry *geometry, CSolver **solver_contai
   const auto InnerIter = config->GetInnerIter();
   const bool muscl = config->GetMUSCL_Flow() && (iMesh == MESH_0);
   const bool center = (config->GetKind_ConvNumScheme_Flow() == SPACE_CENTERED);
+  const bool ld2_scheme = center && (config->GetKind_Centered_Flow() == CENTERED::LD2);
   const bool limiter = (config->GetKind_SlopeLimit_Flow() != LIMITER::NONE) && (InnerIter <= config->GetLimiterIter());
   const bool van_albada = (config->GetKind_SlopeLimit_Flow() == LIMITER::VAN_ALBADA_EDGE);
 
@@ -1049,6 +1050,19 @@ void CIncEulerSolver::Preprocessing(CGeometry *geometry, CSolver **solver_contai
     /*--- Limiter computation ---*/
 
     if (limiter && !van_albada) SetPrimitive_Limiter(geometry, config);
+  }
+
+  /*--- Gradient of the primitive variables, required by the LD2 centered scheme correction.
+        Unlike the Navier-Stokes solver, this solver has no viscous fluxes that would otherwise
+        need this gradient unconditionally. ---*/
+
+  if (!Output && ld2_scheme) {
+    if (config->GetKind_Gradient_Method() == GREEN_GAUSS) {
+      SetPrimitive_Gradient_GG(geometry, config);
+    }
+    else if (config->GetKind_Gradient_Method() == WEIGHTED_LEAST_SQUARES) {
+      SetPrimitive_Gradient_LS(geometry, config);
+    }
   }
 }
 

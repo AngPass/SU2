@@ -4839,6 +4839,15 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
   Kappa_2nd_AdjFlow = jst_adj_coeff[0];
   Kappa_4th_AdjFlow = jst_adj_coeff[1];
 
+  /*--- The default JST_SENSOR_COEFF values are tuned for the standard JST scheme and leave too
+        much background (4th order) dissipation for the low-dissipation LD2 scheme. Use a smaller
+        default when LD2 is selected, unless the user explicitly set JST_SENSOR_COEFF. ---*/
+
+  if ((Kind_Centered_Flow == CENTERED::LD2) && all_options.count("JST_SENSOR_COEFF")) {
+    Kappa_2nd_Flow = 0.0;
+    Kappa_4th_Flow = 0.002;
+  }
+
   /*--- Fill MG smooth vectors to size nMGLevels+1.
    Use parsed values (truncating or extending by repeat) or defaults if not set. ---*/
 
