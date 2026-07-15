@@ -3049,6 +3049,9 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: High-pass filter the modeled (subgrid) stress tensor where the LES sensor is active. */
   addBoolOption("SBS_FILTER_STRESSES", SBSParam.filterStresses, false);
 
+  /* DESCRIPTION: Correct the stochastic momentum source term across the RANS/LES transition (SST-based hybrid models only) */
+  addBoolOption("SBS_HYBRID_TRANSITION", SBSParam.hybridTransition, false);
+
   /* DESCRIPTION: Filter width for LES (if negative, it is computed based on the local cell size) */
   addDoubleOption("LES_FILTER_WIDTH", LES_FilterWidth, -1.0);
 

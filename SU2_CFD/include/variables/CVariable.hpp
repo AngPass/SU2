@@ -414,6 +414,20 @@ public:
   inline virtual void SetDES_FilterWidth(unsigned long iPoint, su2double val_des_filterwidth) {}
 
   /*!
+   * \brief A virtual member: get the ratio of the RANS lengthscale to the Hybrid RANS/LES lengthscale
+   *        (as computed by SetDES_LengthScale), used by the Stochastic Backscatter Model hybrid
+   *        transition correction (SST-based hybrid models only). Equal to 1 in pure RANS regions.
+   * \param[in] iPoint - Point index.
+   */
+  inline virtual su2double GetF_DES(unsigned long iPoint) const { return 1.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   */
+  inline virtual void SetF_DES(unsigned long iPoint, su2double val_F_DES) {}
+
+  /*!
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
    */

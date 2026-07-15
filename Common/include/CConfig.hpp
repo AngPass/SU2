@@ -1119,6 +1119,7 @@ private:
     bool useMeanTurbKE;                     /*!< \brief Option for using mean turbulent kinetic energy in the definition of the random source term (SST model). */
     unsigned short stochSourceType;         /*!< \brief Kind of stochastic source term included in the balance equations. */
     bool filterStresses;                    /*!< \brief Option for high-pass filtering the modeled (subgrid) stress tensor where the LES sensor is active. */
+    bool hybridTransition;                  /*!< \brief Option for correcting the stochastic momentum source term across the RANS/LES transition (SST-based hybrid models only). */
   } SBSParam;
   bool enforceLES;                          /*!< \brief Option to enforce LES mode in hybrid RANS-LES simulations. */
   su2double LES_FilterWidth;                /*!< \brief LES filter width for hybrid RANS-LES simulations. */
@@ -9836,7 +9837,7 @@ public:
 
   /*!
    * \brief Get the iteration from which the WRT_RESTART_AVERAGES companion file is restored.
-   * \return Iteration used to build the solution_avg_fields filename (defaults to RESTART_ITER).
+   * \return Iteration used to build the solution_average filename (defaults to RESTART_ITER).
    */
   unsigned long GetRestart_Iter_Average(void) const { return Restart_Iter_Average; }
 

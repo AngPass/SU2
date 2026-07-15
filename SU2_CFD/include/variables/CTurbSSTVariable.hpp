@@ -47,6 +47,7 @@ protected:
   SST_ParsedOptions sstParsedOptions;
   VectorType DES_LengthScale;
   VectorType DES_FilterWidth;
+  VectorType F_DES;
   VectorType MeanTurbKE;
   VectorType lesMode;
   VectorType Vortex_Tilting;
@@ -107,6 +108,19 @@ public:
    * \param[in] iPoint - Point index.
    */
   inline void SetDES_FilterWidth(unsigned long iPoint, su2double val_des_filterwidth) override { DES_FilterWidth(iPoint) = val_des_filterwidth; }
+
+  /*!
+   * \brief Get the ratio of the RANS lengthscale to the Hybrid RANS/LES lengthscale.
+   * \param[in] iPoint - Point index.
+   * \return Value of the ratio of the RANS lengthscale to the Hybrid RANS/LES lengthscale.
+   */
+  inline su2double GetF_DES(unsigned long iPoint) const override { return F_DES(iPoint); }
+
+  /*!
+   * \brief Set the ratio of the RANS lengthscale to the Hybrid RANS/LES lengthscale.
+   * \param[in] iPoint - Point index.
+   */
+  inline void SetF_DES(unsigned long iPoint, su2double val_F_DES) override { F_DES(iPoint) = val_F_DES; }
 
   /*!
    * \brief Get the mean turbulent kinetic energy.

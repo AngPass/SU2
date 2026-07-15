@@ -194,6 +194,23 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
   su2double intensityCoeff = config->GetSBSParam().SBS_Cmag;
   su2double density = Mean_PrimVar[nDim+2];
 
+  /*--- Hybrid RANS/LES transition correction: instead of cmag*k*curl(stochVec), use
+        cmag*k*curl(stochVec)*(1 + beta_star*omega*(F_DES-1)/(stochVec.vorticity)), computed at
+        points i and j and averaged, so that the stochastic source term is progressively
+        reintroduced across the RANS/LES interface (SST-based hybrid models only). ---*/
+
+  su2double hybridTransitionFactor = 1.0;
+  if (config->GetSBSParam().hybridTransition && IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
+    constexpr su2double beta_star = 0.09;
+    const su2double stochDotVort_i = GeometryToolbox::DotProduct(3, stochVar_i, Vorticity_i);
+    const su2double stochDotVort_j = GeometryToolbox::DotProduct(3, stochVar_j, Vorticity_j);
+    const su2double denom_i = (stochDotVort_i >= 0.0) ? max(stochDotVort_i, EPS) : min(stochDotVort_i, -EPS);
+    const su2double denom_j = (stochDotVort_j >= 0.0) ? max(stochDotVort_j, EPS) : min(stochDotVort_j, -EPS);
+    const su2double factor_i = 1.0 + beta_star*turbFreq_i*(FDDES_i-1.0)/denom_i;
+    const su2double factor_j = 1.0 + beta_star*turbFreq_j*(FDDES_j-1.0)/denom_j;
+    hybridTransitionFactor = 0.5 * (factor_i + factor_j);
+  }
+
   stochStressTensor[0][0] = stochStressTensor[1][1] = stochStressTensor[2][2] = 0.0;
   stochStressTensor[0][1] = intensityCoeff * 0.5 * (stochVar_i[2]+stochVar_j[2]);
   stochStressTensor[1][0] = - stochStressTensor[0][1];
@@ -204,7 +221,7 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
 
   for (unsigned short iDim = 0; iDim < nDim; iDim++) {
     for (unsigned short jDim = 0; jDim < nDim; jDim++) {
-      stochStressTensor[iDim][jDim] *= 0.5 * density * (tke_i + tke_j);
+      stochStressTensor[iDim][jDim] *= 0.5 * density * (tke_i + tke_j) * hybridTransitionFactor;
     }
   }
 }

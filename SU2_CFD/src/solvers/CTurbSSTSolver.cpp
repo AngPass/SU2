@@ -439,13 +439,7 @@ void CTurbSSTSolver::Source_Residual(CGeometry *geometry, CSolver **solver_conta
     }
 
     if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) {
-      su2double k = nodes->GetSolution(iPoint, 0);
-      su2double omega = nodes->GetSolution(iPoint, 1);
-      su2double beta_star = constants[6];
-      su2double RANS_lengthscale = sqrt(k)/(beta_star*max(omega, 1e-10));
-      su2double DES_lengthscale = nodes->GetDES_LengthScale(iPoint);
-      su2double FDDES = RANS_lengthscale/max(DES_lengthscale, 1e-10);
-      numerics->SetFDDES(FDDES, 0.0);
+      numerics->SetFDDES(nodes->GetF_DES(iPoint), 0.0);
 
       /*--- Compute source terms in Langevin equations (Stochastic Basckscatter Model) ---*/
 
@@ -869,6 +863,7 @@ void CTurbSSTSolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, C
     nodes->SetDES_LengthScale(iPoint, lengthScale);
     nodes->SetLES_Mode(iPoint, lesSensor);
     nodes->SetDES_FilterWidth(iPoint, desFilterWidth);
+    nodes->SetF_DES(iPoint, distRANS/max(lengthScale, 1e-10));
 
   }
   END_SU2_OMP_FOR

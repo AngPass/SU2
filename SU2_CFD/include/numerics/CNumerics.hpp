@@ -83,6 +83,9 @@ protected:
   avg_turb_ke_i,  /*!< \brief Time-averaged turbulent kinetic energy at point i. */
   avg_turb_ke_j;  /*!< \brief Time-averaged turbulent kinetic energy at point j. */
   su2double
+  turbFreq_i, /*!< \brief Turbulence frequency (omega) at point i, used by the Stochastic Backscatter Model hybrid transition correction (SST turbulence model). */
+  turbFreq_j; /*!< \brief Turbulence frequency (omega) at point j, used by the Stochastic Backscatter Model hybrid transition correction (SST turbulence model). */
+  su2double
   intermittency_eff_i, /*!< \brief effective intermittency at point i. */
   intermittency_i; /*!< \brief intermittency at point i. */
   su2double
@@ -869,6 +872,17 @@ public:
   inline void SetAvgTurbKineticEnergy(su2double val_avg_turb_ke_i, su2double val_avg_turb_ke_j) {
     avg_turb_ke_i = val_avg_turb_ke_i;
     avg_turb_ke_j = val_avg_turb_ke_j;
+  }
+
+  /*!
+   * \brief Set the turbulence frequency (omega), used by the Stochastic Backscatter Model
+   *        hybrid transition correction (SST turbulence model).
+   * \param[in] val_omega_i - Value of the turbulence frequency at point i.
+   * \param[in] val_omega_j - Value of the turbulence frequency at point j.
+   */
+  inline void SetTurbulenceFrequency(su2double val_omega_i, su2double val_omega_j) {
+    turbFreq_i = val_omega_i;
+    turbFreq_j = val_omega_j;
   }
 
   /*!

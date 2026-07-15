@@ -512,6 +512,15 @@ void CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsigned long iEdge, CGeome
     }
     numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), nodes->GetLES_Mode(jPoint));
 
+    /*--- Hybrid RANS/LES transition correction of the stochastic momentum source term
+          (Stochastic Backscatter Model, SST-based hybrid models only). ---*/
+
+    if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().hybridTransition) {
+      numerics->SetTurbulenceFrequency(turbNodes->GetSolution(iPoint, 1), turbNodes->GetSolution(jPoint, 1));
+      numerics->SetFDDES(turbNodes->GetF_DES(iPoint), turbNodes->GetF_DES(jPoint));
+      numerics->SetVorticity(nodes->GetVorticity(iPoint), nodes->GetVorticity(jPoint));
+    }
+
     /*--- Mean modeled stress tensor, used to high-pass filter the modeled stresses (Stochastic Backscatter Model). ---*/
 
     if (config->GetSBSParam().filterStresses) {
