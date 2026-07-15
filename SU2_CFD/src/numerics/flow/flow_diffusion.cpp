@@ -200,7 +200,8 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
         reintroduced across the RANS/LES interface (SST-based hybrid models only). ---*/
 
   su2double hybridTransitionFactor = 1.0;
-  if (config->GetSBSParam().hybridTransition && IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
+  if (config->GetSBSParam().hybridTransition && IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) &&
+      (Vorticity_i != nullptr) && (Vorticity_j != nullptr)) {
     constexpr su2double beta_star = 0.09;
     const su2double stochDotVort_i = GeometryToolbox::DotProduct(3, stochVar_i, Vorticity_i);
     const su2double stochDotVort_j = GeometryToolbox::DotProduct(3, stochVar_j, Vorticity_j);

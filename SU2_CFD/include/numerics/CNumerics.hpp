@@ -191,7 +191,7 @@ protected:
   const su2double
   *WindGust_i,  /*!< \brief Wind gust at point i. */
   *WindGust_j;  /*!< \brief Wind gust at point j. */
-  const su2double *Vorticity_i, *Vorticity_j;    /*!< \brief Vorticity. */
+  const su2double *Vorticity_i = nullptr, *Vorticity_j = nullptr;    /*!< \brief Vorticity. */
   su2double StrainMag_i, StrainMag_j;      /*!< \brief Strain rate magnitude. */
   su2double Dissipation_i, Dissipation_j;  /*!< \brief Dissipation. */
   su2double Dissipation_ij;
