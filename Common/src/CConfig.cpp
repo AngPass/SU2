@@ -6594,6 +6594,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
           case SA_ZDES:  cout << "Delayed Detached Eddy Simulation (DDES) with Vorticity-based SGS" << endl; break;
           case SST_EDDES:
           case SA_EDDES: cout << "Delayed Detached Eddy Simulation (DDES) with Shear-layer Adapted SGS" << endl; break;
+          case SST_IDDES: cout << "Improved Delayed Detached Eddy Simulation (IDDES) with WMLES capability" << endl; break;
         }
         if (Kind_HybridRANSLES != NO_HYBRIDRANSLES) {
           if (LES_FilterWidth > 0.0) cout << "User-specified LES filter width: " << LES_FilterWidth << endl;

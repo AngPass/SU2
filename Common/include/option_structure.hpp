@@ -1538,7 +1538,8 @@ enum ENUM_HYBRIDRANSLES {
   SST_DDES  = 5,         /*!< \brief Kind of Hybrid RANS/LES (SST - Delayed DES (DDES) with Delta_max SGS). */
   SST_DES   = 6,         /*!< \brief Kind of Hybrid RANS/LES (SST - Detached Eddy Simulation (DES)). */
   SST_ZDES  = 7,         /*!< \brief Kind of Hybrid RANS/LES (SST - Delayed DES (DDES) with Vorticity based SGS like Zonal DES). */
-  SST_EDDES = 8          /*!< \brief Kind of Hybrid RANS/LES (SST - Delayed DES (DDES) with Shear Layer Adapted SGS: Enhanced DDES). */
+  SST_EDDES = 8,         /*!< \brief Kind of Hybrid RANS/LES (SST - Delayed DES (DDES) with Shear Layer Adapted SGS: Enhanced DDES). */
+  SST_IDDES = 9          /*!< \brief Kind of Hybrid RANS/LES (SST - Improved Delayed DES (IDDES) with WMLES capability). */
 };
 static const MapType<std::string, ENUM_HYBRIDRANSLES> HybridRANSLES_Map = {
   MakePair("NONE", NO_HYBRIDRANSLES)
@@ -1550,6 +1551,7 @@ static const MapType<std::string, ENUM_HYBRIDRANSLES> HybridRANSLES_Map = {
   MakePair("SST_DES", SST_DES)
   MakePair("SST_ZDES", SST_ZDES)
   MakePair("SST_EDDES", SST_EDDES)
+  MakePair("SST_IDDES", SST_IDDES)
 };
 
 /*!

@@ -864,6 +864,49 @@ void CTurbSSTSolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, C
 
         break;
       }
+      case SST_IDDES: {
+        /*--- Improved Delayed DES with WMLES capability, Shur et al.,
+         recalibrated for the SST model by Gritskevich et al.,
+         Flow Turbulence Combust - 2012 (Appendix 2, full formulation with f_e). ---*/
+
+        const su2double Cw = 0.15, Cl = 5.0, Ct = 1.87;
+
+        su2double hmax = geometry->nodes->GetMaxLength(iPoint);
+        if (LES_FilterWidth > 0.0){
+          hmax = LES_FilterWidth;
+        }
+
+        /*--- Delta_IDDES, Eq. 9: clips the grid filter width close to the wall. ---*/
+        desFilterWidth = min(Cw*max(wallDistance, hmax), hmax);
+        const su2double distLES = constDES * desFilterWidth;
+
+        const su2double alpha = 0.25 - wallDistance/hmax;
+
+        /*--- DDES-branch shielding function f_dt, Eq. 10. ---*/
+        const su2double r_dt = kinematicViscosityTurb/(uijuij*k2*pow(wallDistance, 2.0));
+        const su2double f_dt = 1.0-tanh(pow(20.0*r_dt,3.0));
+        const su2double f_b  = min(2.0*exp(-9.0*pow(alpha, 2.0)), 1.0);
+        const su2double f_dTilde = max(1.0-f_dt, f_b);
+
+        /*--- Elevating function f_e, Eq. 11: counters the log-layer mismatch
+         by locally boosting the RANS Reynolds stresses near the RANS/LES interface. ---*/
+        const su2double r_dl = kinematicViscosity/(uijuij*k2*pow(wallDistance, 2.0));
+        const su2double f_t = tanh(pow(pow(Ct, 2.0)*r_dt, 3.0));
+        const su2double f_l = tanh(pow(pow(Cl, 2.0)*r_dl, 10.0));
+        const su2double f_e2 = 1.0 - max(f_t, f_l);
+        const su2double f_e1 = (alpha >= 0.0) ? 2.0*exp(-11.09*pow(alpha, 2.0)) : 2.0*exp(-9.0*pow(alpha, 2.0));
+        const su2double f_e = f_e2 * max(f_e1-1.0, 0.0);
+
+        lengthScale = f_dTilde*(1.0+f_e)*distRANS + (1.0-f_dTilde)*distLES;
+        lesSensor = 1.0 - f_dTilde;
+
+        if (config->GetEnforceLES()) {
+          lengthScale = distLES;
+          lesSensor = 1.0;
+        }
+
+        break;
+      }
     }
 
     nodes->SetDES_LengthScale(iPoint, lengthScale);
