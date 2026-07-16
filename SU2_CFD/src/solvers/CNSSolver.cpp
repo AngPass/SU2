@@ -83,12 +83,12 @@ void CNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, C
 
   CommonPreprocessing(geometry, solver_container, config, iMesh, iRKStep, RunTime_EqSystem, Output);
 
-  /*--- Exchange the mean modeled stress tensor once per physical time step, since it is only
+  /*--- Exchange the mean strain-rate tensor once per physical time step, since it is only
         updated once per physical time step (hybrid RANS/LES stress filtering). ---*/
 
   if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses && InnerIter == 0) {
-    InitiateComms(geometry, config, MPI_QUANTITIES::MEAN_MODELED_STRESS);
-    CompleteComms(geometry, config, MPI_QUANTITIES::MEAN_MODELED_STRESS);
+    InitiateComms(geometry, config, MPI_QUANTITIES::MEAN_STRAIN_RATE);
+    CompleteComms(geometry, config, MPI_QUANTITIES::MEAN_STRAIN_RATE);
   }
 
   /*--- Compute gradient for MUSCL reconstruction, for output (i.e. the

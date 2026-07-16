@@ -528,14 +528,14 @@ void CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsigned long iEdge, CGeome
     }
   }
 
-  /*--- Mean modeled stress tensor, used to high-pass filter the modeled stresses where the LES
-        sensor is active. Available whenever a hybrid RANS/LES method is active, independent of
-        the Stochastic Backscatter Model. ---*/
+  /*--- Mean strain-rate tensor (built from the time-averaged velocity gradient), used to high-pass
+        filter the modeled stresses where the LES sensor is active. Available whenever a hybrid
+        RANS/LES method is active, independent of the Stochastic Backscatter Model. ---*/
 
   if (hybridActive && config->GetSBSParam().filterStresses) {
     for (unsigned short iVar = 0; iVar < 6; iVar++)
-      numerics->SetMeanModeledStress(iVar, nodes->GetMeanModeledStress(iPoint, iVar),
-                                           nodes->GetMeanModeledStress(jPoint, iVar));
+      numerics->SetMeanStrainRate(iVar, nodes->GetMeanStrainRate(iPoint, iVar),
+                                        nodes->GetMeanStrainRate(jPoint, iVar));
   }
 
   /*--- Wall shear stress values (wall functions) ---*/

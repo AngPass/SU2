@@ -1373,7 +1373,7 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       COUNT_PER_POINT  = 1;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
-    case MPI_QUANTITIES::MEAN_MODELED_STRESS:
+    case MPI_QUANTITIES::MEAN_STRAIN_RATE:
       COUNT_PER_POINT  = 6;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
@@ -1536,9 +1536,9 @@ void CSolver::InitiateComms(CGeometry *geometry,
           case MPI_QUANTITIES::MEAN_TKE:
             bufDSend[buf_offset] = base_nodes->GetMeanTurbKinEnergy(iPoint);
             break;
-          case MPI_QUANTITIES::MEAN_MODELED_STRESS:
+          case MPI_QUANTITIES::MEAN_STRAIN_RATE:
             for (iVar = 0; iVar < 6; iVar++)
-              bufDSend[buf_offset+iVar] = base_nodes->GetMeanModeledStress(iPoint, iVar);
+              bufDSend[buf_offset+iVar] = base_nodes->GetMeanStrainRate(iPoint, iVar);
             break;
           case MPI_QUANTITIES::STOCH_SOURCE_LANG:
             for (iDim = 0; iDim < nDim; iDim++)
@@ -1718,9 +1718,9 @@ void CSolver::CompleteComms(CGeometry *geometry,
           case MPI_QUANTITIES::MEAN_TKE:
             base_nodes->SetMeanTurbKinEnergy(iPoint, bufDRecv[buf_offset]);
             break;
-          case MPI_QUANTITIES::MEAN_MODELED_STRESS:
+          case MPI_QUANTITIES::MEAN_STRAIN_RATE:
             for (iVar = 0; iVar < 6; iVar++)
-              base_nodes->SetMeanModeledStress(iPoint, iVar, bufDRecv[buf_offset+iVar]);
+              base_nodes->SetMeanStrainRate(iPoint, iVar, bufDRecv[buf_offset+iVar]);
             break;
           case MPI_QUANTITIES::STOCH_SOURCE_LANG:
             for (iDim = 0; iDim < nDim; iDim++)

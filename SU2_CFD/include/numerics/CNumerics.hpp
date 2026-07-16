@@ -205,8 +205,10 @@ protected:
   stochVar_i[3] = {0.0}, /*!< \brief Stochastic variables at point i for Stochastic Backscatter Model. */
   stochVar_j[3] = {0.0}; /*!< \brief Stochastic variables at point j for Stochastic Backscatter Model. */
   su2double
-  meanModeledStress_i[6] = {0.0}, /*!< \brief Mean modeled stress tensor at point i, packed as (xx,yy,zz,xy,xz,yz). */
-  meanModeledStress_j[6] = {0.0}; /*!< \brief Mean modeled stress tensor at point j, packed as (xx,yy,zz,xy,xz,yz). */
+  meanStrainRate_i[6] = {0.0}, /*!< \brief Mean strain-rate tensor at point i (built from the time-averaged
+                                            velocity gradient), packed as (xx,yy,zz,xy,xz,yz). */
+  meanStrainRate_j[6] = {0.0}; /*!< \brief Mean strain-rate tensor at point j (built from the time-averaged
+                                            velocity gradient), packed as (xx,yy,zz,xy,xz,yz). */
   su2double
   lesMode_i = 0.0, /*!< \brief LES sensor at point i for hybrid RANS-LES methods. */
   lesMode_j = 0.0; /*!< \brief LES sensor at point j for hybrid RANS-LES methods. */
@@ -886,14 +888,14 @@ public:
   }
 
   /*!
-   * \brief Set a component of the mean modeled stress tensor (Stochastic Backscatter Model, stress filtering).
+   * \brief Set a component of the mean strain-rate tensor (Stochastic Backscatter Model, stress filtering).
    * \param[in] iVar - Component index (0=xx, 1=yy, 2=zz, 3=xy, 4=xz, 5=yz).
-   * \param[in] val_meanstress_i - Value of the mean modeled stress component at point i.
-   * \param[in] val_meanstress_j - Value of the mean modeled stress component at point j.
+   * \param[in] val_meanstrain_i - Value of the mean strain-rate component at point i.
+   * \param[in] val_meanstrain_j - Value of the mean strain-rate component at point j.
    */
-  inline void SetMeanModeledStress(unsigned short iVar, su2double val_meanstress_i, su2double val_meanstress_j) {
-    meanModeledStress_i[iVar] = val_meanstress_i;
-    meanModeledStress_j[iVar] = val_meanstress_j;
+  inline void SetMeanStrainRate(unsigned short iVar, su2double val_meanstrain_i, su2double val_meanstrain_j) {
+    meanStrainRate_i[iVar] = val_meanstrain_i;
+    meanStrainRate_j[iVar] = val_meanstrain_j;
   }
 
   /*!

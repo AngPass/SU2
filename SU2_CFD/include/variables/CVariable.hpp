@@ -460,15 +460,17 @@ public:
    * \param[in] iPoint - Point index.
    * \param[in] iVar - Component index of the symmetric tensor (0=xx, 1=yy, 2=zz, 3=xy, 4=xz, 5=yz).
    */
-  inline virtual su2double GetMeanModeledStress(unsigned long iPoint, unsigned short iVar) const { return 0.0; }
+  inline virtual su2double GetMeanStrainRate(unsigned long iPoint, unsigned short iVar) const { return 0.0; }
 
   /*!
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
    * \param[in] iVar - Component index of the symmetric tensor (0=xx, 1=yy, 2=zz, 3=xy, 4=xz, 5=yz).
-   * \param[in] val_mean_stress - Mean stress tensor component.
+   * \param[in] val_mean_strain - Mean (deviatoric) strain-rate tensor component, i.e. the tensor
+   *            built from the time-averaged velocity gradient (2*dUi/dxi - 2/3*div for the normal
+   *            components, dUi/dxj+dUj/dxi for the shear components).
    */
-  inline virtual void SetMeanModeledStress(unsigned long iPoint, unsigned short iVar, su2double val_mean_stress) {}
+  inline virtual void SetMeanStrainRate(unsigned long iPoint, unsigned short iVar, su2double val_mean_strain) {}
 
   /*!
    * \brief A virtual member.

@@ -4261,6 +4261,22 @@ void CFlowOutput::SetTimeAveragedFields(const CConfig *config) {
       AddVolumeOutput("MODELED_REYNOLDS_STRESS_XZ", "ModeledReynoldsStress_XZ", "TIME_AVERAGE", "Modeled Reynolds stress xz-component");
       AddVolumeOutput("MODELED_REYNOLDS_STRESS_YZ", "ModeledReynoldsStress_YZ", "TIME_AVERAGE", "Modeled Reynolds stress yz-component");
     }
+
+    if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses) {
+      /*--- Mean (deviatoric) strain-rate tensor built from the time-averaged velocity gradient, used
+            to high-pass filter the modeled stresses (see CAvgGrad_Base::SetStressTensor): the low-frequency
+            part of the eddy-viscosity closure is evaluated with these mean strain components and the
+            current (instantaneous) eddy viscosity, then subtracted from the instantaneous stress. ---*/
+      AddVolumeOutput("MEAN_STRAIN_XX", "MeanStrainRate_XX", "TIME_AVERAGE", "Mean strain-rate tensor xx-component");
+      AddVolumeOutput("MEAN_STRAIN_YY", "MeanStrainRate_YY", "TIME_AVERAGE", "Mean strain-rate tensor yy-component");
+      AddVolumeOutput("MEAN_STRAIN_XY", "MeanStrainRate_XY", "TIME_AVERAGE", "Mean strain-rate tensor xy-component");
+      if (nDim == 3){
+        AddVolumeOutput("MEAN_STRAIN_ZZ", "MeanStrainRate_ZZ", "TIME_AVERAGE", "Mean strain-rate tensor zz-component");
+        AddVolumeOutput("MEAN_STRAIN_XZ", "MeanStrainRate_XZ", "TIME_AVERAGE", "Mean strain-rate tensor xz-component");
+        AddVolumeOutput("MEAN_STRAIN_YZ", "MeanStrainRate_YZ", "TIME_AVERAGE", "Mean strain-rate tensor yz-component");
+      }
+    }
+
     AddVolumeOutput("MEAN_TURBULENT_PRODUCTION", "MeanTurbulentProduction", "TIME_AVERAGE", "Mean production of turbulent kinetic energy");
 
     if (config->GetKind_Turb_Model() == TURB_MODEL::SST)
@@ -4324,31 +4340,42 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
     const su2double nu_t = Node_Flow->GetEddyViscosity(iPoint) / rho;
     const auto vel_grad = Node_Flow->GetVelocityGradient(iPoint);
     const su2double vel_div = vel_grad(0,0) + vel_grad(1,1) + (nDim ==3 ? vel_grad(2,2) : 0.0);
-    const su2double tau_xx = nu_t * (2*vel_grad(0,0) - (2.0/3.0)*vel_div);
-    const su2double tau_yy = nu_t * (2*vel_grad(1,1) - (2.0/3.0)*vel_div);
-    const su2double tau_xy = nu_t * (vel_grad(0,1) + vel_grad(1,0));
-    SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_XX", iPoint, -tau_xx);
-    SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_YY", iPoint, -tau_yy);
-    SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_XY", iPoint, -tau_xy);
+    const su2double strain_xx = 2*vel_grad(0,0) - (2.0/3.0)*vel_div;
+    const su2double strain_yy = 2*vel_grad(1,1) - (2.0/3.0)*vel_div;
+    const su2double strain_xy = vel_grad(0,1) + vel_grad(1,0);
+    SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_XX", iPoint, -nu_t*strain_xx);
+    SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_YY", iPoint, -nu_t*strain_yy);
+    SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_XY", iPoint, -nu_t*strain_xy);
+    su2double strain_zz = 0.0, strain_xz = 0.0, strain_yz = 0.0;
     if (nDim == 3){
-      const su2double tau_zz = nu_t * (2*vel_grad(2,2) - (2.0/3.0)*vel_div);
-      const su2double tau_xz = nu_t * (vel_grad(0,2) + vel_grad(2,0));
-      const su2double tau_yz = nu_t * (vel_grad(1,2) + vel_grad(2,1));
-      SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_ZZ", iPoint, -tau_zz);
-      SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_XZ", iPoint, -tau_xz);
-      SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_YZ", iPoint, -tau_yz);
+      strain_zz = 2*vel_grad(2,2) - (2.0/3.0)*vel_div;
+      strain_xz = vel_grad(0,2) + vel_grad(2,0);
+      strain_yz = vel_grad(1,2) + vel_grad(2,1);
+      SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_ZZ", iPoint, -nu_t*strain_zz);
+      SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_XZ", iPoint, -nu_t*strain_xz);
+      SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_YZ", iPoint, -nu_t*strain_yz);
     }
 
     if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses) {
-      Node_Flow->SetMeanModeledStress(iPoint, 0, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_XX", iPoint));
-      Node_Flow->SetMeanModeledStress(iPoint, 1, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_YY", iPoint));
-      Node_Flow->SetMeanModeledStress(iPoint, 3, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_XY", iPoint));
-      /*--- The ZZ/XZ/YZ components only exist in 3D (see the nDim==3 guard around their
-            AddVolumeOutput calls above). ---*/
+      /*--- Time-average the (kinematic) strain-rate tensor itself, not the modeled stress. Since
+            time-averaging is linear, this running average equals the strain-rate tensor built from
+            the time-averaged velocity gradient, <dUi/dxj> = d<Ui>/dxj. Combined with the current
+            (instantaneous) eddy viscosity in CAvgGrad_Base::SetStressTensor, this isolates the part
+            of the eddy-viscosity closure driven by the mean flow, filtered out of the instantaneous
+            diffusive stress. ---*/
+      SetAvgVolumeOutputValue("MEAN_STRAIN_XX", iPoint, strain_xx);
+      SetAvgVolumeOutputValue("MEAN_STRAIN_YY", iPoint, strain_yy);
+      SetAvgVolumeOutputValue("MEAN_STRAIN_XY", iPoint, strain_xy);
+      Node_Flow->SetMeanStrainRate(iPoint, 0, GetVolumeOutputValue("MEAN_STRAIN_XX", iPoint));
+      Node_Flow->SetMeanStrainRate(iPoint, 1, GetVolumeOutputValue("MEAN_STRAIN_YY", iPoint));
+      Node_Flow->SetMeanStrainRate(iPoint, 3, GetVolumeOutputValue("MEAN_STRAIN_XY", iPoint));
       if (nDim == 3) {
-        Node_Flow->SetMeanModeledStress(iPoint, 2, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_ZZ", iPoint));
-        Node_Flow->SetMeanModeledStress(iPoint, 4, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_XZ", iPoint));
-        Node_Flow->SetMeanModeledStress(iPoint, 5, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_YZ", iPoint));
+        SetAvgVolumeOutputValue("MEAN_STRAIN_ZZ", iPoint, strain_zz);
+        SetAvgVolumeOutputValue("MEAN_STRAIN_XZ", iPoint, strain_xz);
+        SetAvgVolumeOutputValue("MEAN_STRAIN_YZ", iPoint, strain_yz);
+        Node_Flow->SetMeanStrainRate(iPoint, 2, GetVolumeOutputValue("MEAN_STRAIN_ZZ", iPoint));
+        Node_Flow->SetMeanStrainRate(iPoint, 4, GetVolumeOutputValue("MEAN_STRAIN_XZ", iPoint));
+        Node_Flow->SetMeanStrainRate(iPoint, 5, GetVolumeOutputValue("MEAN_STRAIN_YZ", iPoint));
       }
     }
 

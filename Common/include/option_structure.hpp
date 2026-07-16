@@ -2774,7 +2774,7 @@ enum class MPI_QUANTITIES {
   GRID_VELOCITY        ,  /*!< \brief Grid velocity communication. */
   SOLUTION_EDDY        ,  /*!< \brief Turbulent solution plus eddy viscosity communication. */
   MEAN_TKE             ,  /*!< \brief Mean turbulent kinetic energy communication. */
-  MEAN_MODELED_STRESS  ,  /*!< \brief Mean modeled stress tensor communication. */
+  MEAN_STRAIN_RATE     ,  /*!< \brief Mean strain-rate tensor communication. */
   STOCH_SOURCE_LANG    ,  /*!< \brief Stochastic source term for Langevin equations communication. */
   STOCH_SOURCE_LANG_GRAD, /*!< \brief Gradient of the stochastic source term being Laplacian-smoothed. */
   SMOOTH_PHAT          ,  /*!< \brief Preconditioned search direction (BiCGSTAB) for the Langevin source Laplacian smoothing. */
