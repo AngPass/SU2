@@ -374,34 +374,6 @@ protected:
   void SetFixedCLScreenOutput(const CConfig *config);
 
   /*!
-   * \brief Compute the hybrid RANS/LES transition correction factor for the stochastic momentum
-   *        source term (Stochastic Backscatter Model, SST-based hybrid models only): 1.0 if the
-   *        correction is disabled, otherwise exactly scaleFactor, with
-   *        scaleFactor = beta_star*omega*min(1-F_DES,0)/(stochVec.vorticity).
-   * \param iPoint - Index of the point.
-   * \param config - Definition of the particular problem.
-   * \param node_flow - Flow solver solution.
-   * \param node_turb - Turbulence-model solver solution.
-   * \param stochVec - Stochastic vector at the point, before scaling by cmag*k.
-   * \return Hybrid RANS/LES transition correction factor.
-   */
-  inline su2double GetHybridTransitionFactor(unsigned long iPoint, const CConfig *config, const CVariable *node_flow,
-                                             const CVariable *node_turb, const su2double *stochVec) {
-
-    if (!config->GetSBSParam().hybridTransition || !IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) return 1.0;
-
-    constexpr su2double beta_star = 0.09;
-    const auto vorticity = node_flow->GetVorticity(iPoint);
-    su2double dotProd = 0.0;
-    for (unsigned short iDim = 0; iDim < nDim; iDim++) dotProd += stochVec[iDim]*vorticity[iDim];
-    const su2double denom = (dotProd >= 0.0) ? max(dotProd, EPS) : min(dotProd, -EPS);
-    const su2double omega = node_turb->GetSolution(iPoint, 1);
-    const su2double F_DES = node_turb->GetF_DES(iPoint);
-
-    return beta_star*omega*min(1.0-F_DES, 0.0)/denom;
-  }
-
-  /*!
    * \brief Compute the power of the stochastic forcing (Backscatter Model).
    * \param iPoint - Index of the point.
    * \param config - Definition of the particular problem.
@@ -439,10 +411,7 @@ protected:
         stochVec_i[iDim] = node_turb->GetOU_Process(iPoint, iDim);
       else
         stochVec_i[iDim] = node_turb->GetLangevinSourceTerms(iPoint, iDim);
-    }
-    const su2double factor_i = GetHybridTransitionFactor(iPoint, config, node_flow, node_turb, stochVec_i);
-    for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-      stochVec_i[iDim] *= tkeEstim_i * mag * factor_i;
+      stochVec_i[iDim] *= tkeEstim_i * mag;
     }
 
     /*--- Evaluate the curl of the stochastic vector ---*/
@@ -478,10 +447,7 @@ protected:
           stochVec_j[iDim] = node_turb->GetOU_Process(jPoint, iDim);
         else
           stochVec_j[iDim] = node_turb->GetLangevinSourceTerms(jPoint, iDim);
-      }
-      const su2double factor_j = GetHybridTransitionFactor(jPoint, config, node_flow, node_turb, stochVec_j);
-      for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-        stochVec_j[iDim] *= tkeEstim_j * mag * factor_j;
+        stochVec_j[iDim] *= tkeEstim_j * mag;
       }
 
       /*--- Compute fluxes ---*/
@@ -545,10 +511,7 @@ protected:
         stochVec_i[iDim] = node_turb->GetOU_Process(iPoint, iDim);
       else
         stochVec_i[iDim] = node_turb->GetLangevinSourceTerms(iPoint, iDim);
-    }
-    const su2double factor_i = GetHybridTransitionFactor(iPoint, config, node_flow, node_turb, stochVec_i);
-    for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-      stochVec_i[iDim] *= tkeEstim_i * mag * factor_i;
+      stochVec_i[iDim] *= tkeEstim_i * mag;
     }
 
     /*--- Evaluate the dot product of the stochastic vector and the vorticity vector ---*/

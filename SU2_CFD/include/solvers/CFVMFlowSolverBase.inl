@@ -519,18 +519,9 @@ void CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsigned long iEdge, CGeome
       numerics->SetAvgTurbKineticEnergy(turbNodes->GetMeanTurbKinEnergy(iPoint), turbNodes->GetMeanTurbKinEnergy(jPoint));
     }
 
-    /*--- Hybrid RANS/LES transition correction of the stochastic momentum source term
-          (Stochastic Backscatter Model, SST-based hybrid models only). ---*/
-
-    if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().hybridTransition) {
-      numerics->SetTurbulenceFrequency(turbNodes->GetSolution(iPoint, 1), turbNodes->GetSolution(jPoint, 1));
-      numerics->SetFDDES(turbNodes->GetF_DES(iPoint), turbNodes->GetF_DES(jPoint));
-      numerics->SetVorticity(nodes->GetVorticity(iPoint), nodes->GetVorticity(jPoint));
-    }
-
     /*--- Fraction of turbulent kinetic energy that is modeled (as opposed to resolved), used to
           scale the stochastic momentum source term (Stochastic Backscatter Model, SST-based
-          hybrid models only). Independent of the hybrid transition correction above. ---*/
+          hybrid models only). ---*/
 
     if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
       numerics->SetModeledFraction(turbNodes->GetModeledFraction(iPoint), turbNodes->GetModeledFraction(jPoint));

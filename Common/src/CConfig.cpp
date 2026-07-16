@@ -3047,8 +3047,10 @@ void CConfig::SetConfig_Options() {
    *              (any Hybrid RANS/LES method, independent of STOCHASTIC_BACKSCATTER). */
   addBoolOption("FILTER_STRESSES", SBSParam.filterStresses, false);
 
-  /* DESCRIPTION: Correct the stochastic momentum source term across the RANS/LES transition (SST-based hybrid models only) */
-  addBoolOption("SBS_HYBRID_TRANSITION", SBSParam.hybridTransition, false);
+  /* DESCRIPTION: Scale the high-pass stress filtering (FILTER_STRESSES) by the modeled turbulent
+   *              kinetic energy fraction (SST-based Stochastic Backscatter Model only); if false,
+   *              filtering is applied at full strength (modeled fraction = 1) */
+  addBoolOption("DAMP_TIME_FILTERING", SBSParam.dampTimeFiltering, false);
 
   /* DESCRIPTION: Filter width for LES (if negative, it is computed based on the local cell size) */
   addDoubleOption("LES_FILTER_WIDTH", LES_FilterWidth, -1.0);
@@ -6643,11 +6645,6 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
             }
             if (Kind_HybridRANSLES != SA_DES && Kind_HybridRANSLES != SST_DES)
               cout << "| Stochastic source terms suppressed where the shielding function is lower than: " << setw(4) << setprecision(4) << SBSParam.stochFdThreshold << endl;
-            if (SBSParam.hybridTransition) {
-              cout << "| Hybrid RANS/LES transition correction of the stochastic source terms active." << endl;
-              if (SBSParam.useMeanTurbKE)
-                SU2_MPI::Error("SBS_HYBRID_TRANSITION is not compatible with SBS_USE_MEAN_TKE=YES.", CURRENT_FUNCTION);
-            }
           } else {
             cout << "OFF" << endl;
           }

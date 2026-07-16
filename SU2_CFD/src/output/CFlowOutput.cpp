@@ -4400,11 +4400,9 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
         csi_y = Node_Turb->GetLangevinSourceTerms(iPoint, 1);
         csi_z = Node_Turb->GetLangevinSourceTerms(iPoint, 2);
       }
-      const su2double stochVecRaw[3] = {csi_x, csi_y, csi_z};
-      const su2double hybridTransitionFactor = GetHybridTransitionFactor(iPoint, config, Node_Flow, Node_Turb, stochVecRaw);
-      su2double stochSource_x = mag * tke_estim * csi_x * hybridTransitionFactor;
-      su2double stochSource_y = mag * tke_estim * csi_y * hybridTransitionFactor;
-      su2double stochSource_z = mag * tke_estim * csi_z * hybridTransitionFactor;
+      su2double stochSource_x = mag * tke_estim * csi_x;
+      su2double stochSource_y = mag * tke_estim * csi_y;
+      su2double stochSource_z = mag * tke_estim * csi_z;
       SetAvgVolumeOutputValue("MEAN_BACKSCATTER_INTENSITY-X", iPoint, stochSource_x);
       SetAvgVolumeOutputValue("MEAN_BACKSCATTER_INTENSITY-Y", iPoint, stochSource_y);
       SetAvgVolumeOutputValue("MEAN_BACKSCATTER_INTENSITY-Z", iPoint, stochSource_z);

@@ -1118,7 +1118,7 @@ private:
     bool useMeanTurbKE;                     /*!< \brief Option for using mean turbulent kinetic energy in the definition of the random source term (SST model). */
     unsigned short stochSourceType;         /*!< \brief Kind of stochastic source term included in the balance equations. */
     bool filterStresses;                    /*!< \brief Option for high-pass filtering the modeled (subgrid) stress tensor where the LES sensor is active. Usable with any Hybrid RANS/LES method, independent of StochasticBackscatter. */
-    bool hybridTransition;                  /*!< \brief Option for correcting the stochastic momentum source term across the RANS/LES transition (SST-based hybrid models only). */
+    bool dampTimeFiltering;                 /*!< \brief Option for scaling the high-pass stress filtering (filterStresses) by the modeled turbulent kinetic energy fraction (SST-based Stochastic Backscatter Model only). If false, the filtering is applied at full strength (modeled fraction = 1). */
   } SBSParam;
   bool enforceLES;                          /*!< \brief Option to enforce LES mode in hybrid RANS-LES simulations. */
   su2double LES_FilterWidth;                /*!< \brief LES filter width for hybrid RANS-LES simulations. */

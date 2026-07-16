@@ -818,9 +818,9 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
    */
   inline void AddStochSource(const CConfig* config, su2double& prodK, const su2double dissipK, su2double& prodOm, su2double prodFac) {
 
-    /*--- modeledFraction_i defaults to 1 (no effect) unless SBS_HYBRID_TRANSITION is active, in
-          which case it scales the stochastic source term by the fraction of turbulent kinetic
-          energy that is modeled rather than resolved (see CFlowOutput). ---*/
+    /*--- modeledFraction_i defaults to 1 (no effect) unless the SST-based Stochastic Backscatter
+          Model is active, in which case it scales the stochastic source term by the fraction of
+          turbulent kinetic energy that is modeled rather than resolved (see CFlowOutput). ---*/
     su2double Cmag = config->GetSBSParam().SBS_Cmag * modeledFraction_i;
     su2double tke = (config->GetSBSParam().useMeanTurbKE) ? avg_turb_ke_i : ScalarVar_i[0];
     const bool isLangevin = (config->GetSBSParam().stochSourceType == LANGEVIN);
