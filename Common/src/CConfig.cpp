@@ -3043,8 +3043,9 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Use mean turbulent kinetic energy in the definition of the stochastic source term. */
   addBoolOption("SBS_USE_MEAN_TKE", SBSParam.useMeanTurbKE, false);
 
-  /* DESCRIPTION: High-pass filter the modeled (subgrid) stress tensor where the LES sensor is active. */
-  addBoolOption("SBS_FILTER_STRESSES", SBSParam.filterStresses, false);
+  /* DESCRIPTION: High-pass filter the modeled (subgrid) stress tensor where the LES sensor is active
+   *              (any Hybrid RANS/LES method, independent of STOCHASTIC_BACKSCATTER). */
+  addBoolOption("FILTER_STRESSES", SBSParam.filterStresses, false);
 
   /* DESCRIPTION: Correct the stochastic momentum source term across the RANS/LES transition (SST-based hybrid models only) */
   addBoolOption("SBS_HYBRID_TRANSITION", SBSParam.hybridTransition, false);
@@ -3680,7 +3681,7 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
 
   /*--- If WRT_RESTART_AVERAGES is on and the user did not specify RESTART_AVG_FIELDS, default to
         persisting the mean turbulent kinetic energy and the mean modeled stress tensor (the fields
-        used by SBS_USE_MEAN_TKE/SBS_FILTER_STRESSES). ---*/
+        used by SBS_USE_MEAN_TKE/FILTER_STRESSES). ---*/
   if (Wrt_Restart_Averages && nRestartAvgFields == 0) {
     static const string defaultRestartAvgFields[] = {
       "MEAN_TURB_KIN_ENERGY", "MODELED_REYNOLDS_STRESS_XX", "MODELED_REYNOLDS_STRESS_YY",
