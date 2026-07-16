@@ -1111,14 +1111,13 @@ private:
     bool stochSourceTurb;                   /*!< \brief Option for including stochastic source term in turbulence model equation (Stochastic Backscatter Model). */
     bool stochSourceDiagnostics;            /*!< \brief Option for writing diagnostics related to stochastic source terms in Langevin equations (Stochastic Backscatter Model). */
     bool StochBackscatterInBox;             /*!< \brief Option for activating the Stochastic Backscatter Model only in a bounded box. */
-    bool langevinUpwBlend;                  /*!< \brief Option for integrating Langevin equations using blended central-upwind scheme. */
     bool restartStochField;                 /*!< \brief Option for restarting stochastic field from solution file. */
     bool besselScaleFactor;                 /*!< \brief Option for scaling the spatially-correlated random field using Bessel integral. */
     su2double StochBackscatterBoxBounds[6]; /*!< \brief Bounds of the box where the Stochastic Backscatter Model is active. */
     su2double stochFdThreshold;             /*!< \brief Shielding function lower threshold for application of Stochastic Backscatter Model. */
     bool useMeanTurbKE;                     /*!< \brief Option for using mean turbulent kinetic energy in the definition of the random source term (SST model). */
     unsigned short stochSourceType;         /*!< \brief Kind of stochastic source term included in the balance equations. */
-    bool filterStresses;                    /*!< \brief Option for high-pass filtering the modeled (subgrid) stress tensor where the LES sensor is active. */
+    bool filterStresses;                    /*!< \brief Option for high-pass filtering the modeled (subgrid) stress tensor where the LES sensor is active. Usable with any Hybrid RANS/LES method, independent of StochasticBackscatter. */
     bool hybridTransition;                  /*!< \brief Option for correcting the stochastic momentum source term across the RANS/LES transition (SST-based hybrid models only). */
   } SBSParam;
   bool enforceLES;                          /*!< \brief Option to enforce LES mode in hybrid RANS-LES simulations. */

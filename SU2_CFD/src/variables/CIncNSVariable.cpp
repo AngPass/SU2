@@ -39,7 +39,7 @@ CIncNSVariable::CIncNSVariable(su2double pressure, const su2double *velocity, su
   DES_LengthScale.resize(nPoint) = su2double(0.0);
   lesMode.resize(nPoint) = su2double(0.0);
   MeanTurbKE.resize(nPoint) = su2double(0.0);
-  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses)
+  if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses)
     MeanModeledStress.resize(nPoint, 6) = su2double(0.0);
   Max_Lambda_Visc.resize(nPoint);
   /*--- Allocate memory for the AuxVar and its gradient. See e.g. CIncEulerSolver::Source_Residual:

@@ -3022,9 +3022,6 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Specify if the stochastic source term must be included in the turbulence model equation */
   addBoolOption("SBS_SOURCE_TURB", SBSParam.stochSourceTurb, true);
 
-  /* DESCRIPTION: Specify if the convective terms in the Langevin equations must be discretized using blended central-upwind scheme */
-  addBoolOption("SBS_LANGEVIN_UPW_BLEND", SBSParam.langevinUpwBlend, false);
-
   /* DESCRIPTION: Specify if the stochastic field must be read from solution file (if present) */
   addBoolOption("SBS_RESTART", SBSParam.restartStochField, true);
 
@@ -6597,6 +6594,8 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
         }
         if (Kind_HybridRANSLES != NO_HYBRIDRANSLES) {
           if (LES_FilterWidth > 0.0) cout << "User-specified LES filter width: " << LES_FilterWidth << endl;
+          if (SBSParam.filterStresses)
+            cout << "| Modeled stress tensor high-pass filtered where the shielding function is above: " << setw(4) << setprecision(4) << SBSParam.stochFdThreshold << endl;
           cout << "Stochastic Backscatter: ";
           if (SBSParam.StochasticBackscatter) {
             cout << "ON" << endl;
@@ -6607,10 +6606,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
               SU2_MPI::Error("Backscatter intensity coefficient must be non-negative.", CURRENT_FUNCTION);
             cout << "| Backscatter timescale coefficient: " << SBSParam.SBS_Ctau << endl;
             if (SBSParam.stochSourceType == LANGEVIN) {
-              if (SBSParam.langevinUpwBlend)
-                cout << "| Langevin equations integrated using blended central-upwind scheme." << endl;
-              else
-                cout << "| Langevin equations integrated using pure central scheme." << endl;
+              cout << "| Langevin equations integrated using a central scheme with 4th-order JST-type artificial dissipation." << endl;
               if (SBSParam.restartStochField)
                 cout << "| Stochastic field restarted from solution file (if present)." << endl;
               else
@@ -6646,8 +6642,6 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
             }
             if (Kind_HybridRANSLES != SA_DES && Kind_HybridRANSLES != SST_DES)
               cout << "| Stochastic source terms suppressed where the shielding function is lower than: " << setw(4) << setprecision(4) << SBSParam.stochFdThreshold << endl;
-            if (SBSParam.filterStresses)
-              cout << "| Modeled stress tensor high-pass filtered where the shielding function is above: " << setw(4) << setprecision(4) << SBSParam.stochFdThreshold << endl;
             if (SBSParam.hybridTransition) {
               cout << "| Hybrid RANS/LES transition correction of the stochastic source terms active." << endl;
               if (SBSParam.useMeanTurbKE)

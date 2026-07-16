@@ -148,7 +148,7 @@ void CAvgGrad_Base::SetStressTensor(const su2double *val_primvar,
         tau[iDim][jDim] -= stochStressTensor[iDim][jDim];
   }
 
-  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses) {
+  if ((config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) && config->GetSBSParam().filterStresses) {
     /*--- High-pass filter the modeled stress tensor where the LES sensor is active: subtract the
           time-averaged (low-frequency) part of the modeled stress from the instantaneous tau. Note
           MODELED_REYNOLDS_STRESS_* (CFlowOutput) is stored as minus the kinematic turbulent stress,

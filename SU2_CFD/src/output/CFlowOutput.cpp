@@ -4339,14 +4339,17 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
       SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_YZ", iPoint, -tau_yz);
     }
 
-    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses) {
-      /*--- The Stochastic Backscatter Model is only supported for 3D flows. ---*/
+    if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses) {
       Node_Flow->SetMeanModeledStress(iPoint, 0, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_XX", iPoint));
       Node_Flow->SetMeanModeledStress(iPoint, 1, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_YY", iPoint));
-      Node_Flow->SetMeanModeledStress(iPoint, 2, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_ZZ", iPoint));
       Node_Flow->SetMeanModeledStress(iPoint, 3, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_XY", iPoint));
-      Node_Flow->SetMeanModeledStress(iPoint, 4, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_XZ", iPoint));
-      Node_Flow->SetMeanModeledStress(iPoint, 5, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_YZ", iPoint));
+      /*--- The ZZ/XZ/YZ components only exist in 3D (see the nDim==3 guard around their
+            AddVolumeOutput calls above). ---*/
+      if (nDim == 3) {
+        Node_Flow->SetMeanModeledStress(iPoint, 2, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_ZZ", iPoint));
+        Node_Flow->SetMeanModeledStress(iPoint, 4, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_XZ", iPoint));
+        Node_Flow->SetMeanModeledStress(iPoint, 5, GetVolumeOutputValue("MODELED_REYNOLDS_STRESS_YZ", iPoint));
+      }
     }
 
     const su2double strainMag = Node_Flow->GetStrainMag(iPoint);

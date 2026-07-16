@@ -52,7 +52,9 @@ class CUpwScalar : public CNumerics {
   const FlowIndices idx;            /*!< \brief Object to manage the access to the flow primitives. */
   su2double a0 = 0.0;               /*!< \brief The maximum of the face-normal velocity and 0. */
   su2double a1 = 0.0;               /*!< \brief The minimum of the face-normal velocity and 0. */
-  su2double lesSensor = 0.0;        /*!< \brief Reconstruction of the LES sensor on the cell face. */
+  su2double Epsilon_4 = 0.0;        /*!< \brief 4th-order JST-type artificial dissipation coefficient for the
+                                          (always centered) discretization of the Langevin equations
+                                          (Stochastic Backscatter Model). */
   su2double Flux[MAXNVAR];          /*!< \brief Final result, diffusive flux/residual. */
   su2double* Jacobian_i[MAXNVAR];   /*!< \brief Flux Jacobian w.r.t. node i. */
   su2double* Jacobian_j[MAXNVAR];   /*!< \brief Flux Jacobian w.r.t. node j. */
@@ -118,9 +120,10 @@ class CUpwScalar : public CNumerics {
     AD::SetPreaccIn(V_i[idx.Density()]);
     AD::SetPreaccIn(V_j[idx.Density()]);
     AD::SetPreaccIn(MassFlux);
-    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
-      AD::SetPreaccIn(lesMode_i);
-      AD::SetPreaccIn(lesMode_j);
+    const bool langevin = config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN;
+    if (langevin) {
+      AD::SetPreaccIn(Und_Lapl_i, nVar);
+      AD::SetPreaccIn(Und_Lapl_j, nVar);
     }
 
     ExtraADPreaccIn();
@@ -145,9 +148,15 @@ class CUpwScalar : public CNumerics {
       a1 = fmin(0.0, q_ij);
     }
 
-    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
-      const su2double dissipFactor = 0.99;
-      lesSensor = (config->GetSBSParam().langevinUpwBlend) ? min(dissipFactor, 0.5*(lesMode_i + lesMode_j)) : 1.0;
+    Epsilon_4 = 0.0;
+    if (langevin) {
+      /*--- 4th-order JST-type dissipation added on top of the central discretization of the
+            Langevin equations (no 2nd-order/shock-sensor term, these equations have no shocks).
+            |a0-a1| (the local convective speed) plays the role of the spectral radius (MeanLambda)
+            used for the flow's JST scheme. ---*/
+      const su2double sc2 = 3.0*(su2double(Neighbor_i)+su2double(Neighbor_j))/(su2double(Neighbor_i)*su2double(Neighbor_j));
+      const su2double sc4 = sc2*sc2/4.0;
+      Epsilon_4 = config->GetKappa_4th_Flow() * sc4 * fabs(a0 - a1);
     }
 
     FinishResidualCalc(config);

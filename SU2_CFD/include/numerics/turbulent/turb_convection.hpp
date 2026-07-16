@@ -47,7 +47,11 @@ private:
   using Base::Jacobian_j;
   using Base::ScalarVar_i;
   using Base::ScalarVar_j;
-  using Base::lesSensor;
+  using Base::Epsilon_4;
+  using Base::Und_Lapl_i;
+  using Base::Und_Lapl_j;
+  using Base::Neighbor_i;
+  using Base::Neighbor_j;
   using Base::bounded_scalar;
   using Base::V_i;
   using Base::V_j;
@@ -65,11 +69,12 @@ private:
    */
   void FinishResidualCalc(const CConfig* config) override {
     if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
+      /*--- Central discretization with 4th-order JST-type dissipation (Stochastic Backscatter Model). ---*/
       for (unsigned short iVar = 1; iVar < nVar; iVar++) {
-        Flux[iVar] = (a0 + a1) * 0.5 * (ScalarVar_i[iVar] + ScalarVar_j[iVar]) * lesSensor +
-                     (1.0-lesSensor) * (a0*ScalarVar_i[iVar] + a1*ScalarVar_j[iVar]);
-        Jacobian_i[iVar][iVar] = 0.5 * (a0+a1) * lesSensor + (1.0-lesSensor) * a0;
-        Jacobian_j[iVar][iVar] = 0.5 * (a0+a1) * lesSensor + (1.0-lesSensor) * a1;
+        const su2double diffLapl = Und_Lapl_i[iVar] - Und_Lapl_j[iVar];
+        Flux[iVar] = (a0 + a1) * 0.5 * (ScalarVar_i[iVar] + ScalarVar_j[iVar]) - Epsilon_4 * diffLapl;
+        Jacobian_i[iVar][iVar] = 0.5 * (a0+a1) + Epsilon_4 * su2double(Neighbor_i+1);
+        Jacobian_j[iVar][iVar] = 0.5 * (a0+a1) - Epsilon_4 * su2double(Neighbor_j+1);
         Flux[iVar] *= config->GetVelocity_Ref();
         Jacobian_i[iVar][iVar] *= config->GetVelocity_Ref();
         Jacobian_j[iVar][iVar] *= config->GetVelocity_Ref();
@@ -111,7 +116,11 @@ private:
   using Base::Jacobian_j;
   using Base::ScalarVar_i;
   using Base::ScalarVar_j;
-  using Base::lesSensor;
+  using Base::Epsilon_4;
+  using Base::Und_Lapl_i;
+  using Base::Und_Lapl_j;
+  using Base::Neighbor_i;
+  using Base::Neighbor_j;
   using Base::idx;
   using Base::nVar;
   using Base::bounded_scalar;
@@ -127,11 +136,16 @@ private:
    */
   void FinishResidualCalc(const CConfig* config) override {
     if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
+      /*--- Central discretization with 4th-order JST-type dissipation (Stochastic Backscatter Model).
+            The mean density scales the dissipation term to match the density-weighted central flux;
+            the Jacobian, like that of the base k/omega convective flux above, freezes the density. ---*/
+      const su2double meanDensity = 0.5*(V_i[idx.Density()]+V_j[idx.Density()]);
       for (unsigned short iVar = 2; iVar < nVar; iVar++) {
-        Flux[iVar] = (a0 + a1) * 0.5 * (V_i[idx.Density()]*ScalarVar_i[iVar] + V_j[idx.Density()]*ScalarVar_j[iVar]) * lesSensor +
-                     (1.0-lesSensor) * (a0*V_i[idx.Density()]*ScalarVar_i[iVar] + a1*V_j[idx.Density()]*ScalarVar_j[iVar]);
-        Jacobian_i[iVar][iVar] = 0.5 * (a0+a1) * lesSensor + (1.0-lesSensor) * a0;
-        Jacobian_j[iVar][iVar] = 0.5 * (a0+a1) * lesSensor + (1.0-lesSensor) * a1;
+        const su2double diffLapl = Und_Lapl_i[iVar] - Und_Lapl_j[iVar];
+        Flux[iVar] = (a0 + a1) * 0.5 * (V_i[idx.Density()]*ScalarVar_i[iVar] + V_j[idx.Density()]*ScalarVar_j[iVar])
+                     - Epsilon_4 * diffLapl * meanDensity;
+        Jacobian_i[iVar][iVar] = 0.5 * (a0+a1) + Epsilon_4 * su2double(Neighbor_i+1);
+        Jacobian_j[iVar][iVar] = 0.5 * (a0+a1) - Epsilon_4 * su2double(Neighbor_j+1);
         Flux[iVar] *= config->GetVelocity_Ref();
         Jacobian_i[iVar][iVar] *= config->GetVelocity_Ref();
         Jacobian_j[iVar][iVar] *= config->GetVelocity_Ref();

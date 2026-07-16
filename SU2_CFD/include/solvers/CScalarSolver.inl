@@ -111,6 +111,13 @@ void CScalarSolver<VariableType>::CommonPreprocessing(CGeometry *geometry, const
     }
   }
 
+  /*--- Undivided Laplacian of the solution, used by the 4th-order JST-type dissipation added to
+        the (always centered) convective discretization of the Langevin equations. ---*/
+
+  if (!Output && config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
+    SetUndivided_Laplacian(geometry, config);
+  }
+
   /*--- Upwind second order reconstruction and gradients ---*/
 
   if (config->GetReconstructionGradientRequired()) {
@@ -201,7 +208,10 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
       numerics->SetScalarVar(Scalar_i, Scalar_j);
 
       if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
-        numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), nodes->GetLES_Mode(jPoint));
+        /*--- Undivided Laplacian and neighbor counts, used by the 4th-order JST-type dissipation
+              added to the (always centered) discretization of the Langevin equations. ---*/
+        numerics->SetUndivided_Laplacian(nodes->GetUndivided_Laplacian(iPoint), nodes->GetUndivided_Laplacian(jPoint));
+        numerics->SetNeighbor(geometry->nodes->GetnNeighbor(iPoint), geometry->nodes->GetnNeighbor(jPoint));
       }
 
       /*--- Grid Movement ---*/

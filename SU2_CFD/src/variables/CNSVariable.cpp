@@ -40,7 +40,7 @@ CNSVariable::CNSVariable(su2double density, const su2double *velocity, su2double
   Tau_Wall.resize(nPoint) = su2double(-1.0);
   DES_LengthScale.resize(nPoint) = su2double(0.0);
   MeanTurbKE.resize(nPoint) = su2double(0.0);
-  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().filterStresses)
+  if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses)
     MeanModeledStress.resize(nPoint, 6) = su2double(0.0);
   lesMode.resize(nPoint) = su2double(0.0);
   Roe_Dissipation.resize(nPoint) = su2double(0.0);

@@ -452,6 +452,7 @@ void CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsigned long iEdge, CGeome
   const bool implicit  = (config->GetKind_TimeIntScheme() == EULER_IMPLICIT);
   const bool tkeNeeded = (config->GetKind_Turb_Model() == TURB_MODEL::SST);
   const bool backscatter = config->GetSBSParam().StochasticBackscatter;
+  const bool hybridActive = (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES);
   const bool ideal_gas = (config->GetKind_FluidModel() == STANDARD_AIR) ||
                          (config->GetKind_FluidModel() == IDEAL_GAS);
 
@@ -487,6 +488,13 @@ void CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsigned long iEdge, CGeome
     numerics->SetTurbKineticEnergy(turbNodes->GetSolution(iPoint,0),
                                    turbNodes->GetSolution(jPoint,0));
 
+  /*--- LES sensor for hybrid RANS/LES methods, needed by the stochastic backscatter source
+        term below and/or by the modeled-stress high-pass filtering further down. ---*/
+
+  if (hybridActive) {
+    numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), nodes->GetLES_Mode(jPoint));
+  }
+
   /*--- Stochastic variables from Langevin equations (Stochastic Backscatter Model). ---*/
 
   if (backscatter) {
@@ -510,7 +518,6 @@ void CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsigned long iEdge, CGeome
     if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().useMeanTurbKE) {
       numerics->SetAvgTurbKineticEnergy(turbNodes->GetMeanTurbKinEnergy(iPoint), turbNodes->GetMeanTurbKinEnergy(jPoint));
     }
-    numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), nodes->GetLES_Mode(jPoint));
 
     /*--- Hybrid RANS/LES transition correction of the stochastic momentum source term
           (Stochastic Backscatter Model, SST-based hybrid models only). ---*/
@@ -528,14 +535,16 @@ void CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsigned long iEdge, CGeome
     if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
       numerics->SetModeledFraction(turbNodes->GetModeledFraction(iPoint), turbNodes->GetModeledFraction(jPoint));
     }
+  }
 
-    /*--- Mean modeled stress tensor, used to high-pass filter the modeled stresses (Stochastic Backscatter Model). ---*/
+  /*--- Mean modeled stress tensor, used to high-pass filter the modeled stresses where the LES
+        sensor is active. Available whenever a hybrid RANS/LES method is active, independent of
+        the Stochastic Backscatter Model. ---*/
 
-    if (config->GetSBSParam().filterStresses) {
-      for (unsigned short iVar = 0; iVar < 6; iVar++)
-        numerics->SetMeanModeledStress(iVar, nodes->GetMeanModeledStress(iPoint, iVar),
-                                             nodes->GetMeanModeledStress(jPoint, iVar));
-    }
+  if (hybridActive && config->GetSBSParam().filterStresses) {
+    for (unsigned short iVar = 0; iVar < 6; iVar++)
+      numerics->SetMeanModeledStress(iVar, nodes->GetMeanModeledStress(iPoint, iVar),
+                                           nodes->GetMeanModeledStress(jPoint, iVar));
   }
 
   /*--- Wall shear stress values (wall functions) ---*/
