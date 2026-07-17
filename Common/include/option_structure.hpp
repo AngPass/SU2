@@ -1511,6 +1511,22 @@ static const MapType<std::string, TURB_SGS_MODEL> SGS_Model_Map = {
 };
 
 /*!
+ * \brief Types of running-average methods for TIME_AVERAGE/BACKSCATTER volume output fields
+ *        (see COutput::SetAvgVolumeOutputValue).
+ */
+enum class TIME_AVG_METHOD {
+  CUMULATIVE ,  /*!< \brief Classic cumulative (unweighted) time average: every sample gets equal
+                            weight 1/N, N being the total number of samples accumulated so far. */
+  EXPONENTIAL   /*!< \brief Exponential moving average: every new sample is blended in with a fixed
+                            weight (TIME_AVG_EXP_CONST), so older samples are progressively
+                            down-weighted instead of counting equally forever. */
+};
+static const MapType<std::string, TIME_AVG_METHOD> TimeAvgMethod_Map = {
+  MakePair("CUMULATIVE",  TIME_AVG_METHOD::CUMULATIVE)
+  MakePair("EXPONENTIAL", TIME_AVG_METHOD::EXPONENTIAL)
+};
+
+/*!
  * \brief Types of window (weight) functions for cost functional
  */
 enum class WINDOW_FUNCTION {

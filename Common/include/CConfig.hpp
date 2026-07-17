@@ -1264,6 +1264,8 @@ private:
   nHistoryOutput, nVolumeOutput;  /*!< \brief Number of variables printed to the history file. */
   string *RestartAvgFields;          /*!< \brief Fields (group or field names) persisted across restarts by WRT_RESTART_AVERAGES. */
   unsigned short nRestartAvgFields;  /*!< \brief Number of fields/groups requested via RESTART_AVG_FIELDS. */
+  TIME_AVG_METHOD Kind_TimeAvgMethod; /*!< \brief Running-average method for TIME_AVERAGE/BACKSCATTER volume output fields. */
+  su2double TimeAvg_Exp_Const;        /*!< \brief Fixed sample weight used when Kind_TimeAvgMethod == EXPONENTIAL. */
   bool Multizone_Residual;        /*!< \brief Determines if memory should be allocated for the multizone residual. */
   SST_ParsedOptions sstParsedOptions; /*!< \brief Additional parameters for the SST turbulence model. */
   SA_ParsedOptions saParsedOptions;   /*!< \brief Additional parameters for the SA turbulence model. */
@@ -10007,6 +10009,16 @@ public:
    * \brief Get the RESTART_AVG_FIELDS entry iField (a volume output field or group name).
    */
   string GetRestartAvgFields_Field(unsigned short iField) const { return RestartAvgFields[iField]; }
+
+  /*!
+   * \brief Get the running-average method for TIME_AVERAGE/BACKSCATTER volume output fields.
+   */
+  TIME_AVG_METHOD GetKind_TimeAvgMethod(void) const { return Kind_TimeAvgMethod; }
+
+  /*!
+   * \brief Get the fixed sample weight used when TIME_AVG_METHOD == EXPONENTIAL.
+   */
+  su2double GetTimeAvg_Exp_Const(void) const { return TimeAvg_Exp_Const; }
 
   /*!
   * \brief Get the convergence fields for monitoring

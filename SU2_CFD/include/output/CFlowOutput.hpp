@@ -321,6 +321,15 @@ protected:
   void WriteAdditionalFiles(CConfig *config, CGeometry *geometry, CSolver **solver_container) override;
 
   /*!
+   * \brief Names of the currently active volume output fields/groups requested via RESTART_AVG_FIELDS
+   *        (matched the same way as VOLUME_OUTPUT: by group name or by individual field name), i.e.
+   *        the fields WriteAveragedFields persists and RestoreAveragedFields expects to find.
+   * \param[in] config - Definition of the particular problem per zone.
+   * \return Field names, in volumeOutput_List order.
+   */
+  vector<string> GetRequestedAvgFieldNames(const CConfig *config) const;
+
+  /*!
    * \brief Write all currently active TIME_AVERAGE/BACKSCATTER volume output fields to a small
    *        companion ASCII file (together with the number of samples accumulated so far), so they
    *        can be restored on restart instead of restarting the running averages from scratch.

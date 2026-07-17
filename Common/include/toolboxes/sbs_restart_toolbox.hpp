@@ -111,10 +111,15 @@ inline void WriteMeanFields(const std::string& filename, const CGeometry* geomet
  * \param[in] applyRow - Callback invoked with (local point index, field name, value) for owned
  *                        points; the caller decides what to do with each named field (e.g. look up
  *                        its offset in the volume output data and store the value there).
+ * \param[out] outFieldNames - If not null, filled with the field names stored in the file header
+ *                              (in file order), so the caller can check which of its expected
+ *                              fields were actually present without inferring it from applyRow
+ *                              calls (which are only made for owned points and known field names).
  * \return true if the file was found and read, false if it does not exist.
  */
 inline bool ReadMeanFields(const std::string& filename, const CGeometry* geometry, unsigned long& outNSamples,
-                           const std::function<void(unsigned long, const std::string&, su2double)>& applyRow) {
+                           const std::function<void(unsigned long, const std::string&, su2double)>& applyRow,
+                           std::vector<std::string>* outFieldNames = nullptr) {
   std::ifstream file(filename, std::ios::binary);
   if (!file.is_open()) return false;
 
@@ -131,6 +136,7 @@ inline bool ReadMeanFields(const std::string& filename, const CGeometry* geometr
     name.resize(nameLength);
     if (nameLength > 0) file.read(&name[0], nameLength);
   }
+  if (outFieldNames != nullptr) *outFieldNames = fieldNames;
   if (fieldNames.empty()) return true;
 
   const auto nFields = fieldNames.size();

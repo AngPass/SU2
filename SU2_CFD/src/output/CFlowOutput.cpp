@@ -25,6 +25,7 @@
  * License along with SU2. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <algorithm>
 #include <sstream>
 #include <string>
 #include <sstream>
@@ -2572,18 +2573,14 @@ void CFlowOutput::WriteAdditionalFiles(CConfig *config, CGeometry *geometry, CSo
 
 }
 
-void CFlowOutput::WriteAveragedFields(CConfig *config, CGeometry *geometry) {
+vector<string> CFlowOutput::GetRequestedAvgFieldNames(const CConfig *config) const {
 
-  if (!config->GetWrt_Restart_Averages()) return;
-
-  /*--- Collect the fields/groups requested via RESTART_AVG_FIELDS (matched the same way as
-        VOLUME_OUTPUT: by group name or by individual field name). Only fields with a valid offset
-        (i.e. actually part of the active volume output selection) can be persisted, but
-        PreprocessVolumeOutput already force-adds any missing RESTART_AVG_FIELDS entry so this
-        should always hold. ---*/
+  /*--- Fields/groups requested via RESTART_AVG_FIELDS (matched the same way as VOLUME_OUTPUT: by
+        group name or by individual field name), restricted to those actually part of the active
+        volume output selection (valid offset). PreprocessVolumeOutput already force-adds any
+        missing RESTART_AVG_FIELDS entry so this should always hold. ---*/
 
   vector<string> fieldNames;
-  vector<short> offsets;
   for (const auto& name : volumeOutput_List) {
     const auto& field = volumeOutput_Map.at(name);
     if (field.offset == -1) continue;
@@ -2595,11 +2592,21 @@ void CFlowOutput::WriteAveragedFields(CConfig *config, CGeometry *geometry) {
         break;
       }
     }
-    if (!requested) continue;
-    fieldNames.push_back(name);
-    offsets.push_back(field.offset);
+    if (requested) fieldNames.push_back(name);
   }
+  return fieldNames;
+}
+
+void CFlowOutput::WriteAveragedFields(CConfig *config, CGeometry *geometry) {
+
+  if (!config->GetWrt_Restart_Averages()) return;
+
+  const vector<string> fieldNames = GetRequestedAvgFieldNames(config);
   if (fieldNames.empty()) return;
+
+  vector<short> offsets;
+  offsets.reserve(fieldNames.size());
+  for (const auto& name : fieldNames) offsets.push_back(volumeOutput_Map.at(name).offset);
 
   const string filename = config->GetFilename(config->GetRestart_FileName() + "_average", ".dat", curTimeIter);
 
@@ -2622,18 +2629,35 @@ void CFlowOutput::RestoreAveragedFields(CConfig *config, CGeometry *geometry) {
 
   const string filename = config->GetFilename(config->GetSolution_FileName() + "_average", ".dat", config->GetRestart_Iter_Average());
   unsigned long nSamples = 0;
+  vector<string> fileFieldNames;
 
   const bool found = SBSRestartToolbox::ReadMeanFields(filename, geometry, nSamples,
       [&](unsigned long iPoint, const string& fieldName, su2double value) {
         const auto it = volumeOutput_Map.find(fieldName);
         if (it == volumeOutput_Map.end() || it->second.offset == -1) return;
         volumeDataSorter->SetUnsortedData(iPoint, static_cast<unsigned short>(it->second.offset), value);
-      });
+      }, &fileFieldNames);
 
-  if (found) {
-    priorAvgSamples = nSamples;
-    if (rank == MASTER_NODE)
-      cout << "Restored time-averaged fields from " << filename << " (" << nSamples << " prior samples)." << endl;
+  if (!found) return;
+
+  priorAvgSamples = nSamples;
+  if (rank == MASTER_NODE)
+    cout << "Restored time-averaged fields from " << filename << " (" << nSamples << " prior samples)." << endl;
+
+  /*--- Warn about any field this run expects to continue (RESTART_AVG_FIELDS) that is missing from
+        the restored file, e.g. because it was written by a run with a different RESTART_AVG_FIELDS
+        selection. priorAvgSamples above is a single count shared by the whole file, so a missing
+        field does not simply restart from a clean state: it restarts from zero locally but gets
+        scaled by SetAvgVolumeOutputValue as if it already had "nSamples" prior samples, silently
+        under-weighting new samples until enough of them accumulate to outweigh that mismatch. ---*/
+  for (const auto& expectedField : GetRequestedAvgFieldNames(config)) {
+    const bool present = std::find(fileFieldNames.begin(), fileFieldNames.end(), expectedField) != fileFieldNames.end();
+    if (!present && rank == MASTER_NODE) {
+      cout << "Warning: expected averaged field " << expectedField << " (RESTART_AVG_FIELDS) not found in "
+           << filename << ". Its running average restarts from zero but will be weighted as if it already had "
+           << nSamples << " prior samples, i.e. severely under-weighted until enough new samples accumulate."
+           << endl;
+    }
   }
 }
 

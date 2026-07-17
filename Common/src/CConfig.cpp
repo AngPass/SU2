@@ -3101,8 +3101,12 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Type of output printed to the volume solution file */
   addStringListOption("VOLUME_OUTPUT", nVolumeOutput, VolumeOutput);
   /* DESCRIPTION: Volume output fields/groups persisted across restarts when WRT_RESTART_AVERAGES=YES.
-     If left empty, defaults to MEAN_TURB_KIN_ENERGY and the MODELED_REYNOLDS_STRESS_* components. */
+     If left empty, defaults to MEAN_TURB_KIN_ENERGY and the MEAN_STRAIN_* components. */
   addStringListOption("RESTART_AVG_FIELDS", nRestartAvgFields, RestartAvgFields);
+  /* DESCRIPTION: Running-average method for TIME_AVERAGE/BACKSCATTER volume output fields */
+  addEnumOption("TIME_AVG_METHOD", Kind_TimeAvgMethod, TimeAvgMethod_Map, TIME_AVG_METHOD::CUMULATIVE);
+  /* DESCRIPTION: Fixed sample weight used when TIME_AVG_METHOD=EXPONENTIAL, in (0, 1] */
+  addDoubleOption("TIME_AVG_EXP_CONST", TimeAvg_Exp_Const, 0.01);
 
   /* DESCRIPTION: History writing frequency (INNER_ITER) */
   addUnsignedLongOption("HISTORY_WRT_FREQ_INNER", HistoryWrtFreq[2], 1);
@@ -3682,17 +3686,21 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
   }
 
   /*--- If WRT_RESTART_AVERAGES is on and the user did not specify RESTART_AVG_FIELDS, default to
-        persisting the mean turbulent kinetic energy and the mean modeled stress tensor (the fields
+        persisting the mean turbulent kinetic energy and the mean strain-rate tensor (the fields
         used by SBS_USE_MEAN_TKE/FILTER_STRESSES). ---*/
   if (Wrt_Restart_Averages && nRestartAvgFields == 0) {
     static const string defaultRestartAvgFields[] = {
-      "MEAN_TURB_KIN_ENERGY", "MODELED_REYNOLDS_STRESS_XX", "MODELED_REYNOLDS_STRESS_YY",
-      "MODELED_REYNOLDS_STRESS_ZZ", "MODELED_REYNOLDS_STRESS_XY", "MODELED_REYNOLDS_STRESS_XZ",
-      "MODELED_REYNOLDS_STRESS_YZ"};
+      "MEAN_TURB_KIN_ENERGY", "MEAN_STRAIN_XX", "MEAN_STRAIN_YY",
+      "MEAN_STRAIN_ZZ", "MEAN_STRAIN_XY", "MEAN_STRAIN_XZ",
+      "MEAN_STRAIN_YZ"};
     nRestartAvgFields = 7;
     RestartAvgFields = new string[nRestartAvgFields];
     for (unsigned short iField = 0; iField < nRestartAvgFields; iField++)
       RestartAvgFields[iField] = defaultRestartAvgFields[iField];
+  }
+
+  if (Kind_TimeAvgMethod == TIME_AVG_METHOD::EXPONENTIAL && (TimeAvg_Exp_Const <= 0.0 || TimeAvg_Exp_Const > 1.0)) {
+    SU2_MPI::Error("TIME_AVG_EXP_CONST must be in (0, 1] when TIME_AVG_METHOD= EXPONENTIAL.", CURRENT_FUNCTION);
   }
 
   if (Kind_Solver == MAIN_SOLVER::NAVIER_STOKES && Kind_Turb_Model != TURB_MODEL::NONE){

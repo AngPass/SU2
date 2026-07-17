@@ -101,6 +101,12 @@ protected:
   bool averagedFieldsRestoreAttempted = false; /*!< \brief Guards the one-time restore attempt done
                                                      right after the data sorters are allocated. */
 
+  TIME_AVG_METHOD timeAvgMethod = TIME_AVG_METHOD::CUMULATIVE; /*!< \brief Running-average method for
+                                                     TIME_AVERAGE/BACKSCATTER fields (TIME_AVG_METHOD),
+                                                     cached from config once per LoadDataIntoSorter call. */
+  su2double timeAvgExpConst = 0.0; /*!< \brief Fixed sample weight used when timeAvgMethod == EXPONENTIAL
+                                                     (TIME_AVG_EXP_CONST), cached alongside timeAvgMethod. */
+
   su2double PrevStopTime;         /*!< \brief Previous stop time for iteration timing. */
 
   string historyFilename;   /*!< \brief The history filename*/

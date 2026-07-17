@@ -1679,6 +1679,10 @@ void COutput::LoadDataIntoSorter(CConfig* config, CGeometry* geometry, CSolver**
   unsigned long iPoint = 0, jPoint = 0;
   unsigned long iVertex = 0;
 
+  /*--- Cache the running-average method for this pass, used by SetAvgVolumeOutputValue below. ---*/
+  timeAvgMethod = config->GetKind_TimeAvgMethod();
+  timeAvgExpConst = config->GetTimeAvg_Exp_Const();
+
   /*--- Reset the offset cache and index --- */
   cachePosition = 0;
   fieldIndexCache.clear();
@@ -1816,7 +1820,16 @@ su2double COutput::GetVolumeOutputValue(const string& name, unsigned long iPoint
 
 void COutput::SetAvgVolumeOutputValue(const string& name, unsigned long iPoint, su2double value){
 
-  const su2double scaling = 1.0 / su2double(curAbsTimeIter + priorAvgSamples + 1);
+  /*--- CUMULATIVE: classic running average, every sample weighted equally (1/N). EXPONENTIAL: every
+        new sample is blended in with a fixed weight (TIME_AVG_EXP_CONST), except for the very first
+        sample overall (no prior iterations and nothing restored from WRT_RESTART_AVERAGES), which is
+        used to initialize the average directly instead of blending it with an unset old_value. ---*/
+  su2double scaling;
+  if (timeAvgMethod == TIME_AVG_METHOD::EXPONENTIAL && (curAbsTimeIter + priorAvgSamples) > 0) {
+    scaling = timeAvgExpConst;
+  } else {
+    scaling = 1.0 / su2double(curAbsTimeIter + priorAvgSamples + 1);
+  }
 
   if (buildFieldIndexCache) {
     /*--- Build up the offset cache to speed up subsequent
