@@ -4418,7 +4418,7 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
               computed above (UUPRIME, VVPRIME, WWPRIME). The Stochastic Backscatter Model is only
               available for 3D flows (checked in CConfig.cpp), so WWPRIME is always available here.
               Only computed (and allocated, see CTurbSSTVariable) when actually used, i.e. when
-              DAMP_TIME_FILTERING or DAMP_STOCH_TERM is active. ---*/
+              DAMP_TIME_FILTERING or SBS_DAMP_SOURCE is active. ---*/
         if (config->GetSBSParam().dampTimeFiltering || config->GetSBSParam().dampStochTerm) {
           const su2double kMean = GetVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint);
           const su2double resolvedTKE = 0.5 * (GetVolumeOutputValue("UUPRIME", iPoint) + GetVolumeOutputValue("VVPRIME", iPoint) +

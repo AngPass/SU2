@@ -522,7 +522,7 @@ void CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsigned long iEdge, CGeome
     /*--- Fraction of turbulent kinetic energy that is modeled (as opposed to resolved), used to
           scale the stochastic momentum source term (Stochastic Backscatter Model, SST-based
           hybrid models only). Only set (and available, see CTurbSSTVariable) when actually used,
-          i.e. when DAMP_TIME_FILTERING or DAMP_STOCH_TERM is active. ---*/
+          i.e. when DAMP_TIME_FILTERING or SBS_DAMP_SOURCE is active. ---*/
 
     if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) &&
         (config->GetSBSParam().dampTimeFiltering || config->GetSBSParam().dampStochTerm)) {

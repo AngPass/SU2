@@ -3055,7 +3055,7 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Scale the stochastic source terms (momentum and turbulence equations) by the
    *              modeled turbulent kinetic energy fraction (SST-based Stochastic Backscatter
    *              Model only); if false, the modeled fraction is 1, i.e. no damping. */
-  addBoolOption("DAMP_STOCH_TERM", SBSParam.dampStochTerm, false);
+  addBoolOption("SBS_DAMP_SOURCE", SBSParam.dampStochTerm, false);
 
   /* DESCRIPTION: Filter width for LES (if negative, it is computed based on the local cell size) */
   addDoubleOption("LES_FILTER_WIDTH", LES_FilterWidth, -1.0);

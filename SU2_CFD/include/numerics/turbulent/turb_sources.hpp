@@ -820,7 +820,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
 
     /*--- Scale the stochastic source term by the fraction of turbulent kinetic energy that is
           modeled rather than resolved (see CFlowOutput) only if explicitly requested via
-          DAMP_STOCH_TERM; by default the modeled fraction is 1, i.e. no damping. ---*/
+          SBS_DAMP_SOURCE; by default the modeled fraction is 1, i.e. no damping. ---*/
     const su2double modeledFraction = config->GetSBSParam().dampStochTerm ? modeledFraction_i : 1.0;
     su2double Cmag = config->GetSBSParam().SBS_Cmag * modeledFraction;
     su2double tke = (config->GetSBSParam().useMeanTurbKE) ? avg_turb_ke_i : ScalarVar_i[0];

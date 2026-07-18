@@ -201,7 +201,7 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
   
   /*--- Scale the stochastic source term by the fraction of turbulent kinetic energy that is
         modeled rather than resolved (see CFlowOutput) only if explicitly requested via
-        DAMP_STOCH_TERM; by default the modeled fraction is 1, i.e. no damping. ---*/
+        SBS_DAMP_SOURCE; by default the modeled fraction is 1, i.e. no damping. ---*/
   const su2double modeledFraction = config->GetSBSParam().dampStochTerm ?
                                      0.5 * (modeledFraction_i + modeledFraction_j) : 1.0;
   su2double intensityCoeff = config->GetSBSParam().SBS_Cmag * modeledFraction;
