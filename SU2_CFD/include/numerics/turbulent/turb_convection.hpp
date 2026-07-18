@@ -69,9 +69,13 @@ private:
    */
   void FinishResidualCalc(const CConfig* config) override {
     if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
-      /*--- Central discretization with 4th-order JST-type dissipation (Stochastic Backscatter Model). ---*/
+      /*--- Central discretization with 4th-order JST-type dissipation (Stochastic Backscatter Model).
+            Und_Lapl_i/j are only set for interior edges (see CScalarSolver.inl); boundary-condition
+            calls never set them (null), since the concept doesn't apply at a boundary face, so the
+            dissipation term is simply dropped there. ---*/
+      const bool hasUndLapl = (Und_Lapl_i != nullptr) && (Und_Lapl_j != nullptr);
       for (unsigned short iVar = 1; iVar < nVar; iVar++) {
-        const su2double diffLapl = Und_Lapl_i[iVar] - Und_Lapl_j[iVar];
+        const su2double diffLapl = hasUndLapl ? Und_Lapl_i[iVar] - Und_Lapl_j[iVar] : 0.0;
         Flux[iVar] = (a0 + a1) * 0.5 * (ScalarVar_i[iVar] + ScalarVar_j[iVar]) - Epsilon_4 * diffLapl;
         Jacobian_i[iVar][iVar] = 0.5 * (a0+a1) + Epsilon_4 * su2double(Neighbor_i+1);
         Jacobian_j[iVar][iVar] = 0.5 * (a0+a1) - Epsilon_4 * su2double(Neighbor_j+1);
@@ -140,8 +144,12 @@ private:
             The mean density scales the dissipation term to match the density-weighted central flux;
             the Jacobian, like that of the base k/omega convective flux above, freezes the density. ---*/
       const su2double meanDensity = 0.5*(V_i[idx.Density()]+V_j[idx.Density()]);
+      /*--- Und_Lapl_i/j are only set for interior edges (see CScalarSolver.inl); boundary-condition
+            calls never set them (null), since the concept doesn't apply at a boundary face, so the
+            dissipation term is simply dropped there. ---*/
+      const bool hasUndLapl = (Und_Lapl_i != nullptr) && (Und_Lapl_j != nullptr);
       for (unsigned short iVar = 2; iVar < nVar; iVar++) {
-        const su2double diffLapl = Und_Lapl_i[iVar] - Und_Lapl_j[iVar];
+        const su2double diffLapl = hasUndLapl ? Und_Lapl_i[iVar] - Und_Lapl_j[iVar] : 0.0;
         Flux[iVar] = (a0 + a1) * 0.5 * (V_i[idx.Density()]*ScalarVar_i[iVar] + V_j[idx.Density()]*ScalarVar_j[iVar])
                      - Epsilon_4 * diffLapl * meanDensity;
         Jacobian_i[iVar][iVar] = 0.5 * (a0+a1) + Epsilon_4 * su2double(Neighbor_i+1);

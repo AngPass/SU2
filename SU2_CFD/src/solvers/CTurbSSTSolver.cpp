@@ -525,7 +525,11 @@ void CTurbSSTSolver::BC_HeatFlux_Wall(CGeometry *geometry, CSolver **solver_cont
     /*--- distance to closest neighbor ---*/
     su2double wall_dist = geometry->vertex[val_marker][iVertex]->GetNearestNeighborDistance();
 
-    su2double solution[MAXNVAR];
+    /*--- Zero-initialized: only solution[0]/[1] (k, omega) are set below. When the Stochastic
+          Backscatter Model (Langevin) is active, nVar also covers 3 extra stochastic components
+          (solution[2..4]); leaving them default-initialized pins them to zero at the wall instead
+          of reading indeterminate stack memory. ---*/
+    su2double solution[MAXNVAR] = {0.0};
 
     if (rough_wall) {
       /*--- Set wall values ---*/
@@ -601,9 +605,11 @@ void CTurbSSTSolver::BC_HeatFlux_Wall(CGeometry *geometry, CSolver **solver_cont
     LinSysRes.SetBlock_Zero(iPoint);
 
     if (implicit) {
-      /*--- Change rows of the Jacobian (includes 1 in the diagonal) ---*/
-      Jacobian.DeleteValsRowi(iPoint, 0);
-      Jacobian.DeleteValsRowi(iPoint, 1);
+      /*--- Change rows of the Jacobian (includes 1 in the diagonal). Covers all nVar (not just
+            k, omega) so the Dirichlet solution[2..nVar-1]=0 imposed above for the Stochastic
+            Backscatter Model's Langevin components (when active) is enforced consistently. ---*/
+      for (auto iVar = 0u; iVar < nVar; iVar++)
+        Jacobian.DeleteValsRowi(iPoint, iVar);
     }
   }
   END_SU2_OMP_FOR
@@ -1531,7 +1537,11 @@ void CTurbSSTSolver::BC_Inlet(CGeometry *geometry, CSolver **solver_container, C
 
       conv_numerics->SetPrimitive(V_domain, V_inlet);
 
-      su2double Inlet_Vars[MAXNVAR];
+      /*--- Zero-initialized: only Inlet_Vars[0]/[1] (k, omega) are set below. When the Stochastic
+            Backscatter Model (Langevin) is active, nVar also covers 3 extra stochastic components
+            (Inlet_Vars[2..4]); leaving them default-initialized pins them to zero at the inlet
+            instead of reading indeterminate stack memory. ---*/
+      su2double Inlet_Vars[MAXNVAR] = {0.0};
       if (config->GetInlet_Profile_From_File()) {
         /*--- Non-dimensionalize Inlet_TurbVars if Inlet-Files are used. ---*/
         Inlet_Vars[0] = Inlet_TurbVars[val_marker][iVertex][0] / pow(config->GetVelocity_Ref(), 2);
@@ -1741,7 +1751,13 @@ void CTurbSSTSolver::BC_Inlet_MixingPlane(CGeometry *geometry, CSolver **solver_
 
     su2double extAverageKine = solver_container[FLOW_SOL]->GetExtAverageKine(val_marker, iSpan);
     su2double extAverageOmega = solver_container[FLOW_SOL]->GetExtAverageOmega(val_marker, iSpan);
-    su2double solution_j[] = {extAverageKine, extAverageOmega};
+    /*--- Sized MAXNVAR (not just the 2 explicit values) and zero-initialized: SetScalarVar below
+          reads nVar entries, which also covers 3 extra stochastic components when the Stochastic
+          Backscatter Model (Langevin) is active. A plain 2-element array would be read out of
+          bounds in that case. ---*/
+    su2double solution_j[MAXNVAR] = {0.0};
+    solution_j[0] = extAverageKine;
+    solution_j[1] = extAverageOmega;
 
     /*--- Loop over all the vertices on this boundary marker ---*/
 

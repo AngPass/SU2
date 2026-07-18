@@ -122,8 +122,12 @@ protected:
   modeledFraction_i = 1.0, /*!< \brief Fraction of turbulent kinetic energy that is modeled at point i, used to scale the Stochastic Backscatter Model source terms (SST turbulence model). */
   modeledFraction_j = 1.0; /*!< \brief Fraction of turbulent kinetic energy that is modeled at point j, used to scale the Stochastic Backscatter Model source terms (SST turbulence model). */
   const su2double
-  *Und_Lapl_i,  /*!< \brief Undivided laplacians at point i. */
-  *Und_Lapl_j;  /*!< \brief Undivided laplacians at point j. */
+  *Und_Lapl_i = nullptr,  /*!< \brief Undivided laplacians at point i. Only set via
+                               SetUndivided_Laplacian() for interior edges (Stochastic Backscatter
+                               Model, Langevin); stays null for boundary-condition numerics calls,
+                               where the 4th-order JST-type dissipation of the Langevin equations
+                               does not apply (see CUpwSca_TurbSST/SA::FinishResidualCalc). */
+  *Und_Lapl_j = nullptr;  /*!< \brief Undivided laplacians at point j, see Und_Lapl_i. */
   su2double
   Sensor_i,  /*!< \brief Pressure sensor at point i. */
   Sensor_j;  /*!< \brief Pressure sensor at point j. */
@@ -178,8 +182,9 @@ protected:
   *Coord_i,      /*!< \brief Cartesians coordinates of point i. */
   *Coord_j;      /*!< \brief Cartesians coordinates of point j. */
   unsigned short
-  Neighbor_i,  /*!< \brief Number of neighbors of the point i. */
-  Neighbor_j;  /*!< \brief Number of neighbors of the point j. */
+  Neighbor_i = 0,  /*!< \brief Number of neighbors of the point i. Only set via SetNeighbor() for
+                        interior edges (Stochastic Backscatter Model, Langevin); see Und_Lapl_i. */
+  Neighbor_j = 0;  /*!< \brief Number of neighbors of the point j, see Neighbor_i. */
   const su2double *Normal = nullptr;      /*!< \brief Normal vector, its norm is the area of the face. */
   su2double UnitNormal[MAXNDIM] = {0.0};  /*!< \brief Unitary normal vector. */
   su2double

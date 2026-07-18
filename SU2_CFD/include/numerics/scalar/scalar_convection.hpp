@@ -149,7 +149,10 @@ class CUpwScalar : public CNumerics {
     }
 
     Epsilon_4 = 0.0;
-    if (langevin) {
+    /*--- Neighbor_i/j (like Und_Lapl_i/j) are only set for interior edges (see CScalarSolver.inl);
+          boundary-condition calls never set them, so this 4th-order JST-type dissipation term
+          (which has no meaning at a boundary face) is skipped there, leaving Epsilon_4 at 0. ---*/
+    if (langevin && Und_Lapl_i != nullptr && Und_Lapl_j != nullptr) {
       /*--- 4th-order JST-type dissipation added on top of the central discretization of the
             Langevin equations (no 2nd-order/shock-sensor term, these equations have no shocks).
             |a0-a1| (the local convective speed) plays the role of the spectral radius (MeanLambda)
