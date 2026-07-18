@@ -1119,6 +1119,7 @@ private:
     unsigned short stochSourceType;         /*!< \brief Kind of stochastic source term included in the balance equations. */
     bool filterStresses;                    /*!< \brief Option for high-pass filtering the modeled (subgrid) stress tensor where the LES sensor is active. Usable with any Hybrid RANS/LES method, independent of StochasticBackscatter. */
     bool dampTimeFiltering;                 /*!< \brief Option for scaling the high-pass stress filtering (filterStresses) by the modeled turbulent kinetic energy fraction (SST-based Stochastic Backscatter Model only). If false, the filtering is applied at full strength (modeled fraction = 1). */
+    bool dampStochTerm;                     /*!< \brief Option for scaling the stochastic source terms (momentum and turbulence equations) by the modeled turbulent kinetic energy fraction (SST-based Stochastic Backscatter Model only). If false, the modeled fraction is 1, i.e. no damping. */
   } SBSParam;
   bool enforceLES;                          /*!< \brief Option to enforce LES mode in hybrid RANS-LES simulations. */
   su2double LES_FilterWidth;                /*!< \brief LES filter width for hybrid RANS-LES simulations. */

@@ -62,7 +62,9 @@ CTurbSSTVariable::CTurbSSTVariable(su2double kine, su2double omega, su2double mu
     DES_LengthScale.resize(nPoint) = su2double(0.0);
     DES_FilterWidth.resize(nPoint) = su2double(0.0);
     F_DES.resize(nPoint) = su2double(1.0);
-    ModeledFraction.resize(nPoint) = su2double(1.0);
+    if (backscatter && (config->GetSBSParam().dampTimeFiltering || config->GetSBSParam().dampStochTerm)) {
+      ModeledFraction.resize(nPoint) = su2double(1.0);
+    }
     MeanTurbKE.resize(nPoint) = su2double(0.0);
     lesMode.resize(nPoint) = su2double(0.0);
     Vortex_Tilting.resize(nPoint) = su2double(0.0);

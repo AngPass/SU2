@@ -446,8 +446,9 @@ void CTurbSSTSolver::Source_Residual(CGeometry *geometry, CSolver **solver_conta
       if (config->GetSBSParam().StochasticBackscatter) {
         /*--- Fraction of turbulent kinetic energy that is modeled (as opposed to resolved), used
               to scale the stochastic source term added to the k and omega production terms
-              (SST-based hybrid models only). ---*/
-        if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
+              (SST-based hybrid models only, AddStochSource). Only set (and available, see
+              CTurbSSTVariable) when actually used, i.e. when DAMP_STOCH_TERM is active. ---*/
+        if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().dampStochTerm) {
           numerics->SetModeledFraction(nodes->GetModeledFraction(iPoint), 0.0);
         }
         if (config->GetSBSParam().stochSourceType == LANGEVIN || config->GetSBSParam().stochSourceType == WHITE_NOISE) {

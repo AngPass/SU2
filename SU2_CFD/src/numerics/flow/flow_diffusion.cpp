@@ -199,10 +199,12 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
     tke_j = (lesMode_j > sensorThreshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
   }
   
-  /*--- modeledFraction_i/j default to 1 (no effect) unless the SST-based Stochastic Backscatter
-        Model is active, in which case they scale the stochastic source term by the fraction of
-        turbulent kinetic energy that is modeled rather than resolved (see CFlowOutput). ---*/
-  su2double intensityCoeff = config->GetSBSParam().SBS_Cmag * 0.5 * (modeledFraction_i + modeledFraction_j);
+  /*--- Scale the stochastic source term by the fraction of turbulent kinetic energy that is
+        modeled rather than resolved (see CFlowOutput) only if explicitly requested via
+        DAMP_STOCH_TERM; by default the modeled fraction is 1, i.e. no damping. ---*/
+  const su2double modeledFraction = config->GetSBSParam().dampStochTerm ?
+                                     0.5 * (modeledFraction_i + modeledFraction_j) : 1.0;
+  su2double intensityCoeff = config->GetSBSParam().SBS_Cmag * modeledFraction;
   su2double density = Mean_PrimVar[nDim+2];
 
   stochStressTensor[0][0] = stochStressTensor[1][1] = stochStressTensor[2][2] = 0.0;
