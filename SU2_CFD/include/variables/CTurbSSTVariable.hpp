@@ -50,6 +50,9 @@ protected:
   VectorType F_DES;
   VectorType ModeledFraction;
   VectorType MeanTurbKE;
+  VectorType RANS_TKE; /*!< \brief Turbulent kinetic energy read from an external reference RANS
+                            restart file (SBS_RANS_CONSTRAINT), used as a measure of the total
+                            kinetic energy. */
   VectorType lesMode;
   VectorType Vortex_Tilting;
   MatrixType stochSource;
@@ -147,6 +150,20 @@ public:
    * \brief Set the mean turbulent kinetic energy.
    */
   inline void SetMeanTurbKinEnergy(unsigned long iPoint, su2double val_mean_tke) override { MeanTurbKE(iPoint) = val_mean_tke; }
+
+  /*!
+   * \brief Get the turbulent kinetic energy read from the external reference RANS restart file
+   *        (SBS_RANS_CONSTRAINT).
+   * \param[in] iPoint - Point index.
+   * \return Reference RANS turbulent kinetic energy.
+   */
+  inline su2double GetRANS_TKE(unsigned long iPoint) const override { return RANS_TKE(iPoint); }
+
+  /*!
+   * \brief Set the turbulent kinetic energy read from the external reference RANS restart file
+   *        (SBS_RANS_CONSTRAINT).
+   */
+  inline void SetRANS_TKE(unsigned long iPoint, su2double val_rans_tke) override { RANS_TKE(iPoint) = val_rans_tke; }
 
   /*!
    * \brief Get the source terms for the stochastic equations.

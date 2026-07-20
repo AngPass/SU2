@@ -169,6 +169,40 @@ CTurbSSTSolver::CTurbSSTSolver(CGeometry *geometry, CConfig *config, unsigned sh
   InitiateComms(geometry, config, MPI_QUANTITIES::SOLUTION_EDDY);
   CompleteComms(geometry, config, MPI_QUANTITIES::SOLUTION_EDDY);
 
+  /*--- Read the turbulent kinetic energy from an external reference RANS restart file
+        (SBS_RANS_CONSTRAINT), stored per-point as a measure of the total kinetic energy. Done
+        once, on the finest mesh level only: the file is expected to match the fine mesh, like any
+        other restart file. ---*/
+
+  if (iMesh == MESH_0 && IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().sbsRansConstraint) {
+    const string filename = config->GetRead_Binary_Restart() ? "solution_flow_RANS.dat" : "solution_flow_RANS.csv";
+
+    if (config->GetRead_Binary_Restart()) Read_SU2_Restart_Binary(geometry, config, filename);
+    else Read_SU2_Restart_ASCII(geometry, config, filename);
+
+    const auto fieldIt = find(fields.begin(), fields.end(), string("\"Turb_Kin_Energy\""));
+    if (fieldIt == fields.end()) {
+      SU2_MPI::Error("SBS_RANS_CONSTRAINT: field \"Turb_Kin_Energy\" not found in " + filename, CURRENT_FUNCTION);
+    }
+    const auto kineField = static_cast<unsigned short>(fieldIt - fields.begin()) - 1;
+
+    unsigned long counter = 0;
+    for (auto iPoint_Global = 0ul; iPoint_Global < geometry->GetGlobal_nPointDomain(); iPoint_Global++) {
+      const auto iPoint_Local = geometry->GetGlobal_to_Local_Point(iPoint_Global);
+      if (iPoint_Local > -1) {
+        nodes->SetRANS_TKE(iPoint_Local, Restart_Data[counter*Restart_Vars[1] + kineField]);
+        counter++;
+      }
+    }
+
+    if (counter != nPointDomain) {
+      SU2_MPI::Error(filename + " does not match the mesh file (SBS_RANS_CONSTRAINT)!", CURRENT_FUNCTION);
+    }
+
+    Restart_Vars = decltype(Restart_Vars){};
+    Restart_Data = decltype(Restart_Data){};
+  }
+
   /*--- Initialize quantities for SlidingMesh Interface ---*/
 
   SlidingState.resize(nMarker);

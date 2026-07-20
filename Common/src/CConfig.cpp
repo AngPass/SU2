@@ -3057,6 +3057,11 @@ void CConfig::SetConfig_Options() {
    *              Model only); if false, the modeled fraction is 1, i.e. no damping. */
   addBoolOption("SBS_DAMP_SOURCE", SBSParam.dampStochTerm, false);
 
+  /* DESCRIPTION: Read the turbulent kinetic energy from an external reference RANS restart file
+   *              (solution_flow_RANS), stored as a measure of the total kinetic energy. Only
+   *              available for SST-based Hybrid RANS/LES models. */
+  addBoolOption("SBS_RANS_CONSTRAINT", SBSParam.sbsRansConstraint, false);
+
   /* DESCRIPTION: Filter width for LES (if negative, it is computed based on the local cell size) */
   addDoubleOption("LES_FILTER_WIDTH", LES_FilterWidth, -1.0);
 
@@ -6665,6 +6670,8 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
         }
         if (Kind_HybridRANSLES == NO_HYBRIDRANSLES && SBSParam.StochasticBackscatter)
           SU2_MPI::Error("Stochastic Backscatter can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);
+        if (SBSParam.sbsRansConstraint && !IsHybridRANSLES_SST(Kind_HybridRANSLES))
+          SU2_MPI::Error("SBS_RANS_CONSTRAINT can only be activated with a SST-based Hybrid RANS/LES model.", CURRENT_FUNCTION);
         if (enforceLES) {
           if (Kind_HybridRANSLES == NO_HYBRIDRANSLES)
             SU2_MPI::Error("ENFORCE_LES can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);

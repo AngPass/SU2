@@ -1057,7 +1057,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
       }
 
       if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceTurb && lesMode_i>config->GetSBSParam().stochFdThreshold)
-        AddStochSource(config, pk, dk, pw, pw/pk);
+        AddStochSource(config, pk, dk, pw, (pk > EPS) ? pw/pk : 0.0);
 
       /*--- Add the production terms to the residuals. ---*/
 

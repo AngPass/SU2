@@ -456,6 +456,19 @@ public:
   inline virtual void SetMeanTurbKinEnergy(unsigned long iPoint, su2double val_mean_tke) {}
 
   /*!
+   * \brief A virtual member. Turbulent kinetic energy read from an external reference RANS
+   *        restart file (SBS_RANS_CONSTRAINT), used as a measure of the total kinetic energy.
+   * \param[in] iPoint - Point index.
+   */
+  inline virtual su2double GetRANS_TKE(unsigned long iPoint) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   */
+  inline virtual void SetRANS_TKE(unsigned long iPoint, su2double val_rans_tke) {}
+
+  /*!
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
    * \param[in] iVar - Component index of the symmetric tensor (0=xx, 1=yy, 2=zz, 3=xy, 4=xz, 5=yz).

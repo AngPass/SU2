@@ -1652,6 +1652,11 @@ void CFlowOutput::SetVolumeOutputFieldsScalarMisc(const CConfig* config) {
       AddVolumeOutput("STOCHSOURCE_Y", "StochSource_y", "BACKSCATTER", "y-component of the stochastic source vector");
       AddVolumeOutput("STOCHSOURCE_Z", "StochSource_z", "BACKSCATTER", "z-component of the stochastic source vector");
     }
+    if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().StochasticBackscatter &&
+        (config->GetSBSParam().dampTimeFiltering || config->GetSBSParam().dampStochTerm)) {
+      AddVolumeOutput("MODELED_FRACTION", "ModeledFraction", "BACKSCATTER",
+                       "Fraction of turbulent kinetic energy that is modeled (as opposed to resolved), used to scale the stochastic source terms");
+    }
   }
 
   if (config->GetViscous()) {
@@ -4413,17 +4418,30 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
           Node_Turb->SetMeanTurbKinEnergy(iPoint, GetVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint));
         }
         /*--- Fraction of turbulent kinetic energy that is modeled (as opposed to resolved by the
-              mean flow), used to scale the stochastic source terms: modeled_fraction =
-              k_mean / (k_mean + 0.5*(u'u'+v'v'+w'w')), with the resolved velocity variances
-              computed above (UUPRIME, VVPRIME, WWPRIME). The Stochastic Backscatter Model is only
-              available for 3D flows (checked in CConfig.cpp), so WWPRIME is always available here.
-              Only computed (and allocated, see CTurbSSTVariable) when actually used, i.e. when
-              DAMP_TIME_FILTERING or SBS_DAMP_SOURCE is active. ---*/
+              mean flow), used to scale the stochastic source terms. Only computed (and allocated,
+              see CTurbSSTVariable) when actually used, i.e. when DAMP_TIME_FILTERING or
+              SBS_DAMP_SOURCE is active. ---*/
         if (config->GetSBSParam().dampTimeFiltering || config->GetSBSParam().dampStochTerm) {
-          const su2double kMean = GetVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint);
-          const su2double resolvedTKE = 0.5 * (GetVolumeOutputValue("UUPRIME", iPoint) + GetVolumeOutputValue("VVPRIME", iPoint) +
-                                               GetVolumeOutputValue("WWPRIME", iPoint));
-          Node_Turb->SetModeledFraction(iPoint, kMean / max(kMean + resolvedTKE, EPS));
+          su2double modeledFraction;
+          if (config->GetSBSParam().sbsRansConstraint) {
+            /*--- modeled_fraction = k_SST / k_RANS, clipped to 1: the instantaneous SST k against
+                  the reference RANS solution's k (SBS_RANS_CONSTRAINT), read once at startup into
+                  RANS_TKE (see CTurbSSTSolver). ---*/
+            const su2double kMean = GetVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint);
+            const su2double kRANS = Node_Turb->GetRANS_TKE(iPoint);
+            modeledFraction = min(1.0, kMean / max(kRANS, EPS));
+          } else {
+            /*--- modeled_fraction = k_mean / (k_mean + 0.5*(u'u'+v'v'+w'w')), with the resolved
+                  velocity variances computed above (UUPRIME, VVPRIME, WWPRIME). The Stochastic
+                  Backscatter Model is only available for 3D flows (checked in CConfig.cpp), so
+                  WWPRIME is always available here. ---*/
+            const su2double kMean = GetVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint);
+            const su2double resolvedTKE = 0.5 * (GetVolumeOutputValue("UUPRIME", iPoint) + GetVolumeOutputValue("VVPRIME", iPoint) +
+                                                 GetVolumeOutputValue("WWPRIME", iPoint));
+            modeledFraction = kMean / max(kMean + resolvedTKE, EPS);
+          }
+          Node_Turb->SetModeledFraction(iPoint, modeledFraction);
+          SetVolumeOutputValue("MODELED_FRACTION", iPoint, modeledFraction);
         }
       }
     }

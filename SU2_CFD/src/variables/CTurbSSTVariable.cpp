@@ -66,6 +66,9 @@ CTurbSSTVariable::CTurbSSTVariable(su2double kine, su2double omega, su2double mu
       ModeledFraction.resize(nPoint) = su2double(1.0);
     }
     MeanTurbKE.resize(nPoint) = su2double(0.0);
+    if (config->GetSBSParam().sbsRansConstraint) {
+      RANS_TKE.resize(nPoint) = su2double(0.0);
+    }
     lesMode.resize(nPoint) = su2double(0.0);
     Vortex_Tilting.resize(nPoint) = su2double(0.0);
     if (backscatter) {
