@@ -3019,6 +3019,12 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Specify if the LES mode must be enforced */
   addBoolOption("ENFORCE_LES", enforceLES, false);
 
+  /* DESCRIPTION: Specify if the Lundgren volume forcing for grey-area mitigation must be activated */
+  addBoolOption("LUNDGREN_FORCING", LundgrenForcingParam.LundgrenForcing, false);
+
+  /* DESCRIPTION: Smoothing coefficient for the exponential low-pass filter of the velocity used by the Lundgren volume forcing */
+  addDoubleOption("LUNDGREN_FORCING_ALPHA", LundgrenForcingParam.LundgrenForcing_Alpha, 0.01);
+
   /* DESCRIPTION: Specify if the stochastic source term must be included in the turbulence model equation */
   addBoolOption("SBS_SOURCE_TURB", SBSParam.stochSourceTurb, true);
 
@@ -6672,6 +6678,8 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
           SU2_MPI::Error("Stochastic Backscatter can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);
         if (SBSParam.sbsRansConstraint && !IsHybridRANSLES_SST(Kind_HybridRANSLES))
           SU2_MPI::Error("SBS_RANS_CONSTRAINT can only be activated with a SST-based Hybrid RANS/LES model.", CURRENT_FUNCTION);
+        if (LundgrenForcingParam.LundgrenForcing && !IsHybridRANSLES_SST(Kind_HybridRANSLES))
+          SU2_MPI::Error("LUNDGREN_FORCING can only be activated with a SST-based Hybrid RANS/LES model.", CURRENT_FUNCTION);
         if (enforceLES) {
           if (Kind_HybridRANSLES == NO_HYBRIDRANSLES)
             SU2_MPI::Error("ENFORCE_LES can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);

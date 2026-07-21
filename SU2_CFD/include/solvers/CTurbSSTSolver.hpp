@@ -39,6 +39,10 @@ class CTurbSSTSolver final : public CTurbSolver {
 private:
   su2double constants[11] = {0.0}; /*!< \brief Constants for the model. */
   SST_ParsedOptions sstParsedOptions;
+  bool lundgrenForcingInitialized = false; /*!< \brief Whether the exponential velocity filter of the
+                                                 Lundgren volume forcing has been initialized. Used
+                                                 instead of a restart check, since the filter state
+                                                 is not stored in the restart file. */
 
   /*!
    * \brief A virtual member.
@@ -77,6 +81,17 @@ private:
    * \param[in] geometry - Geometrical definition.
    */
   void ComputeOU_Process(CSolver** solver, CConfig* config, CGeometry* geometry);
+
+  /*!
+   * \brief Compute the Lundgren volume forcing momentum source term for grey-area mitigation
+   *        (Monot, Friess & Wackers, IJCFD 2024), based on the target transfer dissipation
+   *        deduced from the DES limiter and the amplification of the low-pass filtered
+   *        velocity fluctuation.
+   * \param[in] solver_container - Container vector with all the solutions.
+   * \param[in] geometry - Geometrical definition.
+   * \param[in] config - Definition of the particular problem.
+   */
+  void SetLundgrenForcing(CSolver** solver_container, CGeometry* geometry, CConfig* config);
 
   /*!
    * \brief Compute nu tilde from the wall functions.

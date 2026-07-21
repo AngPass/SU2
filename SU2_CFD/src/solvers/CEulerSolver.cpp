@@ -2088,6 +2088,7 @@ void CEulerSolver::Source_Residual(CGeometry *geometry, CSolver **solver_contain
   const bool harmonic_balance = (config->GetTime_Marching() == TIME_MARCHING::HARMONIC_BALANCE);
   const bool body_force       = config->GetBody_Force();
   const bool vorticity_confinement = config->GetVorticityConfinement();
+  const bool lundgren_forcing = config->GetLundgrenForcingParam().LundgrenForcing;
   const bool ideal_gas        = (config->GetKind_FluidModel() == STANDARD_AIR) ||
                                 (config->GetKind_FluidModel() == IDEAL_GAS);
   const bool rans             = (config->GetKind_Turb_Model() != TURB_MODEL::NONE);
@@ -2248,6 +2249,28 @@ void CEulerSolver::Source_Residual(CGeometry *geometry, CSolver **solver_contain
       for (auto iVar = 0ul; iVar < nVar; iVar++) {
         LinSysRes(iPoint,iVar) += Volume * nodes->GetHarmonicBalance_Source(iPoint,iVar);
       }
+    }
+    END_SU2_OMP_FOR
+  }
+
+  if (lundgren_forcing) {
+
+    /*--- Add the Lundgren volume forcing (grey-area mitigation for Hybrid RANS/LES,
+          computed once per time step in CTurbSSTSolver::Preprocessing) to the momentum
+          equations, following Eq. (1) of Monot, Friess & Wackers, IJCFD 2024. Unlike the
+          (incompressible) formulation in the paper, the compressible total-energy equation
+          also needs the mechanical work done by the forcing, u_i*f_i, to conserve energy. ---*/
+
+    SU2_OMP_FOR_STAT(omp_chunk_size)
+    for (auto iPoint = 0ul; iPoint < nPointDomain; iPoint++) {
+      const su2double Volume = geometry->nodes->GetVolume(iPoint);
+      su2double work = 0.0;
+      for (auto iDim = 0u; iDim < nDim; iDim++) {
+        const su2double forcing = nodes->GetLundgrenForcing(iPoint, iDim);
+        LinSysRes(iPoint, iDim+1) += Volume * forcing;
+        work += forcing * nodes->GetVelocity(iPoint, iDim);
+      }
+      LinSysRes(iPoint, nDim+1) += Volume * work;
     }
     END_SU2_OMP_FOR
   }
