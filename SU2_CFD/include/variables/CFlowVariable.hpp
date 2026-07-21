@@ -49,7 +49,6 @@ class CFlowVariable : public CVariable {
 
   MatrixType Solution_New; /*!< \brief New solution container for Classical RK4. */
   MatrixType HB_Source;    /*!< \brief harmonic balance source term. */
-  MatrixType LundgrenSource; /*!< \brief Lundgren volume forcing momentum source term for grey-area mitigation. */
 
   /*--- NS Variables declared here to make it easier to re-use code between compressible and incompressible solvers.
    * ---*/
@@ -249,26 +248,6 @@ class CFlowVariable : public CVariable {
    */
   inline void SetHarmonicBalance_Source(unsigned long iPoint, unsigned long iVar, su2double val_source) final {
     HB_Source(iPoint, iVar) = val_source;
-  }
-
-  /*!
-   * \brief Get the Lundgren volume forcing momentum source term.
-   * \param[in] iPoint - Point index.
-   * \param[in] iDim - Dimension index.
-   * \return Value of the Lundgren forcing component for dimension <i>iDim</i>.
-   */
-  inline su2double GetLundgrenForcing(unsigned long iPoint, unsigned long iDim) const final {
-    return LundgrenSource(iPoint, iDim);
-  }
-
-  /*!
-   * \brief Set the Lundgren volume forcing momentum source term.
-   * \param[in] iPoint - Point index.
-   * \param[in] iDim - Dimension index.
-   * \param[in] val_forcing - Value of the Lundgren forcing component for dimension <i>iDim</i>.
-   */
-  inline void SetLundgrenForcing(unsigned long iPoint, unsigned long iDim, su2double val_forcing) final {
-    LundgrenSource(iPoint, iDim) = val_forcing;
   }
 
   /*!

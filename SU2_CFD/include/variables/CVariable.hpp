@@ -444,21 +444,6 @@ public:
   inline virtual void SetModeledFraction(unsigned long iPoint, su2double val_modeled_fraction) {}
 
   /*!
-   * \brief A virtual member: get a component of the exponentially low-pass filtered velocity
-   *        (Lundgren volume forcing for grey-area mitigation, SST-based hybrid models only).
-   * \param[in] iPoint - Point index.
-   * \param[in] iDim - Dimension index.
-   */
-  inline virtual su2double GetVel_Filtered(unsigned long iPoint, unsigned short iDim) const { return 0.0; }
-
-  /*!
-   * \brief A virtual member.
-   * \param[in] iPoint - Point index.
-   * \param[in] iDim - Dimension index.
-   */
-  inline virtual void SetVel_Filtered(unsigned long iPoint, unsigned short iDim, su2double val_vel_filtered) {}
-
-  /*!
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
    */
@@ -1960,22 +1945,6 @@ public:
    * \brief A virtual member.
    */
   inline virtual su2double GetHarmonicBalance_Source(unsigned long iPoint, unsigned long iVar) const { return 0.0; }
-
-  /*!
-   * \brief A virtual member: set the Lundgren volume forcing momentum source term
-   *        (grey-area mitigation for Hybrid RANS/LES).
-   * \param[in] iPoint - Point index.
-   * \param[in] iDim - Dimension index.
-   * \param[in] val_forcing - Value of the Lundgren forcing component.
-   */
-  inline virtual void SetLundgrenForcing(unsigned long iPoint, unsigned long iDim, su2double val_forcing) {}
-
-  /*!
-   * \brief A virtual member: get the Lundgren volume forcing momentum source term.
-   * \param[in] iPoint - Point index.
-   * \param[in] iDim - Dimension index.
-   */
-  inline virtual su2double GetLundgrenForcing(unsigned long iPoint, unsigned long iDim) const { return 0.0; }
 
   /*!
    * \brief Set the Eddy Viscosity Sensitivity of the problem.

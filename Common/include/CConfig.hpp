@@ -1125,10 +1125,6 @@ private:
   } SBSParam;
   bool enforceLES;                          /*!< \brief Option to enforce LES mode in hybrid RANS-LES simulations. */
   su2double LES_FilterWidth;                /*!< \brief LES filter width for hybrid RANS-LES simulations. */
-  struct CLundgrenForcingParam {
-    bool LundgrenForcing;           /*!< \brief Option to include the Lundgren volume forcing for grey-area mitigation. */
-    su2double LundgrenForcing_Alpha; /*!< \brief Smoothing coefficient for the exponential low-pass filter of the velocity. */
-  } LundgrenForcingParam;
 
   unsigned short nSpanWiseSections; /*!< \brief number of span-wise sections */
   unsigned short nSpanMaxAllZones;  /*!< \brief number of maximum span-wise sections for all zones */
@@ -9723,12 +9719,6 @@ public:
    * \return SBS model parameters.
    */
   const CStochBackScatParam& GetSBSParam(void) const { return SBSParam; }
-
-  /*!
-   * \brief Get the Lundgren volume forcing parameters.
-   * \return Lundgren forcing parameters.
-   */
-  const CLundgrenForcingParam& GetLundgrenForcingParam(void) const { return LundgrenForcingParam; }
 
   /*!
    * \brief Get the DES Constant.

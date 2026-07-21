@@ -1445,7 +1445,6 @@ void CIncEulerSolver::Source_Residual(CGeometry *geometry, CSolver **solver_cont
   const bool streamwise_periodic             = (config->GetKind_Streamwise_Periodic() != ENUM_STREAMWISE_PERIODIC::NONE);
   const bool streamwise_periodic_temperature = config->GetStreamwise_Periodic_Temperature();
   const bool multicomponent = (config->GetKind_FluidModel() == FLUID_MIXTURE);
-  const bool lundgren_forcing = config->GetLundgrenForcingParam().LundgrenForcing;
 
   AD::StartNoSharedReading();
 
@@ -1515,21 +1514,6 @@ void CIncEulerSolver::Source_Residual(CGeometry *geometry, CSolver **solver_cont
     END_SU2_OMP_FOR
   }
 
-  if (lundgren_forcing) {
-
-    /*--- Add the Lundgren volume forcing (grey-area mitigation for Hybrid RANS/LES,
-          computed once per time step in CTurbSSTSolver::Preprocessing) to the momentum
-          equations only, following Eq. (1) of Monot, Friess & Wackers, IJCFD 2024. ---*/
-
-    SU2_OMP_FOR_STAT(omp_chunk_size)
-    for (auto iPoint = 0ul; iPoint < nPointDomain; iPoint++) {
-      const su2double Volume = geometry->nodes->GetVolume(iPoint);
-      for (auto iDim = 0u; iDim < nDim; iDim++) {
-        LinSysRes(iPoint, iDim+1) += Volume * nodes->GetLundgrenForcing(iPoint, iDim);
-      }
-    }
-    END_SU2_OMP_FOR
-  }
 
   if (rotating_frame) {
 

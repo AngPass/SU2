@@ -71,9 +71,6 @@ CTurbSSTVariable::CTurbSSTVariable(su2double kine, su2double omega, su2double mu
     }
     lesMode.resize(nPoint) = su2double(0.0);
     Vortex_Tilting.resize(nPoint) = su2double(0.0);
-    if (config->GetLundgrenForcingParam().LundgrenForcing) {
-      Vel_Filtered.resize(nPoint, nDim) = su2double(0.0);
-    }
     if (backscatter) {
       if (config->GetSBSParam().stochSourceType == LANGEVIN) {
         /*--- Undivided Laplacian of the solution, used by the 4th-order JST-type dissipation

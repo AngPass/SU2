@@ -1015,6 +1015,37 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
       su2double P = Eddy_Viscosity_i * pow(P_Base, 2);
       su2double pk = max(0.0, min(P, prod_limit));
 
+      /*--- If the modeled stress tensor is high-pass filtered in the momentum equation
+            (FILTER_STRESSES, see CAvgGrad_Base::SetStressTensor), the production term must be
+            corrected by the same amount that is subtracted from tau there,
+            tau_ij -= Eddy_Viscosity * modeledFraction * meanStrain_ij, so that the k-equation
+            only extracts from the resolved flow the energy that the (filtered) stress tensor is
+            actually removing from it. Using P_Base^2 (i.e. nu_t*S^2) alone would ignore this and
+            keep destroying modelled TKE that the momentum equation no longer removes from the
+            mean flow, which would be inconsistent. ---*/
+
+      if (config->GetSBSParam().filterStresses && lesMode_i > config->GetSBSParam().stochFdThreshold) {
+        const su2double modeledFraction = config->GetSBSParam().dampTimeFiltering ? modeledFraction_i : 1.0;
+
+        su2double meanStrain[3][3] = {{0.0}};
+        meanStrain[0][0] = meanStrainRate_i[0];
+        meanStrain[1][1] = meanStrainRate_i[1];
+        meanStrain[2][2] = meanStrainRate_i[2];
+        meanStrain[0][1] = meanStrain[1][0] = meanStrainRate_i[3];
+        meanStrain[0][2] = meanStrain[2][0] = meanStrainRate_i[4];
+        meanStrain[1][2] = meanStrain[2][1] = meanStrainRate_i[5];
+
+        su2double meanStrainDotS = 0.0;
+        for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+          for (unsigned short jDim = 0; jDim < nDim; jDim++) {
+            const su2double Sij = 0.5*(PrimVar_Grad_i[iDim+idx.Velocity()][jDim] +
+                                       PrimVar_Grad_i[jDim+idx.Velocity()][iDim]);
+            meanStrainDotS += meanStrain[iDim][jDim] * Sij;
+          }
+        }
+        pk = max(pk - Eddy_Viscosity_i * modeledFraction * meanStrainDotS, 0.0);
+      }
+
       const auto& eddy_visc_var = sstParsedOptions.version == SST_OPTIONS::V1994 ? VorticityMag : StrainMag_i;
       const su2double zeta = max(ScalarVar_i[1], eddy_visc_var * F2_i / a1);
 

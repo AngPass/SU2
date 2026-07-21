@@ -297,15 +297,6 @@ void CTurbSSTSolver::Preprocessing(CGeometry *geometry, CSolver **solver_contain
       if (config->GetSBSParam().stochSourceType == ORNSTEIN_UHLENBECK) ComputeOU_Process(solver_container, config, geometry);
     }
 
-    /*--- Compute the Lundgren volume forcing for grey-area mitigation. Evaluated once per
-          time step, since it is based on the (slowly varying) exponential average of the
-          velocity and is meant to represent the transfer of modelled to resolved TKE
-          integrated over the coming time step. ---*/
-
-    if (config->GetLundgrenForcingParam().LundgrenForcing && innerIter==0) {
-      SetLundgrenForcing(solver_container, geometry, config);
-    }
-
   }
 
 }
@@ -482,6 +473,21 @@ void CTurbSSTSolver::Source_Residual(CGeometry *geometry, CSolver **solver_conta
 
     if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) {
       numerics->SetFDDES(nodes->GetF_DES(iPoint), 0.0);
+
+      /*--- Correct the production term for the high-pass filtering of the modeled stress tensor
+            in the momentum equation (FILTER_STRESSES), so that the k-equation stays consistent
+            with the (filtered) stress actually acting on the resolved flow. Independent of the
+            Stochastic Backscatter Model, see CAvgGrad_Base::SetStressTensor. ---*/
+
+      if (config->GetSBSParam().filterStresses) {
+        numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), 0.0);
+        for (unsigned short iVar = 0; iVar < 6; iVar++) {
+          numerics->SetMeanStrainRate(iVar, flowNodes->GetMeanStrainRate(iPoint, iVar), 0.0);
+        }
+        if (config->GetSBSParam().dampTimeFiltering) {
+          numerics->SetModeledFraction(nodes->GetModeledFraction(iPoint), 0.0);
+        }
+      }
 
       /*--- Compute source terms in Langevin equations (Stochastic Basckscatter Model) ---*/
 
@@ -1023,96 +1029,6 @@ void CTurbSSTSolver::SetLangevinSourceTerms(CConfig *config, CGeometry* geometry
     }
     END_SU2_OMP_FOR
   }
-}
-
-void CTurbSSTSolver::SetLundgrenForcing(CSolver **solver_container, CGeometry *geometry, CConfig *config) {
-  SU2_ZONE_SCOPED
-
-  /*--- Modified Lundgren volume forcing (Monot, Friess & Wackers, IJCFD 2024), amplifying the
-        pre-existing velocity fluctuation to convert the modelled TKE dissipated by the DES
-        limiter (grey area) into resolved TKE. ---*/
-
-  auto* flowNodes = su2staticcast_p<CFlowVariable*>(solver_container[FLOW_SOL]->GetNodes());
-
-  const su2double beta_star = constants[6];
-  const su2double prod_lim_const = constants[10];
-  const su2double alpha = config->GetLundgrenForcingParam().LundgrenForcing_Alpha;
-  const bool firstTimeStep = !lundgrenForcingInitialized;
-
-  /*--- The forcing is evaluated once per physical time step (innerIter==0), so it must use the
-        physical time step, not the local/pseudo time step used for inner-iteration convergence. ---*/
-
-  const su2double Delta_t = config->GetDelta_UnstTimeND();
-
-  SU2_OMP_FOR_STAT(omp_chunk_size)
-  for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-
-    const su2double density   = flowNodes->GetDensity(iPoint);
-    const su2double k         = nodes->GetSolution(iPoint, 0);
-    const su2double omega     = max(nodes->GetSolution(iPoint, 1), 1e-10);
-    const su2double StrainMag = max(flowNodes->GetStrainMag(iPoint), 1e-12);
-    const su2double eddyVisc  = nodes->GetmuT(iPoint);
-    const su2double F_DES     = nodes->GetF_DES(iPoint);
-
-    /*--- Production of turbulent kinetic energy P^k, limited as in the k-equation
-          (CSourcePieceWise_TurbSST), Eq. (10) needs P^k = tau_ij dUi/dxj. ---*/
-
-    const su2double prod_limit = prod_lim_const * beta_star * density * omega * k;
-    const su2double Pk = max(0.0, min(eddyVisc * pow(StrainMag, 2), prod_limit));
-
-    /*--- Target transfer dissipation eps^k_tr, Eq. (10): the part of the DES dissipation
-          that exceeds both the physical SST dissipation and the local production, i.e.
-          the modelled energy that is destroyed by the DES limiter without a matching
-          physical sink and must therefore be reinjected as resolved TKE. eps_DES/eps_SST
-          include the density factor (as in the k-equation); dividing by density below
-          gives the mass-specific dissipation rate needed for the velocity-fluctuation
-          energy balance of Eq. (15)-(16). ---*/
-
-    const su2double eps_DES = beta_star * density * k * omega * F_DES;
-    const su2double eps_SST = beta_star * density * k * omega;
-    const su2double eps_tr  = max(eps_DES - max(eps_SST, Pk), 0.0);
-    const su2double eps_art = eps_tr / density;
-
-    /*--- Exponential low-pass filter of the velocity, Eqs. (11)-(12). On the very first
-          time step of a computation started from scratch, the filter is initialized to
-          the instantaneous velocity so that the fluctuation (and hence the forcing)
-          starts from zero instead of from an artificial initial transient. ---*/
-
-    su2double Uprime[MAXNDIM] = {0.0};
-    su2double UprimeNormOld = 0.0;
-    for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-      const su2double vel = flowNodes->GetVelocity(iPoint, iDim);
-      const su2double velFilteredOld = firstTimeStep ? vel : nodes->GetVel_Filtered(iPoint, iDim);
-      const su2double velFiltered = alpha*vel + (1.0-alpha)*velFilteredOld;
-      nodes->SetVel_Filtered(iPoint, iDim, velFiltered);
-      Uprime[iDim] = vel - velFiltered;
-      UprimeNormOld += Uprime[iDim]*Uprime[iDim];
-    }
-    UprimeNormOld = sqrt(UprimeNormOld);
-
-    /*--- Splitting approach: derive the forcing f_i needed to bring the
-          fluctuation amplitude from ||U'^n|| to the target ||U'~^{n+1}||.
-          No forcing is applied where there is no pre-existing fluctuation to amplify
-          (Lundgren's method requires one) or where no energy needs to be injected. ---*/
-
-    if (UprimeNormOld > EPS && eps_art > 0.0 && Delta_t > EPS) {
-      const su2double UprimeNormNew = sqrt(2.0*eps_art*Delta_t + UprimeNormOld*UprimeNormOld);
-      const su2double ratio = UprimeNormNew / UprimeNormOld;
-      for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-        const su2double UprimeNew_i = Uprime[iDim] * ratio;
-        flowNodes->SetLundgrenForcing(iPoint, iDim, density * (UprimeNew_i - Uprime[iDim]) / Delta_t);
-      }
-    } else {
-      for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-        flowNodes->SetLundgrenForcing(iPoint, iDim, 0.0);
-      }
-    }
-  }
-  END_SU2_OMP_FOR
-
-  SU2_OMP_MASTER
-  lundgrenForcingInitialized = true;
-  END_SU2_OMP_MASTER
 }
 
 void CTurbSSTSolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeometry *geometry) {

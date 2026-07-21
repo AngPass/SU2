@@ -55,7 +55,6 @@ protected:
                             kinetic energy. */
   VectorType lesMode;
   VectorType Vortex_Tilting;
-  MatrixType Vel_Filtered; /*!< \brief Exponentially low-pass filtered velocity, used by the Lundgren volume forcing. */
   MatrixType stochSource;
   MatrixType stochSourceOld;
   MatrixType OU_Process;
@@ -352,22 +351,6 @@ public:
    * \return Value of the integral.
    */
   inline su2double GetBesselIntegral(unsigned long iPoint) const override { return besselIntegral(iPoint); }
-
-  /*!
-   * \brief Get the exponentially low-pass filtered velocity used by the Lundgren volume forcing.
-   * \param[in] iPoint - Point index.
-   * \param[in] iDim - Dimension index.
-   * \return Value of the filtered velocity component.
-   */
-  inline su2double GetVel_Filtered(unsigned long iPoint, unsigned short iDim) const override { return Vel_Filtered(iPoint, iDim); }
-
-  /*!
-   * \brief Set the exponentially low-pass filtered velocity used by the Lundgren volume forcing.
-   * \param[in] iPoint - Point index.
-   * \param[in] iDim - Dimension index.
-   * \param[in] val_vel_filtered - Value of the filtered velocity component.
-   */
-  inline void SetVel_Filtered(unsigned long iPoint, unsigned short iDim, su2double val_vel_filtered) override { Vel_Filtered(iPoint, iDim) = val_vel_filtered; }
 
   /*!
    * \brief Set the blending function for the blending of k-w and k-eps.
