@@ -6673,6 +6673,13 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
           } else {
             cout << "OFF" << endl;
           }
+          cout << "Lundgren Volume Forcing: ";
+          if (LundgrenForcingParam.LundgrenForcing) {
+            cout << "ON" << endl;
+            cout << "| Velocity low-pass filter smoothing coefficient: " << LundgrenForcingParam.LundgrenForcing_Alpha << endl;
+          } else {
+            cout << "OFF" << endl;
+          }
         }
         if (Kind_HybridRANSLES == NO_HYBRIDRANSLES && SBSParam.StochasticBackscatter)
           SU2_MPI::Error("Stochastic Backscatter can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);
