@@ -246,7 +246,6 @@ void CTurbSASolver::Preprocessing(CGeometry *geometry, CSolver **solver_containe
     if (backscatter && innerIter==0) {
       SetLangevinSourceTerms(config, geometry);
       const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
-      const su2double ctau = config->GetSBSParam().SBS_Ctau;
       if (maxIter > 0) SmoothLangevinSourceTerms(config, geometry);
       if (config->GetSBSParam().stochSourceType == ORNSTEIN_UHLENBECK) ComputeOU_Process(solver_container, config, geometry);
     }

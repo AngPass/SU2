@@ -158,8 +158,10 @@ class CSourceBase_TurbSA : public CNumerics {
     su2double lengthscale = config->GetConst_DES()*maxDelta_i;
     su2double tke = pow(nut/lengthscale, 2);
 
+    const bool isLangevin = (config->GetSBSParam().stochSourceType == LANGEVIN);
+
     su2double StochDotVor = 0.0;
-    if (config->GetSBSParam().stochSourceType == LANGEVIN)
+    if (isLangevin)
       StochDotVor = - Cmag * tke * (Vorticity_i[0]*ScalarVar_i[1] + Vorticity_i[1]*ScalarVar_i[2] + Vorticity_i[2]*ScalarVar_i[3]);
     else
       StochDotVor = - Cmag * tke * (Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2]);
@@ -169,9 +171,22 @@ class CSourceBase_TurbSA : public CNumerics {
     su2double fac = 1.0 / (var.fv1 + Dfv1);
     su2double timeScale = lengthscale*lengthscale/(2.0*nut);
     su2double stochProdNut = StochDotVor * timeScale * fac;
+
+    const bool clipped = (stochProdNut < -limiter*prod) || (stochProdNut > limiter*prod);
     stochProdNut = max(-limiter*prod, min(limiter*prod, stochProdNut));
 
-    prod += stochProdNut;
+    prod -= stochProdNut;
+
+    /*--- Jacobian contribution w.r.t. the Langevin state variables (exact, since
+          StochDotVor is linear in them); the self-term w.r.t. nu_tilde is left out
+          of the (already approximate) Jacobian, consistent with the rest of the
+          nonlinear SA closure terms (fv1, Ji, ...) not being fully linearized. ---*/
+    if (isLangevin && !clipped) {
+      const su2double dProdNut_dStochVar = Cmag * tke * timeScale * fac;
+      for (unsigned short iDim = 0; iDim < 3; iDim++) {
+        Jacobian_i[0][1+iDim] = dProdNut_dStochVar * Vorticity_i[iDim] * Volume;
+      }
+    }
 
   }
 

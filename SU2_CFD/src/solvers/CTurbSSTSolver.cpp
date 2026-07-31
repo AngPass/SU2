@@ -280,14 +280,15 @@ void CTurbSSTSolver::Preprocessing(CGeometry *geometry, CSolver **solver_contain
     bool backscatterInBox = config->GetSBSParam().StochBackscatterInBox;
     if (backscatter && backscatterInBox) SetBackscatterInBox(config, geometry);
 
+    InitiateComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
+    CompleteComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
+    InitiateComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
+    CompleteComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
+
     /*--- Compute source terms for Langevin equations ---*/
 
     unsigned long innerIter = config->GetInnerIter();
     if (backscatter && innerIter==0) {
-      InitiateComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
-      CompleteComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
-      InitiateComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
-      CompleteComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
       InitiateComms(geometry, config, MPI_QUANTITIES::MEAN_TKE);
       CompleteComms(geometry, config, MPI_QUANTITIES::MEAN_TKE);
 
