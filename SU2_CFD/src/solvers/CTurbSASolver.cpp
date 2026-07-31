@@ -543,9 +543,14 @@ void CTurbSASolver::BC_HeatFlux_Wall(CGeometry *geometry, CSolver **solver_conta
 
       LinSysRes.SetBlock_Zero(iPoint);
 
-      /*--- Includes 1 in the diagonal ---*/
+      /*--- Change rows of the Jacobian (includes 1 in the diagonal). Covers all nVar (not just
+            nu_tilde) so the Dirichlet solution[1..nVar-1]=0 imposed above for the Stochastic
+            Backscatter Model's Langevin components (when active) is enforced consistently. ---*/
 
-      if (implicit) Jacobian.DeleteValsRowi(iPoint, 0);
+      if (implicit) {
+        for (auto iVar = 0u; iVar < nVar; iVar++)
+          Jacobian.DeleteValsRowi(iPoint, iVar);
+      }
       continue;
     }
 
@@ -1418,9 +1423,14 @@ void CTurbSASolver::SetTurbVars_WF(CGeometry *geometry, CSolver **solver_contain
       nodes->SetSolution_Old(iPoint_Neighbor, nuTil);
       LinSysRes.SetBlock_Zero(iPoint_Neighbor);
 
-      /*--- includes 1 in the diagonal ---*/
+      /*--- Change rows of the Jacobian (includes 1 in the diagonal). Covers all nVar (not just
+            nu_tilde) so the Dirichlet solution[1..nVar-1]=0 imposed above for the Stochastic
+            Backscatter Model's Langevin components (when active) is enforced consistently. ---*/
 
-      if (implicit) Jacobian.DeleteValsRowi(iPoint_Neighbor, 0);
+      if (implicit) {
+        for (auto iVar = 0u; iVar < nVar; iVar++)
+          Jacobian.DeleteValsRowi(iPoint_Neighbor, iVar);
+      }
     }
   }
 }
