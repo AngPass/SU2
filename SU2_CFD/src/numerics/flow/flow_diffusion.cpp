@@ -179,6 +179,29 @@ void CAvgGrad_Base::SetStressTensor(const su2double *val_primvar,
       for (unsigned short jDim = 0 ; jDim < nDim; jDim++)
         tau[iDim][jDim] -= val_eddy_viscosity * meanStrain[iDim][jDim] * modeledFraction;
   }
+
+  /*--- TEMPORARY DIAGNOSTIC (to be removed once the SA_DDES + backscatter crash is root-caused):
+        tau funnels the backscatter momentum-forcing (stochStressTensor) and stress-filtering
+        contributions added above, on every viscous edge/BC call, whenever StochasticBackscatter
+        is active. Trap any non-finite result here. ---*/
+  if (config->GetSBSParam().StochasticBackscatter) {
+    for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+      for (unsigned short jDim = 0; jDim < nDim; jDim++) {
+        if (!std::isfinite(tau[iDim][jDim])) {
+          cout << "\n[NON-FINITE STRESS TENSOR] rank=" << SU2_MPI::GetRank()
+               << " iDim=" << iDim << " jDim=" << jDim
+               << " tau=" << tau[iDim][jDim]
+               << " Density=" << Density
+               << " lesMode_i=" << lesMode_i << " lesMode_j=" << lesMode_j
+               << " maxDelta_i=" << maxDelta_i << " maxDelta_j=" << maxDelta_j
+               << " Eddy_Viscosity_i=" << Eddy_Viscosity_i << " Eddy_Viscosity_j=" << Eddy_Viscosity_j
+               << " stochStressTensor=(" << stochStressTensor[iDim][jDim] << ")"
+               << endl;
+          SU2_MPI::Error("Non-finite stress tensor detected, see diagnostic printed above.", CURRENT_FUNCTION);
+        }
+      }
+    }
+  }
 }
 
 void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {

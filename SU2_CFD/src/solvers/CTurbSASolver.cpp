@@ -226,28 +226,49 @@ void CTurbSASolver::Preprocessing(CGeometry *geometry, CSolver **solver_containe
       END_SU2_OMP_FOR
     }
 
-    /*--- Compute the DES length scale ---*/
-
+    /*--- TEMPORARY DIAGNOSTIC (breadcrumbs, to be removed once the SA_DDES + backscatter crash is
+          root-caused): print+flush before/after each step so the last line printed on a given rank
+          before an abort tells us which call was entered but never returned from. ---*/
+    cout << "[BREADCRUMB] rank=" << rank << " before SetDES_LengthScale" << endl;
     SetDES_LengthScale(solver_container, geometry, config);
+    cout << "[BREADCRUMB] rank=" << rank << " after SetDES_LengthScale" << endl;
 
     bool backscatter = config->GetSBSParam().StochasticBackscatter;
     bool backscatterInBox = config->GetSBSParam().StochBackscatterInBox;
-    if (backscatter && backscatterInBox) SetBackscatterInBox(config, geometry);
+    if (backscatter && backscatterInBox) {
+      cout << "[BREADCRUMB] rank=" << rank << " before SetBackscatterInBox" << endl;
+      SetBackscatterInBox(config, geometry);
+      cout << "[BREADCRUMB] rank=" << rank << " after SetBackscatterInBox" << endl;
+    }
 
+    cout << "[BREADCRUMB] rank=" << rank << " before DES_LENGTHSCALE comms" << endl;
     InitiateComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
     CompleteComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
+    cout << "[BREADCRUMB] rank=" << rank << " after DES_LENGTHSCALE comms" << endl;
 
+    cout << "[BREADCRUMB] rank=" << rank << " before LES_SENSOR comms" << endl;
     InitiateComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
     CompleteComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
+    cout << "[BREADCRUMB] rank=" << rank << " after LES_SENSOR comms" << endl;
 
     /*--- Compute source terms for Langevin equations ---*/
 
     unsigned long innerIter = config->GetInnerIter();
     if (backscatter && innerIter==0) {
+      cout << "[BREADCRUMB] rank=" << rank << " before SetLangevinSourceTerms" << endl;
       SetLangevinSourceTerms(config, geometry);
+      cout << "[BREADCRUMB] rank=" << rank << " after SetLangevinSourceTerms" << endl;
       const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
-      if (maxIter > 0) SmoothLangevinSourceTerms(config, geometry);
-      if (config->GetSBSParam().stochSourceType == ORNSTEIN_UHLENBECK) ComputeOU_Process(solver_container, config, geometry);
+      if (maxIter > 0) {
+        cout << "[BREADCRUMB] rank=" << rank << " before SmoothLangevinSourceTerms" << endl;
+        SmoothLangevinSourceTerms(config, geometry);
+        cout << "[BREADCRUMB] rank=" << rank << " after SmoothLangevinSourceTerms" << endl;
+      }
+      if (config->GetSBSParam().stochSourceType == ORNSTEIN_UHLENBECK) {
+        cout << "[BREADCRUMB] rank=" << rank << " before ComputeOU_Process" << endl;
+        ComputeOU_Process(solver_container, config, geometry);
+        cout << "[BREADCRUMB] rank=" << rank << " after ComputeOU_Process" << endl;
+      }
     }
 
   }
@@ -372,6 +393,9 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
 
   AD::StartNoSharedReading();
 
+  cout << "[BREADCRUMB] rank=" << rank << " Source_Residual: before point loop (nPointDomain="
+       << nPointDomain << ")" << endl;
+
   /*--- Loop over all points. ---*/
 
   SU2_OMP_FOR_DYN(omp_chunk_size)
@@ -460,6 +484,60 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
 
     auto residual = numerics->ComputeResidual(config);
 
+    /*--- TEMPORARY DIAGNOSTIC (to be removed once the SA_DDES + backscatter crash is root-caused):
+          trap non-finite source residuals here, with a descriptive message, instead of letting them
+          silently corrupt the implicit solve a few iterations downstream. ---*/
+    for (unsigned short iVarCheck = 0; iVarCheck < nVar; iVarCheck++) {
+      if (!std::isfinite(residual[iVarCheck])) {
+        cout << "\n[NON-FINITE SA SOURCE RESIDUAL] rank=" << rank
+             << " iVar=" << iVarCheck
+             << " globalPoint=" << geometry->nodes->GetGlobalIndex(iPoint)
+             << " coord=(" << geometry->nodes->GetCoord(iPoint)[0] << ", "
+             << geometry->nodes->GetCoord(iPoint)[1] << ", " << geometry->nodes->GetCoord(iPoint)[2] << ")"
+             << " nu_tilde=" << nodes->GetSolution(iPoint, 0)
+             << " LES_Mode=" << nodes->GetLES_Mode(iPoint)
+             << " DES_LengthScale=" << nodes->GetDES_LengthScale(iPoint)
+             << " DES_FilterWidth=" << nodes->GetDES_FilterWidth(iPoint)
+             << " WallDist=" << geometry->nodes->GetWall_Distance(iPoint);
+        if (config->GetSBSParam().StochasticBackscatter) {
+          cout << " langevinSource=(" << nodes->GetLangevinSourceTerms(iPoint, 0) << ", "
+               << nodes->GetLangevinSourceTerms(iPoint, 1) << ", " << nodes->GetLangevinSourceTerms(iPoint, 2) << ")";
+          if (nVar > 1) {
+            cout << " langevinState=(" << nodes->GetSolution(iPoint, 1) << ", " << nodes->GetSolution(iPoint, 2)
+                 << ", " << nodes->GetSolution(iPoint, 3) << ")";
+          }
+        }
+        cout << endl;
+        SU2_MPI::Error("Non-finite SA source residual detected, see diagnostic printed above.", CURRENT_FUNCTION);
+      }
+    }
+    for (unsigned short iVarCheck = 0; iVarCheck < nVar; iVarCheck++) {
+      for (unsigned short jVarCheck = 0; jVarCheck < nVar; jVarCheck++) {
+        if (!std::isfinite(residual.jacobian_i[iVarCheck][jVarCheck])) {
+          cout << "\n[NON-FINITE SA SOURCE JACOBIAN] rank=" << rank
+               << " iVar=" << iVarCheck << " jVar=" << jVarCheck
+               << " globalPoint=" << geometry->nodes->GetGlobalIndex(iPoint)
+               << " coord=(" << geometry->nodes->GetCoord(iPoint)[0] << ", "
+               << geometry->nodes->GetCoord(iPoint)[1] << ", " << geometry->nodes->GetCoord(iPoint)[2] << ")"
+               << " nu_tilde=" << nodes->GetSolution(iPoint, 0)
+               << " LES_Mode=" << nodes->GetLES_Mode(iPoint)
+               << " DES_LengthScale=" << nodes->GetDES_LengthScale(iPoint)
+               << " DES_FilterWidth=" << nodes->GetDES_FilterWidth(iPoint)
+               << " WallDist=" << geometry->nodes->GetWall_Distance(iPoint);
+          if (config->GetSBSParam().StochasticBackscatter) {
+            cout << " langevinSource=(" << nodes->GetLangevinSourceTerms(iPoint, 0) << ", "
+                 << nodes->GetLangevinSourceTerms(iPoint, 1) << ", " << nodes->GetLangevinSourceTerms(iPoint, 2) << ")";
+            if (nVar > 1) {
+              cout << " langevinState=(" << nodes->GetSolution(iPoint, 1) << ", " << nodes->GetSolution(iPoint, 2)
+                   << ", " << nodes->GetSolution(iPoint, 3) << ")";
+            }
+          }
+          cout << endl;
+          SU2_MPI::Error("Non-finite SA source Jacobian detected, see diagnostic printed above.", CURRENT_FUNCTION);
+        }
+      }
+    }
+
     /*--- Store the intermittency ---*/
 
     if (transition_BC || config->GetKind_Trans_Model() != TURB_TRANS_MODEL::NONE) {
@@ -474,6 +552,8 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
 
   }
   END_SU2_OMP_FOR
+
+  cout << "[BREADCRUMB] rank=" << rank << " Source_Residual: after point loop" << endl;
 
   if (harmonic_balance) {
 
@@ -680,6 +760,24 @@ void CTurbSASolver::BC_Inlet(CGeometry *geometry, CSolver **solver_container, CN
       /*--- Compute the residual using an upwind scheme ---*/
 
       auto residual = conv_numerics->ComputeResidual(config);
+
+      /*--- TEMPORARY DIAGNOSTIC (to be removed once the SA_DDES + backscatter crash is root-caused):
+            this is the convective (not source) BC residual, never checked before; for the Langevin
+            components it goes through the hardcoded central+JST discretization in turb_convection.hpp. ---*/
+      for (unsigned short iVarCheck = 0; iVarCheck < nVar; iVarCheck++) {
+        if (!std::isfinite(residual[iVarCheck]) || !std::isfinite(residual.jacobian_i[iVarCheck][iVarCheck])) {
+          cout << "\n[NON-FINITE SA BC_INLET CONV RESIDUAL] rank=" << rank
+               << " iVar=" << iVarCheck
+               << " globalPoint=" << geometry->nodes->GetGlobalIndex(iPoint)
+               << " residual=" << residual[iVarCheck]
+               << " jac_ii=" << residual.jacobian_i[iVarCheck][iVarCheck]
+               << " solution=(" << nodes->GetSolution(iPoint,0);
+          for (unsigned short jv = 1; jv < nVar; jv++) cout << ", " << nodes->GetSolution(iPoint,jv);
+          cout << ") Inlet_Vars[0]=" << Inlet_Vars[0] << endl;
+          SU2_MPI::Error("Non-finite SA BC_Inlet convective residual, see diagnostic printed above.", CURRENT_FUNCTION);
+        }
+      }
+
       LinSysRes.AddBlock(iPoint, residual);
 
       /*--- Jacobian contribution for implicit integration ---*/
@@ -772,6 +870,24 @@ void CTurbSASolver::BC_Outlet(CGeometry *geometry, CSolver **solver_container, C
       /*--- Compute the residual using an upwind scheme ---*/
 
       auto residual = conv_numerics->ComputeResidual(config);
+
+      /*--- TEMPORARY DIAGNOSTIC (to be removed once the SA_DDES + backscatter crash is root-caused):
+            this is the convective (not source) BC residual, never checked before; for the Langevin
+            components it goes through the hardcoded central+JST discretization in turb_convection.hpp. ---*/
+      for (unsigned short iVarCheck = 0; iVarCheck < nVar; iVarCheck++) {
+        if (!std::isfinite(residual[iVarCheck]) || !std::isfinite(residual.jacobian_i[iVarCheck][iVarCheck])) {
+          cout << "\n[NON-FINITE SA BC_OUTLET CONV RESIDUAL] rank=" << rank
+               << " iVar=" << iVarCheck
+               << " globalPoint=" << geometry->nodes->GetGlobalIndex(iPoint)
+               << " residual=" << residual[iVarCheck]
+               << " jac_ii=" << residual.jacobian_i[iVarCheck][iVarCheck]
+               << " solution=(" << nodes->GetSolution(iPoint,0);
+          for (unsigned short jv = 1; jv < nVar; jv++) cout << ", " << nodes->GetSolution(iPoint,jv);
+          cout << ")" << endl;
+          SU2_MPI::Error("Non-finite SA BC_Outlet convective residual, see diagnostic printed above.", CURRENT_FUNCTION);
+        }
+      }
+
       LinSysRes.AddBlock(iPoint, residual);
 
       /*--- Jacobian contribution for implicit integration ---*/
@@ -1485,6 +1601,23 @@ void CTurbSASolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, CC
     su2double psi_2 = (1.0 - (cb1/(cw1*k2*fw_star))*(ft2 + (1.0 - ft2)*fv2))/(fv1 * max(1.0e-10,1.0-ft2));
     psi_2 = min(100.0,psi_2);
 
+    /*--- TEMPORARY DIAGNOSTIC (to be removed once the SA_DDES + backscatter crash is root-caused):
+          fv1 = Ji_3/(Ji_3+cv1_3) is unguarded here; if nu_tilde swings negative enough (Ji_3 -> -cv1_3)
+          this divides by ~0. Trap it with the offending point's data instead of propagating NaN/Inf
+          silently into the next iteration's linear solve. ---*/
+    if (!std::isfinite(fv1) || !std::isfinite(psi_2)) {
+      cout << "\n[NON-FINITE SA DES LENGTH SCALE] rank=" << rank
+           << " globalPoint=" << geometry->nodes->GetGlobalIndex(iPoint)
+           << " coord=(" << coord_i[0] << ", " << coord_i[1] << ", " << coord_i[2] << ")"
+           << " nu_hat=" << nu_hat
+           << " kinematicViscosity=" << kinematicViscosity
+           << " Ji=" << Ji << " Ji_3=" << Ji_3 << " cv1_3=" << cv1_3
+           << " fv1=" << fv1 << " fv2=" << fv2 << " ft2=" << ft2 << " psi_2=" << psi_2
+           << " LES_Mode=" << (nodes->GetLES_Mode(iPoint))
+           << endl;
+      SU2_MPI::Error("Non-finite SA DES length scale quantity detected, see diagnostic printed above.", CURRENT_FUNCTION);
+    }
+
     su2double lengthScale = 0.0, lesSensor = 0.0, desFilterWidth = 0.0;
 
     const su2double LES_FilterWidth = config->GetLES_FilterWidth();
@@ -1532,6 +1665,25 @@ void CTurbSASolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, CC
         if (config->GetEnforceLES()) {
           lengthScale = distDES;
           lesSensor = 1.0;
+        }
+
+        /*--- TEMPORARY DIAGNOSTIC (to be removed once the SA_DDES + backscatter crash is
+              root-caused): r_d divides by wallDistance^2, unguarded; trap non-finite results
+              from this SA_DDES-specific branch (absent in plain SA_DES, which does not crash). ---*/
+        if (!std::isfinite(r_d) || !std::isfinite(f_d) || !std::isfinite(lengthScale) || !std::isfinite(lesSensor)) {
+          cout << "\n[NON-FINITE SA_DDES LENGTH SCALE] rank=" << rank
+               << " globalPoint=" << geometry->nodes->GetGlobalIndex(iPoint)
+               << " coord=(" << coord_i[0] << ", " << coord_i[1] << ", " << coord_i[2] << ")"
+               << " wallDistance=" << wallDistance
+               << " uijuij=" << uijuij
+               << " kinematicViscosity=" << kinematicViscosity
+               << " kinematicViscosityTurb=" << kinematicViscosityTurb
+               << " r_d=" << r_d << " f_d=" << f_d
+               << " desFilterWidth=" << desFilterWidth
+               << " distDES=" << distDES
+               << " lengthScale=" << lengthScale << " lesSensor=" << lesSensor
+               << endl;
+          SU2_MPI::Error("Non-finite SA_DDES length scale quantity detected, see diagnostic printed above.", CURRENT_FUNCTION);
         }
 
         break;
@@ -1682,6 +1834,9 @@ void CTurbSASolver::SetLangevinSourceTerms(CConfig *config, CGeometry* geometry)
   const su2double dummySource = 1e3;
   unsigned long timeIter = config->GetTimeIter();
 
+  cout << "[BREADCRUMB] rank=" << rank << " SetLangevinSourceTerms: before main point loop (nPointDomain="
+       << nPointDomain << ")" << endl;
+
   SU2_OMP_FOR_STAT(omp_chunk_size)
   for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++){
     unsigned long iPointGlobal = geometry->nodes->GetGlobalIndex(iPoint);
@@ -1699,6 +1854,9 @@ void CTurbSASolver::SetLangevinSourceTerms(CConfig *config, CGeometry* geometry)
   }
   END_SU2_OMP_FOR
 
+  cout << "[BREADCRUMB] rank=" << rank << " SetLangevinSourceTerms: after main point loop, before marker loop (nMarker="
+       << config->GetnMarker_All() << ")" << endl;
+
   for (unsigned short iMarker = 0; iMarker < config->GetnMarker_All(); iMarker++) {
     SU2_OMP_FOR_STAT(OMP_MIN_SIZE)
     for (unsigned long iVertex = 0; iVertex < geometry->nVertex[iMarker]; iVertex++) {
@@ -1712,6 +1870,8 @@ void CTurbSASolver::SetLangevinSourceTerms(CConfig *config, CGeometry* geometry)
     }
     END_SU2_OMP_FOR
   }
+
+  cout << "[BREADCRUMB] rank=" << rank << " SetLangevinSourceTerms: after marker loop, returning" << endl;
 }
 
 void CTurbSASolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeometry *geometry) {
