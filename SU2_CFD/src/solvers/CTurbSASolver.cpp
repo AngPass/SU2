@@ -1668,9 +1668,10 @@ void CTurbSASolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, CC
         }
 
         /*--- TEMPORARY DIAGNOSTIC (to be removed once the SA_DDES + backscatter crash is
-              root-caused): r_d divides by wallDistance^2, unguarded; trap non-finite results
-              from this SA_DDES-specific branch (absent in plain SA_DES, which does not crash). ---*/
-        if (!std::isfinite(r_d) || !std::isfinite(f_d) || !std::isfinite(lengthScale) || !std::isfinite(lesSensor)) {
+              root-caused): r_d itself is allowed to be +inf right at wallDistance=0 (an actual
+              on-wall point) since tanh(pow(8*inf,3)) safely saturates to 1, giving f_d=0 (pure
+              RANS at the wall, correct). Only trap the quantities actually consumed downstream. ---*/
+        if (!std::isfinite(f_d) || !std::isfinite(lengthScale) || !std::isfinite(lesSensor)) {
           cout << "\n[NON-FINITE SA_DDES LENGTH SCALE] rank=" << rank
                << " globalPoint=" << geometry->nodes->GetGlobalIndex(iPoint)
                << " coord=(" << coord_i[0] << ", " << coord_i[1] << ", " << coord_i[2] << ")"
