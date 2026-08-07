@@ -280,10 +280,17 @@ void CTurbSSTSolver::Preprocessing(CGeometry *geometry, CSolver **solver_contain
     bool backscatterInBox = config->GetSBSParam().StochBackscatterInBox;
     if (backscatter && backscatterInBox) SetBackscatterInBox(config, geometry);
 
-    InitiateComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
-    CompleteComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
-    InitiateComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
-    CompleteComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
+    /*--- maxDelta must reach halo points for SetStochSourceMom, else it defaults to 0 there and divides by zero. ---*/
+    if (backscatter) {
+      InitiateComms(geometry, config, MPI_QUANTITIES::DES_FILTERWIDTH);
+      CompleteComms(geometry, config, MPI_QUANTITIES::DES_FILTERWIDTH);
+    }
+
+    /*--- Only needed by backscatter/FILTER_STRESSES, not by every Hybrid RANS/LES run. ---*/
+    if (backscatter || config->GetSBSParam().filterStresses) {
+      InitiateComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
+      CompleteComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
+    }
 
     /*--- Compute source terms for Langevin equations ---*/
 

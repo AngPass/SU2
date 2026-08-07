@@ -1396,6 +1396,10 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       COUNT_PER_POINT  = 1;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
+    case MPI_QUANTITIES::DES_FILTERWIDTH:
+      COUNT_PER_POINT  = 1;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      break;
     case MPI_QUANTITIES::OU_PROCESS:
       COUNT_PER_POINT  = nDim;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
@@ -1557,6 +1561,9 @@ void CSolver::InitiateComms(CGeometry *geometry,
             break;
           case MPI_QUANTITIES::DES_LENGTHSCALE:
             bufDSend[buf_offset] = base_nodes->GetDES_LengthScale(iPoint);
+            break;
+          case MPI_QUANTITIES::DES_FILTERWIDTH:
+            bufDSend[buf_offset] = base_nodes->GetDES_FilterWidth(iPoint);
             break;
           case MPI_QUANTITIES::OU_PROCESS:
             for (iDim = 0; iDim < nDim; iDim++)
@@ -1739,6 +1746,9 @@ void CSolver::CompleteComms(CGeometry *geometry,
             break;
           case MPI_QUANTITIES::DES_LENGTHSCALE:
             base_nodes->SetDES_LengthScale(iPoint, bufDRecv[buf_offset]);
+            break;
+          case MPI_QUANTITIES::DES_FILTERWIDTH:
+            base_nodes->SetDES_FilterWidth(iPoint, bufDRecv[buf_offset]);
             break;
           case MPI_QUANTITIES::OU_PROCESS:
             for (iDim = 0; iDim < nDim; iDim++)

@@ -488,10 +488,9 @@ CNumerics::ResidualType<> CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsign
     numerics->SetTurbKineticEnergy(turbNodes->GetSolution(iPoint,0),
                                    turbNodes->GetSolution(jPoint,0));
 
-  /*--- LES sensor for hybrid RANS/LES methods, needed by the stochastic backscatter source
-        term below and/or by the modeled-stress high-pass filtering further down. ---*/
+  /*--- LES sensor is only used by backscatter/hybrid models with filtered stresses. ---*/
 
-  if (hybridActive) {
+  if (hybridActive && (backscatter || config->GetSBSParam().filterStresses)) {
     numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), nodes->GetLES_Mode(jPoint));
   }
 

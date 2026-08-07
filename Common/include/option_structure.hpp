@@ -2808,6 +2808,7 @@ enum class MPI_QUANTITIES {
   SMOOTH_PHAT          ,  /*!< \brief Preconditioned search direction (BiCGSTAB) for the Langevin source Laplacian smoothing. */
   SMOOTH_SHAT          ,  /*!< \brief Preconditioned stabilizer direction (BiCGSTAB) for the Langevin source Laplacian smoothing. */
   DES_LENGTHSCALE      ,  /*!< \brief DES length scale communication. */
+  DES_FILTERWIDTH      ,  /*!< \brief DES filter width. */
   LES_SENSOR           ,  /*!< \brief LES sensor communication. */
   OU_PROCESS           ,  /*!< \brief Ornstein-Uhlenbeck process. */
   SOLUTION_MATRIX      ,  /*!< \brief Matrix solution communication. */
