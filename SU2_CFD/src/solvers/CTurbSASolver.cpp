@@ -444,6 +444,10 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
         numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), 0.0);
         numerics->SetMaxDelta(nodes->GetDES_FilterWidth(iPoint), 0.0);
         numerics->SetWallDistance(geometry->nodes->GetWall_Distance(iPoint), 0.0);
+
+        /*--- Time-averaged vorticity, used instead of the instantaneous vorticity to
+              evaluate the production term when the Stochastic Backscatter Model is active. ---*/
+        numerics->SetMeanVorticity(flowNodes->GetMeanVorticity(iPoint), nullptr);
       }
 
     }

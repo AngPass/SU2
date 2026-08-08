@@ -488,6 +488,22 @@ public:
   /*!
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
+   * \return Time-averaged vorticity array (Stochastic Backscatter Model).
+   */
+  inline virtual su2double* GetMeanVorticity(unsigned long iPoint) { return nullptr; }
+  inline virtual const su2double* GetMeanVorticity(unsigned long iPoint) const { return nullptr; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Component index.
+   * \param[in] val_mean_vorticity - Time-averaged vorticity component (Stochastic Backscatter Model).
+   */
+  inline virtual void SetMeanVorticity(unsigned long iPoint, unsigned short iDim, su2double val_mean_vorticity) {}
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
    */
   inline virtual su2double GetLES_Mode(unsigned long iPoint) const { return 0.0; }
 

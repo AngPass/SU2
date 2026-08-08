@@ -197,6 +197,9 @@ protected:
   *WindGust_i,  /*!< \brief Wind gust at point i. */
   *WindGust_j;  /*!< \brief Wind gust at point j. */
   const su2double *Vorticity_i = nullptr, *Vorticity_j = nullptr;    /*!< \brief Vorticity. */
+  const su2double
+  *MeanVorticity_i = nullptr,              /*!< \brief Time-averaged vorticity at point i. */
+  *MeanVorticity_j = nullptr;              /*!< \brief Time-averaged vorticity at point j. */
   su2double StrainMag_i, StrainMag_j;      /*!< \brief Strain rate magnitude. */
   su2double Dissipation_i, Dissipation_j;  /*!< \brief Dissipation. */
   su2double Dissipation_ij;
@@ -294,6 +297,16 @@ public:
   void SetVorticity(const su2double *val_vorticity_i, const su2double *val_vorticity_j) {
     Vorticity_i = val_vorticity_i;
     Vorticity_j = val_vorticity_j;
+  }
+
+  /*!
+   * \brief Set the value of the time-averaged vorticity.
+   * \param[in] val_mean_vorticity_i - Value of the mean vorticity at point i.
+   * \param[in] val_mean_vorticity_j - Value of the mean vorticity at point j.
+   */
+  void SetMeanVorticity(const su2double *val_mean_vorticity_i, const su2double *val_mean_vorticity_j) {
+    MeanVorticity_i = val_mean_vorticity_i;
+    MeanVorticity_j = val_mean_vorticity_j;
   }
 
   /*!

@@ -4306,6 +4306,14 @@ void CFlowOutput::SetTimeAveragedFields(const CConfig *config) {
       }
     }
 
+    if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().StochasticBackscatter) {
+      /*--- Time-averaged vorticity, used by the Stochastic Backscatter Model to evaluate the
+            production term of the SA turbulence model. ---*/
+      AddVolumeOutput("MEAN_VORTICITY-X", "MeanVorticity_x", "TIME_AVERAGE", "Time-averaged vorticity x-component");
+      AddVolumeOutput("MEAN_VORTICITY-Y", "MeanVorticity_y", "TIME_AVERAGE", "Time-averaged vorticity y-component");
+      AddVolumeOutput("MEAN_VORTICITY-Z", "MeanVorticity_z", "TIME_AVERAGE", "Time-averaged vorticity z-component");
+    }
+
     AddVolumeOutput("MEAN_TURBULENT_PRODUCTION", "MeanTurbulentProduction", "TIME_AVERAGE", "Mean production of turbulent kinetic energy");
 
     if (config->GetKind_Turb_Model() == TURB_MODEL::SST)
@@ -4406,6 +4414,16 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
         Node_Flow->SetMeanStrainRate(iPoint, 4, GetVolumeOutputValue("MEAN_STRAIN_XZ", iPoint));
         Node_Flow->SetMeanStrainRate(iPoint, 5, GetVolumeOutputValue("MEAN_STRAIN_YZ", iPoint));
       }
+    }
+
+    if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().StochasticBackscatter) {
+      const auto* vorticity = Node_Flow->GetVorticity(iPoint);
+      SetAvgVolumeOutputValue("MEAN_VORTICITY-X", iPoint, vorticity[0]);
+      SetAvgVolumeOutputValue("MEAN_VORTICITY-Y", iPoint, vorticity[1]);
+      SetAvgVolumeOutputValue("MEAN_VORTICITY-Z", iPoint, vorticity[2]);
+      Node_Flow->SetMeanVorticity(iPoint, 0, GetVolumeOutputValue("MEAN_VORTICITY-X", iPoint));
+      Node_Flow->SetMeanVorticity(iPoint, 1, GetVolumeOutputValue("MEAN_VORTICITY-Y", iPoint));
+      Node_Flow->SetMeanVorticity(iPoint, 2, GetVolumeOutputValue("MEAN_VORTICITY-Z", iPoint));
     }
 
     const su2double strainMag = Node_Flow->GetStrainMag(iPoint);

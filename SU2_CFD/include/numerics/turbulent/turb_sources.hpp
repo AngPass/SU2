@@ -213,6 +213,11 @@ class CSourceBase_TurbSA : public CNumerics {
     AD::SetPreaccIn(ScalarVar_Grad_i, nVar, nDim);
     AD::SetPreaccIn(stochSource, 3);
 
+    /*--- When the Stochastic Backscatter Model is active, the production term is evaluated with the
+     * time-averaged vorticity instead of the instantaneous one. ---*/
+    const bool useMeanVorticityForProduction = config->GetSBSParam().StochasticBackscatter && (MeanVorticity_i != nullptr);
+    if (useMeanVorticityForProduction) AD::SetPreaccIn(MeanVorticity_i, 3);
+
     /*--- Common auxiliary variables and constants of the model. ---*/
     CSAVariables var;
 
@@ -249,7 +254,8 @@ class CSourceBase_TurbSA : public CNumerics {
 
       /*--- Evaluate Omega with a rotational correction term. ---*/
 
-      Omega::get(Vorticity_i, nDim, PrimVar_Grad_i + idx.Velocity(), var);
+      Omega::get(useMeanVorticityForProduction ? MeanVorticity_i : Vorticity_i, nDim,
+                 PrimVar_Grad_i + idx.Velocity(), var);
 
       /*--- Compute modified vorticity ---*/
       ModVort::get(ScalarVar_i[0], nu, var);
