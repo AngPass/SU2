@@ -1116,7 +1116,7 @@ private:
     bool besselScaleFactor;                 /*!< \brief Option for scaling the spatially-correlated random field using Bessel integral. */
     su2double StochBackscatterBoxBounds[6]; /*!< \brief Bounds of the box where the Stochastic Backscatter Model is active. */
     su2double stochFdThreshold;             /*!< \brief Shielding function lower threshold for application of Stochastic Backscatter Model. */
-    bool useMeanTurbKE;                     /*!< \brief Option for using mean turbulent kinetic energy in the definition of the random source term (SST model). */
+    bool useMeanTurb;                       /*!< \brief Option for using a mean (time-averaged) turbulence quantity in the definition of the random source term. */
     unsigned short stochSourceType;         /*!< \brief Kind of stochastic source term included in the balance equations. */
     bool filterStresses;                    /*!< \brief Option for high-pass filtering the modeled (subgrid) stress tensor where the LES sensor is active. Usable with any Hybrid RANS/LES method, independent of StochasticBackscatter. */
     bool dampTimeFiltering;                 /*!< \brief Option for scaling the high-pass stress filtering (filterStresses) by the modeled turbulent kinetic energy fraction (SST-based Stochastic Backscatter Model only). If false, the filtering is applied at full strength (modeled fraction = 1). */

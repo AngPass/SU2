@@ -42,6 +42,7 @@ private:
   VectorType DES_LengthScale;
   VectorType DES_FilterWidth;
   VectorType lesMode;
+  VectorType MeanEddyViscosity;
   MatrixType stochSource;
   MatrixType stochSourceOld;
   MatrixType OU_Process;
@@ -237,6 +238,20 @@ public:
    * \param[in] val_OU - Value of the stochastic variable resulting from Ornstein-Uhlenbeck process.
    */
   inline void SetOU_Process(unsigned long iPoint, unsigned short iDim, su2double val_OU) override { OU_Process(iPoint, iDim) = val_OU; }
+
+  /*!
+   * \brief Get the time-averaged eddy viscosity (Stochastic Backscatter Model).
+   * \param[in] iPoint - Point index.
+   * \return Time-averaged eddy viscosity.
+   */
+  inline su2double GetMeanEddyViscosity(unsigned long iPoint) const override { return MeanEddyViscosity(iPoint); }
+
+  /*!
+   * \brief Set the time-averaged eddy viscosity (Stochastic Backscatter Model).
+   */
+  inline void SetMeanEddyViscosity(unsigned long iPoint, su2double val_mean_eddy_visc) override {
+    MeanEddyViscosity(iPoint) = val_mean_eddy_visc;
+  }
 
   /*!
    * \brief Set the LES sensor.

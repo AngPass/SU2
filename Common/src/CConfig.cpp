@@ -3107,8 +3107,8 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Shielding function lower threshold for application of Stochastic Backscatter Model */
   addDoubleOption("SBS_FD_LOWER_THRESHOLD", SBSParam.stochFdThreshold, 0.9);
 
-  /* DESCRIPTION: Use mean turbulent kinetic energy in the definition of the stochastic source term. */
-  addBoolOption("SBS_USE_MEAN_TKE", SBSParam.useMeanTurbKE, false);
+  /* DESCRIPTION: Use a mean (time-averaged) turbulence quantity in the definition of the stochastic source term. */
+  addBoolOption("SBS_USE_MEAN_TURB", SBSParam.useMeanTurb, false);
 
   /* DESCRIPTION: High-pass filter the modeled (subgrid) stress tensor where the LES sensor is active
    *              (any Hybrid RANS/LES method, independent of STOCHASTIC_BACKSCATTER). */
@@ -3764,7 +3764,7 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
 
   /*--- If WRT_RESTART_AVERAGES is on and the user did not specify RESTART_AVG_FIELDS, default to
         persisting the mean turbulent kinetic energy and the mean strain-rate tensor (the fields
-        used by SBS_USE_MEAN_TKE/FILTER_STRESSES). ---*/
+        used by SBS_USE_MEAN_TURB/FILTER_STRESSES). ---*/
   if (Wrt_Restart_Averages && nRestartAvgFields == 0) {
     static const string defaultRestartAvgFields[] = {
       "MEAN_TURB_KIN_ENERGY", "MEAN_STRAIN_XX", "MEAN_STRAIN_YY",

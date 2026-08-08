@@ -4319,6 +4319,11 @@ void CFlowOutput::SetTimeAveragedFields(const CConfig *config) {
     if (config->GetKind_Turb_Model() == TURB_MODEL::SST)
       AddVolumeOutput("MEAN_TURB_KIN_ENERGY", "MeanTurbulentKineticEnergy", "TIME_AVERAGE", "Mean turbulent kinetic energy");
 
+    if (config->GetKind_Turb_Model() == TURB_MODEL::SA && config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES &&
+        config->GetSBSParam().StochasticBackscatter) {
+      AddVolumeOutput("MEAN_EDDY_VISCOSITY", "MeanEddyViscosity", "TIME_AVERAGE", "Time-averaged eddy viscosity");
+    }
+
     if (config->GetSBSParam().StochasticBackscatter) {
       AddVolumeOutput("MEAN_STOCHASTIC_POWER", "MeanStochasticPower", "BACKSCATTER", "Mean stochastic power");
       AddVolumeOutput("MEAN_ENERGY_BACKSCATTER", "MeanEnergyBackscatter", "BACKSCATTER", "Mean energy backscatter");
@@ -4432,7 +4437,7 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
     if (config->GetKind_Turb_Model() == TURB_MODEL::SST) {
       SetAvgVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint, Node_Turb->GetSolution(iPoint, 0));
       if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().StochasticBackscatter) {
-        if (config->GetSBSParam().useMeanTurbKE) {
+        if (config->GetSBSParam().useMeanTurb) {
           Node_Turb->SetMeanTurbKinEnergy(iPoint, GetVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint));
         }
         /*--- Fraction of turbulent kinetic energy that is modeled (as opposed to resolved by the
@@ -4464,17 +4469,26 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
       }
     }
 
+    if (config->GetKind_Turb_Model() == TURB_MODEL::SA && config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES &&
+        config->GetSBSParam().StochasticBackscatter) {
+      SetAvgVolumeOutputValue("MEAN_EDDY_VISCOSITY", iPoint, nu_t);
+      if (config->GetSBSParam().useMeanTurb) {
+        Node_Turb->SetMeanEddyViscosity(iPoint, GetVolumeOutputValue("MEAN_EDDY_VISCOSITY", iPoint));
+      }
+    }
+
     if (config->GetSBSParam().StochasticBackscatter) {
       const su2double lesSensor = Node_Flow->GetLES_Mode(iPoint);
       const su2double mag = config->GetSBSParam().SBS_Cmag;
       const su2double threshold = config->GetSBSParam().stochFdThreshold;
       su2double tke_estim = 0.0;
       if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
-        su2double tke = (config->GetSBSParam().useMeanTurbKE) ? Node_Turb->GetMeanTurbKinEnergy(iPoint) : Node_Turb->GetSolution(iPoint, 0);
+        su2double tke = (config->GetSBSParam().useMeanTurb) ? Node_Turb->GetMeanTurbKinEnergy(iPoint) : Node_Turb->GetSolution(iPoint, 0);
         tke_estim = (lesSensor > threshold) ? tke: 0.0;
       } else {
         const su2double lengthscale = Node_Flow->GetDES_LengthScale(iPoint);
-        tke_estim = (lesSensor > threshold) ? pow(nu_t/lengthscale, 2) : 0.0;
+        const su2double nutScale = (config->GetSBSParam().useMeanTurb) ? Node_Turb->GetMeanEddyViscosity(iPoint) : nu_t;
+        tke_estim = (lesSensor > threshold) ? pow(nutScale/lengthscale, 2) : 0.0;
       }
       su2double csi_x, csi_y, csi_z;
       if (config->GetSBSParam().stochSourceType == LANGEVIN) {

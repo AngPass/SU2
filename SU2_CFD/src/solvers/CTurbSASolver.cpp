@@ -248,6 +248,11 @@ void CTurbSASolver::Preprocessing(CGeometry *geometry, CSolver **solver_containe
 
     unsigned long innerIter = config->GetInnerIter();
     if (backscatter && innerIter==0) {
+      if (config->GetSBSParam().useMeanTurb) {
+        InitiateComms(geometry, config, MPI_QUANTITIES::MEAN_EDDY_VISC);
+        CompleteComms(geometry, config, MPI_QUANTITIES::MEAN_EDDY_VISC);
+      }
+
       SetLangevinSourceTerms(config, geometry);
       const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
       if (maxIter > 0) SmoothLangevinSourceTerms(config, geometry);
@@ -448,6 +453,11 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
         /*--- Time-averaged vorticity, used instead of the instantaneous vorticity to
               evaluate the production term when the Stochastic Backscatter Model is active. ---*/
         numerics->SetMeanVorticity(flowNodes->GetMeanVorticity(iPoint), nullptr);
+
+        /*--- Time-averaged eddy viscosity, used instead of the instantaneous one to scale the
+              stochastic forcing when SBS_USE_MEAN_TURB is active. ---*/
+        if (config->GetSBSParam().useMeanTurb)
+          numerics->SetAvgEddyViscosity(nodes->GetMeanEddyViscosity(iPoint), 0.0);
       }
 
     }

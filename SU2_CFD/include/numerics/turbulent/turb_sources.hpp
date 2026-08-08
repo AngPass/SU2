@@ -115,12 +115,12 @@ class CSourceBase_TurbSA : public CNumerics {
   /*!
    * \brief Include source-term residuals for Langevin equations (Stochastic Backscatter Model) 
    */
-  inline void ResidualStochEquations(su2double timeStep, const su2double ct, su2double delta,
+  inline void ResidualStochEquations(bool meanTurb, su2double timeStep, const su2double ct, su2double delta,
                                      su2double wallDist, const CSAVariables& var, TIME_MARCHING time_marching,
                                      su2double threshold) {
 
     const su2double& nue = ScalarVar_i[0];
-    const su2double nut = max(nue*var.fv1, 1e-10);
+    const su2double nut = (meanTurb) ? max(avg_eddy_visc_i, 1e-10) : max(nue*var.fv1, 1e-10);
 
     su2double tRANS = min(wallDist*wallDist/nut, 10.0*timeStep);
     su2double tLES = ct*delta*delta/nut;
@@ -154,7 +154,9 @@ class CSourceBase_TurbSA : public CNumerics {
     su2double Cmag = config->GetSBSParam().SBS_Cmag;
     const su2double limiter = 1.0;
 
-    su2double nut = max(ScalarVar_i[0] * var.fv1, 1e-10);
+    /*--- Use the mean (time-averaged) eddy viscosity to scale the stochastic forcing when requested. ---*/
+    su2double nut = config->GetSBSParam().useMeanTurb ? max(avg_eddy_visc_i, 1e-10)
+                                                       : max(ScalarVar_i[0] * var.fv1, 1e-10);
     su2double lengthscale = config->GetConst_DES()*maxDelta_i;
     su2double tke = pow(nut/lengthscale, 2);
 
@@ -336,7 +338,7 @@ class CSourceBase_TurbSA : public CNumerics {
       /*--- Compute residual for Langevin equations (Stochastic Backscatter Model). ---*/
 
       if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
-        ResidualStochEquations(config->GetDelta_UnstTimeND(), config->GetSBSParam().SBS_Ctau, maxDelta_i, wallDist_i,
+        ResidualStochEquations(config->GetSBSParam().useMeanTurb, config->GetDelta_UnstTimeND(), config->GetSBSParam().SBS_Ctau, maxDelta_i, wallDist_i,
                                var, config->GetTime_Marching(), config->GetSBSParam().stochFdThreshold);
       }
     }
@@ -831,7 +833,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
           SBS_DAMP_SOURCE; by default the modeled fraction is 1, i.e. no damping. ---*/
     const su2double modeledFraction = config->GetSBSParam().dampStochTerm ? modeledFraction_i : 1.0;
     su2double Cmag = config->GetSBSParam().SBS_Cmag * modeledFraction;
-    su2double tke = (config->GetSBSParam().useMeanTurbKE) ? avg_turb_ke_i : ScalarVar_i[0];
+    su2double tke = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_i : ScalarVar_i[0];
     const bool isLangevin = (config->GetSBSParam().stochSourceType == LANGEVIN);
 
     su2double stochProd = 0.0;
@@ -1128,7 +1130,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
       /*--- Compute residual for Langevin equations (Stochastic Backscatter Model). ---*/
 
       if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
-        ResidualStochEquations(config->GetSBSParam().useMeanTurbKE, config->GetDelta_UnstTimeND(), config->GetSBSParam().SBS_Ctau, maxDelta_i,
+        ResidualStochEquations(config->GetSBSParam().useMeanTurb, config->GetDelta_UnstTimeND(), config->GetSBSParam().SBS_Ctau, maxDelta_i,
                                config->GetTime_Marching(), config->GetSBSParam().stochFdThreshold);
       }
     }

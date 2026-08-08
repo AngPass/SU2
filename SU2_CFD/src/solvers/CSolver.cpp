@@ -1372,6 +1372,10 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       COUNT_PER_POINT  = 1;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
+    case MPI_QUANTITIES::MEAN_EDDY_VISC:
+      COUNT_PER_POINT  = 1;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      break;
     case MPI_QUANTITIES::MEAN_STRAIN_RATE:
       COUNT_PER_POINT  = 6;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
@@ -1538,6 +1542,9 @@ void CSolver::InitiateComms(CGeometry *geometry,
             break;
           case MPI_QUANTITIES::MEAN_TKE:
             bufDSend[buf_offset] = base_nodes->GetMeanTurbKinEnergy(iPoint);
+            break;
+          case MPI_QUANTITIES::MEAN_EDDY_VISC:
+            bufDSend[buf_offset] = base_nodes->GetMeanEddyViscosity(iPoint);
             break;
           case MPI_QUANTITIES::MEAN_STRAIN_RATE:
             for (iVar = 0; iVar < 6; iVar++)
@@ -1723,6 +1730,9 @@ void CSolver::CompleteComms(CGeometry *geometry,
             break;
           case MPI_QUANTITIES::MEAN_TKE:
             base_nodes->SetMeanTurbKinEnergy(iPoint, bufDRecv[buf_offset]);
+            break;
+          case MPI_QUANTITIES::MEAN_EDDY_VISC:
+            base_nodes->SetMeanEddyViscosity(iPoint, bufDRecv[buf_offset]);
             break;
           case MPI_QUANTITIES::MEAN_STRAIN_RATE:
             for (iVar = 0; iVar < 6; iVar++)

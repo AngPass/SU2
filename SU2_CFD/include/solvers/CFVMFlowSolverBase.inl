@@ -514,8 +514,11 @@ CNumerics::ResidualType<> CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsign
     if (!IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
       numerics->SetMaxDelta(turbNodes->GetDES_FilterWidth(iPoint), turbNodes->GetDES_FilterWidth(jPoint));
     }
-    if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().useMeanTurbKE) {
+    if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().useMeanTurb) {
       numerics->SetAvgTurbKineticEnergy(turbNodes->GetMeanTurbKinEnergy(iPoint), turbNodes->GetMeanTurbKinEnergy(jPoint));
+    }
+    if (!IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().useMeanTurb) {
+      numerics->SetAvgEddyViscosity(turbNodes->GetMeanEddyViscosity(iPoint), turbNodes->GetMeanEddyViscosity(jPoint));
     }
 
     /*--- Fraction of turbulent kinetic energy that is modeled (as opposed to resolved), used to

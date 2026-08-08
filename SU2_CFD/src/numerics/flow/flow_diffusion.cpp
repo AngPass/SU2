@@ -186,13 +186,13 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
   su2double sensorThreshold = config->GetSBSParam().stochFdThreshold;
   
   if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
-    su2double turbKinEn_i = (config->GetSBSParam().useMeanTurbKE) ? avg_turb_ke_i : turb_ke_i;
-    su2double turbKinEn_j = (config->GetSBSParam().useMeanTurbKE) ? avg_turb_ke_j : turb_ke_j;
+    su2double turbKinEn_i = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_i : turb_ke_i;
+    su2double turbKinEn_j = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_j : turb_ke_j;
     tke_i = (lesMode_i > sensorThreshold) ? turbKinEn_i : 0.0;
     tke_j = (lesMode_j > sensorThreshold) ? turbKinEn_j : 0.0;
   } else {
-    su2double nuT_i = Eddy_Viscosity_i / PrimVar_i[nDim+2];
-    su2double nuT_j = Eddy_Viscosity_j / PrimVar_j[nDim+2];
+    su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_i : Eddy_Viscosity_i / PrimVar_i[nDim+2];
+    su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_j : Eddy_Viscosity_j / PrimVar_j[nDim+2];
     su2double lengthscale_i = config->GetConst_DES() * maxDelta_i;
     su2double lengthscale_j = config->GetConst_DES() * maxDelta_j;
     tke_i = (lesMode_i > sensorThreshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;

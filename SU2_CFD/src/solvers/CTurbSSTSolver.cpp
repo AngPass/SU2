@@ -516,7 +516,7 @@ void CTurbSSTSolver::Source_Residual(CGeometry *geometry, CSolver **solver_conta
         }
         numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), 0.0);
         numerics->SetMaxDelta(nodes->GetDES_FilterWidth(iPoint), 0.0);
-        if (config->GetSBSParam().useMeanTurbKE) numerics->SetAvgTurbKineticEnergy(nodes->GetMeanTurbKinEnergy(iPoint), 0.0);
+        if (config->GetSBSParam().useMeanTurb) numerics->SetAvgTurbKineticEnergy(nodes->GetMeanTurbKinEnergy(iPoint), 0.0);
       }
     }
 
@@ -1048,7 +1048,7 @@ void CTurbSSTSolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeome
   SU2_OMP_FOR_STAT(omp_chunk_size)
   for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
     su2double maxDelta = nodes->GetDES_FilterWidth(iPoint);
-    su2double tke = (config->GetSBSParam().useMeanTurbKE) ? nodes->GetMeanTurbKinEnergy(iPoint) : nodes->GetSolution(iPoint, 0);
+    su2double tke = (config->GetSBSParam().useMeanTurb) ? nodes->GetMeanTurbKinEnergy(iPoint) : nodes->GetSolution(iPoint, 0);
     su2double timeLES = config->GetSBSParam().SBS_Ctau * maxDelta / sqrt(max(tke, 1e-10));
     su2double timeRANS = 1.0 / (beta*max(nodes->GetSolution(iPoint, 1), 1e-10));
     su2double lesMode = nodes->GetLES_Mode(iPoint);

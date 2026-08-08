@@ -83,6 +83,9 @@ protected:
   avg_turb_ke_i,  /*!< \brief Time-averaged turbulent kinetic energy at point i. */
   avg_turb_ke_j;  /*!< \brief Time-averaged turbulent kinetic energy at point j. */
   su2double
+  avg_eddy_visc_i = 0.0,  /*!< \brief Time-averaged eddy viscosity at point i (Stochastic Backscatter Model, SA model). */
+  avg_eddy_visc_j = 0.0;  /*!< \brief Time-averaged eddy viscosity at point j (Stochastic Backscatter Model, SA model). */
+  su2double
   intermittency_eff_i, /*!< \brief effective intermittency at point i. */
   intermittency_i; /*!< \brief intermittency at point i. */
   su2double
@@ -892,6 +895,16 @@ public:
   inline void SetAvgTurbKineticEnergy(su2double val_avg_turb_ke_i, su2double val_avg_turb_ke_j) {
     avg_turb_ke_i = val_avg_turb_ke_i;
     avg_turb_ke_j = val_avg_turb_ke_j;
+  }
+
+  /*!
+   * \brief Set the time-averaged eddy viscosity (Stochastic Backscatter Model, SA model).
+   * \param[in] val_avg_eddy_visc_i - Value of the time-averaged eddy viscosity at point i.
+   * \param[in] val_avg_eddy_visc_j - Value of the time-averaged eddy viscosity at point j.
+   */
+  inline void SetAvgEddyViscosity(su2double val_avg_eddy_visc_i, su2double val_avg_eddy_visc_j) {
+    avg_eddy_visc_i = val_avg_eddy_visc_i;
+    avg_eddy_visc_j = val_avg_eddy_visc_j;
   }
 
   /*!

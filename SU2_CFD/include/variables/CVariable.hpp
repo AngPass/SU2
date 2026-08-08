@@ -456,6 +456,18 @@ public:
   inline virtual void SetMeanTurbKinEnergy(unsigned long iPoint, su2double val_mean_tke) {}
 
   /*!
+   * \brief A virtual member. Time-averaged eddy viscosity (Stochastic Backscatter Model, SA model).
+   * \param[in] iPoint - Point index.
+   */
+  inline virtual su2double GetMeanEddyViscosity(unsigned long iPoint) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   */
+  inline virtual void SetMeanEddyViscosity(unsigned long iPoint, su2double val_mean_eddy_visc) {}
+
+  /*!
    * \brief A virtual member. Turbulent kinetic energy read from an external reference RANS
    *        restart file (SBS_RANS_CONSTRAINT), used as a measure of the total kinetic energy.
    * \param[in] iPoint - Point index.
