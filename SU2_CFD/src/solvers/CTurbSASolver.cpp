@@ -450,10 +450,6 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
         numerics->SetMaxDelta(nodes->GetDES_FilterWidth(iPoint), 0.0);
         numerics->SetWallDistance(geometry->nodes->GetWall_Distance(iPoint), 0.0);
 
-        /*--- Time-averaged vorticity, used instead of the instantaneous vorticity to
-              evaluate the production term when the Stochastic Backscatter Model is active. ---*/
-        numerics->SetMeanVorticity(flowNodes->GetMeanVorticity(iPoint), nullptr);
-
         /*--- Time-averaged eddy viscosity, used instead of the instantaneous one to scale the
               stochastic forcing when SBS_USE_MEAN_TURB is active. ---*/
         if (config->GetSBSParam().useMeanTurb)

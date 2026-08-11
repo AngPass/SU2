@@ -45,7 +45,6 @@ private:
   VectorType MeanTurbKE;      /*!< \brief Mean turbulent kinetic energy. */
   MatrixType MeanStrainRate; /*!< \brief Mean (deviatoric) strain-rate tensor built from the time-averaged
                                           velocity gradient, packed as (xx,yy,zz,xy,xz,yz). */
-  MatrixType MeanVorticity;   /*!< \brief Time-averaged vorticity (Stochastic Backscatter Model). */
   VectorType Roe_Dissipation; /*!< \brief Roe low dissipation coefficient. */
   VectorType Vortex_Tilting;  /*!< \brief Value of the vortex tilting variable for DES length scale computation. */
 
@@ -217,21 +216,6 @@ public:
    */
   inline void SetMeanStrainRate(unsigned long iPoint, unsigned short iVar, su2double val_mean_strain) override {
     MeanStrainRate(iPoint, iVar) = val_mean_strain;
-  }
-
-  /*!
-   * \brief Get the time-averaged vorticity (Stochastic Backscatter Model).
-   * \param[in] iPoint - Point index.
-   * \return Time-averaged vorticity array.
-   */
-  inline su2double* GetMeanVorticity(unsigned long iPoint) override { return MeanVorticity[iPoint]; }
-  inline const su2double* GetMeanVorticity(unsigned long iPoint) const override { return MeanVorticity[iPoint]; }
-
-  /*!
-   * \brief Set a component of the time-averaged vorticity (Stochastic Backscatter Model).
-   */
-  inline void SetMeanVorticity(unsigned long iPoint, unsigned short iDim, su2double val_mean_vorticity) override {
-    MeanVorticity(iPoint, iDim) = val_mean_vorticity;
   }
 
   /*!

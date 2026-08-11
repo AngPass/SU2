@@ -152,7 +152,7 @@ class CSourceBase_TurbSA : public CNumerics {
   inline void AddStochSource(const CConfig* config, CSAVariables& var, su2double& prod) {
 
     su2double Cmag = config->GetSBSParam().SBS_Cmag;
-    const su2double limiter = 1.0;
+    const su2double limiter = 5.0;
 
     /*--- Use the mean (time-averaged) eddy viscosity to scale the stochastic forcing when requested. ---*/
     su2double nut = config->GetSBSParam().useMeanTurb ? max(avg_eddy_visc_i, 1e-10)
@@ -215,11 +215,6 @@ class CSourceBase_TurbSA : public CNumerics {
     AD::SetPreaccIn(ScalarVar_Grad_i, nVar, nDim);
     AD::SetPreaccIn(stochSource, 3);
 
-    /*--- When the Stochastic Backscatter Model is active, the production term is evaluated with the
-     * time-averaged vorticity instead of the instantaneous one. ---*/
-    const bool useMeanVorticityForProduction = config->GetSBSParam().StochasticBackscatter && (MeanVorticity_i != nullptr);
-    if (useMeanVorticityForProduction) AD::SetPreaccIn(MeanVorticity_i, 3);
-
     /*--- Common auxiliary variables and constants of the model. ---*/
     CSAVariables var;
 
@@ -256,8 +251,7 @@ class CSourceBase_TurbSA : public CNumerics {
 
       /*--- Evaluate Omega with a rotational correction term. ---*/
 
-      Omega::get(useMeanVorticityForProduction ? MeanVorticity_i : Vorticity_i, nDim,
-                 PrimVar_Grad_i + idx.Velocity(), var);
+      Omega::get(Vorticity_i, nDim, PrimVar_Grad_i + idx.Velocity(), var);
 
       /*--- Compute modified vorticity ---*/
       ModVort::get(ScalarVar_i[0], nu, var);
