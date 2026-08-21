@@ -168,9 +168,7 @@ class CSourceBase_TurbSA : public CNumerics {
     else
       StochDotVor = - Cmag * tke * (Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2]);
 
-    su2double Ji_3 = pow(var.Ji, 3);
-    su2double Dfv1 = 3.0 * var.fv1 * var.cv1_3 / (var.cv1_3 + Ji_3);
-    su2double fac = 1.0 / (var.fv1 + Dfv1);
+    su2double fac = 1.0 / (var.fv1 + ScalarVar_i[0] * var.d_fv1);
     su2double timeScale = lengthscale*lengthscale/(2.0*nut);
     su2double stochProdNut = StochDotVor * timeScale * fac;
     stochProdNut = max(-limiter*prod, min(limiter*prod, stochProdNut));
@@ -231,6 +229,9 @@ class CSourceBase_TurbSA : public CNumerics {
       const su2double nu = laminar_viscosity / density;
       var.inv_k2_d2 = 1.0 / (var.k2 * var.dist_i_2);
 
+      const bool sbsLESOverride = config->GetSBSParam().StochasticBackscatter &&
+                                   lesMode_i > config->GetSBSParam().stochFdThreshold;
+
       /*--- Modified values for roughness, roughness_i = 0 for smooth walls and Ji remains the same.
        * Ref: Aupoix, B. and Spalart, P. R., "Extensions of the Spalart-Allmaras Turbulence Model to Account for Wall
        * Roughness," International Journal of Heat and Fluid Flow, Vol. 24, 2003, pp. 454-462.
@@ -241,13 +242,23 @@ class CSourceBase_TurbSA : public CNumerics {
       const su2double Ji_2 = pow(var.Ji, 2);
       const su2double Ji_3 = Ji_2 * var.Ji;
 
-      var.fv1 = Ji_3 / (Ji_3 + var.cv1_3);
-      var.d_fv1 = 3 * Ji_2 * var.cv1_3 / (nu * pow(Ji_3 + var.cv1_3, 2));
+      if (sbsLESOverride) {
+        var.fv1 = 1.0;
+        var.d_fv1 = 0.0;
+      } else {
+        var.fv1 = Ji_3 / (Ji_3 + var.cv1_3);
+        var.d_fv1 = 3 * Ji_2 * var.cv1_3 / (nu * pow(Ji_3 + var.cv1_3, 2));
+      }
 
       /*--- Using a modified relation so as to not change the Shat that depends on fv2.
        * From NASA turb modeling resource and 2003 paper. ---*/
-      var.fv2 = 1 - ScalarVar_i[0] / (nu + ScalarVar_i[0] * var.fv1);
-      var.d_fv2 = -(1 / nu - Ji_2 * var.d_fv1) / pow(1 + var.Ji * var.fv1, 2);
+      if (sbsLESOverride) {
+        var.fv2 = 0.0;
+        var.d_fv2 = 0.0;
+      } else {
+        var.fv2 = 1 - ScalarVar_i[0] / (nu + ScalarVar_i[0] * var.fv1);
+        var.d_fv2 = -(1 / nu - Ji_2 * var.d_fv1) / pow(1 + var.Ji * var.fv1, 2);
+      }
 
       /*--- Evaluate Omega with a rotational correction term. ---*/
 
@@ -271,12 +282,17 @@ class CSourceBase_TurbSA : public CNumerics {
       /*--- Compute auxiliary function r ---*/
       rFunc::get(ScalarVar_i[0], var);
 
-      var.g = var.r + var.cw2 * (pow(var.r, 6) - var.r);
-      var.g_6 = pow(var.g, 6);
-      var.glim = pow((1 + var.cw3_6) / (var.g_6 + var.cw3_6), 1.0 / 6.0);
-      var.fw = var.g * var.glim;
-      var.d_g = var.d_r * (1 + var.cw2 * (6 * pow(var.r, 5) - 1));
-      var.d_fw = var.d_g * var.glim * (1 - var.g_6 / (var.g_6 + var.cw3_6));
+      if (sbsLESOverride) {
+        var.fw = 1.0;
+        var.d_fw = 0.0;
+      } else {
+        var.g = var.r + var.cw2 * (pow(var.r, 6) - var.r);
+        var.g_6 = pow(var.g, 6);
+        var.glim = pow((1 + var.cw3_6) / (var.g_6 + var.cw3_6), 1.0 / 6.0);
+        var.fw = var.g * var.glim;
+        var.d_g = var.d_r * (1 + var.cw2 * (6 * pow(var.r, 5) - 1));
+        var.d_fw = var.d_g * var.glim * (1 - var.g_6 / (var.g_6 + var.cw3_6));
+      }
 
       var.norm2_Grad = GeometryToolbox::SquaredNorm(nDim, ScalarVar_Grad_i[0]);
 
@@ -320,7 +336,7 @@ class CSourceBase_TurbSA : public CNumerics {
       su2double Production = 0.0, Destruction = 0.0;
       SourceTerms::get(ScalarVar_i[0], var, Production, Destruction, Jacobian_i[0][0]);
 
-      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceTurb && lesMode_i>config->GetSBSParam().stochFdThreshold)
+      if (sbsLESOverride && config->GetSBSParam().stochSourceTurb)
         AddStochSource(config, var, Production);
 
       Residual[0] = (Production - Destruction) * Volume;
