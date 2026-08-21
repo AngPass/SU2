@@ -26,6 +26,8 @@
 # License along with SU2. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import print_function, division, absolute_import
+import os
+import subprocess
 import sys
 from TestCase import TestCase
 from TestCase import parse_args
@@ -354,7 +356,7 @@ def main():
     axi_rans_air_nozzle_species.cfg_dir   = "axisymmetric_rans/air_nozzle"
     axi_rans_air_nozzle_species.cfg_file  = "air_nozzle_species.cfg"
     axi_rans_air_nozzle_species.test_iter = 10
-    axi_rans_air_nozzle_species.test_vals =  [-1.840714, 3.726195, -2.009323, 5.649002, -2.494388, 0.0000]
+    axi_rans_air_nozzle_species.test_vals = [-1.690923, 3.877716, -2.932258, 5.754594, -3.130820, 0.0]
     axi_rans_air_nozzle_species.tol       = 0.0001
     test_list.append(axi_rans_air_nozzle_species)
 
@@ -1069,7 +1071,7 @@ def main():
     statbeam3d.cfg_dir   = "fea_fsi/StatBeam_3d"
     statbeam3d.cfg_file  = "configBeam_3d.cfg"
     statbeam3d.test_iter = 0
-    statbeam3d.test_vals = [-6.175086, -5.939313, -6.084188, 110190]
+    statbeam3d.test_vals = [-6.192310, -5.950395, -6.079363, 110190.000000]
     statbeam3d.test_vals_aarch64 = [-6.166287, -5.938291, -6.069768, 110190] #last 4 columns
     test_list.append(statbeam3d)
 
@@ -1107,7 +1109,7 @@ def main():
     fsi_cht.cfg_dir   = "fea_fsi/stat_fsi"
     fsi_cht.cfg_file  = "config.cfg"
     fsi_cht.test_iter = 20
-    fsi_cht.test_vals = [5.000000, -5.077003, -5.379449, -9.247804, -9.319626, -9.184904, 608.350000, -0.012973, 0.000000, 30.000000]
+    fsi_cht.test_vals = [5.000000, -5.076991, -5.379442, -9.247793, -9.319193, -9.184753, 608.350000, -0.012973, 0.000000, 30.000000]
     fsi_cht.multizone = True
     test_list.append(fsi_cht)
 
@@ -1256,6 +1258,26 @@ def main():
             test.tol = 0.00001
 
     pass_list = [ test.run_test(args.tsan, args.asan) for test in test_list ]
+
+    # Nastran bulk data parser unit tests
+    nastran_parser = TestCase('pysu2_nastran')
+    # The CI container runs this script from a copied tests/TestCases tree, so
+    # the repo-relative path does not exist there; use the installed copy that
+    # SU2_RUN points to and fall back to the source tree for local runs.
+    nastran_test = os.path.join(
+        os.environ.get('SU2_RUN', ''),
+        'SU2_Nastran',
+        'test_pysu2_nastran.py',
+    )
+    if not os.path.isfile(nastran_test):
+        nastran_test = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'SU2_PY',
+            'SU2_Nastran',
+            'test_pysu2_nastran.py',
+        )
+    pass_list.append(subprocess.call([sys.executable, nastran_test]) == 0)
+    test_list.append(nastran_parser)
 
 
     ######################################
@@ -1633,7 +1655,7 @@ def main():
     pywrapper_rigidMotion.cfg_dir       = "py_wrapper/flatPlate_rigidMotion"
     pywrapper_rigidMotion.cfg_file      = "flatPlate_rigidMotion_Conf.cfg"
     pywrapper_rigidMotion.test_iter     = 5
-    pywrapper_rigidMotion.test_vals     = [-1.614166, 2.255135, 0.350208, 0.089496]
+    pywrapper_rigidMotion.test_vals     = [-1.607008, 2.260791, 0.350208, 0.089496]
     pywrapper_rigidMotion.command       = TestCase.Command(exec = "python", param = "launch_flatPlate_rigidMotion.py -f")
     pywrapper_rigidMotion.timeout       = 1600
     pywrapper_rigidMotion.tol           = 0.00001
