@@ -1805,8 +1805,8 @@ void CTurbSSTSolver::BC_Inlet_MixingPlane(CGeometry *geometry, CSolver **solver_
 
   for (auto iSpan = 0u; iSpan < nSpanWiseSections ; iSpan++){
 
-    su2double extAverageKine = solver_container[FLOW_SOL]->GetExtAverageKine(val_marker, iSpan);
-    su2double extAverageOmega = solver_container[FLOW_SOL]->GetExtAverageOmega(val_marker, iSpan);
+    su2double extAverageKine = solver_container[FLOW_SOL]->GetMixingState(val_marker, iSpan, 6);
+    su2double extAverageOmega = solver_container[FLOW_SOL]->GetMixingState(val_marker, iSpan, 7);
     /*--- Sized MAXNVAR (not just the 2 explicit values) and zero-initialized: SetScalarVar below
           reads nVar entries, which also covers 3 extra stochastic components when the Stochastic
           Backscatter Model (Langevin) is active. A plain 2-element array would be read out of
