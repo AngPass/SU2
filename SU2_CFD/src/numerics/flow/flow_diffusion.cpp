@@ -191,10 +191,12 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
     tke_i = (lesMode_i > sensorThreshold) ? turbKinEn_i : 0.0;
     tke_j = (lesMode_j > sensorThreshold) ? turbKinEn_j : 0.0;
   } else {
-    if (max(lesMode_i, lesMode_j) > sensorThreshold) {
-      tke_i = pow(Eddy_Viscosity_i/dist_i, 2);
-      tke_j = pow(Eddy_Viscosity_j/dist_j, 2);
-    }
+    su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_i : Eddy_Viscosity_i / PrimVar_i[nDim+2];
+    su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_j : Eddy_Viscosity_j / PrimVar_j[nDim+2];
+    su2double lengthscale_i = config->GetConst_DES() * maxDelta_i;
+    su2double lengthscale_j = config->GetConst_DES() * maxDelta_j;
+    tke_i = (lesMode_i > sensorThreshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
+    tke_j = (lesMode_j > sensorThreshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
   }
   
   /*--- Scale the stochastic source term by the fraction of turbulent kinetic energy that is
@@ -205,17 +207,12 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
   su2double intensityCoeff = config->GetSBSParam().SBS_Cmag * modeledFraction;
   su2double density = Mean_PrimVar[nDim+2];
 
-  const su2double stochLim = 3.0;
-  su2double meanStochVar[3];
-  for (unsigned short iVar = 0; iVar < 3; iVar++)
-    meanStochVar[iVar] = max(-stochLim, min(stochLim, 0.5*(stochVar_i[iVar]+stochVar_j[iVar])));
-
   stochStressTensor[0][0] = stochStressTensor[1][1] = stochStressTensor[2][2] = 0.0;
-  stochStressTensor[0][1] = intensityCoeff * meanStochVar[2];
+  stochStressTensor[0][1] = intensityCoeff * 0.5 * (stochVar_i[2]+stochVar_j[2]);
   stochStressTensor[1][0] = - stochStressTensor[0][1];
-  stochStressTensor[0][2] = - intensityCoeff * meanStochVar[1];
+  stochStressTensor[0][2] = - intensityCoeff * 0.5 * (stochVar_i[1]+stochVar_j[1]);
   stochStressTensor[2][0] = - stochStressTensor[0][2];
-  stochStressTensor[1][2] = intensityCoeff * meanStochVar[0];
+  stochStressTensor[1][2] = intensityCoeff * 0.5 * (stochVar_i[0]+stochVar_j[0]);
   stochStressTensor[2][1] = - stochStressTensor[1][2];
 
   for (unsigned short iDim = 0; iDim < nDim; iDim++) {

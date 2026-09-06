@@ -122,33 +122,27 @@ class CSourceBase_TurbSA : public CNumerics {
     const su2double& nue = ScalarVar_i[0];
     const su2double nut = (meanTurb) ? max(avg_eddy_visc_i, 1e-10) : max(nue*var.fv1, 1e-10);
 
-    if (delta > 1e-10) {
-
-      su2double tTurb = ct*pow(delta, 2)/nut;
-      su2double tRat = timeStep / tTurb;
-
-      su2double corrFac = 1.0;
-      if (time_marching == TIME_MARCHING::DT_STEPPING_2ND) {
-        corrFac = sqrt(0.5*(1.0+tRat)*(4.0+tRat)/(2.0+tRat));
-      } else if (time_marching == TIME_MARCHING::DT_STEPPING_1ST) {
-        corrFac = sqrt(1.0+0.5*tRat);
-      }
-
-      su2double scaleFactor = 0.0;
-      if (lesMode_i > threshold)
-        scaleFactor = 1.0/tTurb * sqrt(2.0/tRat) * corrFac;
-      else
-        tTurb = min(tTurb, 10.0*timeStep);
-
-      for (unsigned short iVar = 1; iVar < nVar; iVar++) {
-        Residual[iVar] = scaleFactor * stochSource[iVar-1] - 1.0/tTurb * ScalarVar_i[iVar];
-        Residual[iVar] *= Volume;
-      }
-
-      for (unsigned short iVar = 1; iVar < nVar; iVar++ )
-        Jacobian_i[iVar][iVar] = -1.0/tTurb * Volume;
-
+    su2double tRANS = min(wallDist*wallDist/nut, 10.0*timeStep);
+    su2double tLES = ct*delta*delta/nut;
+    su2double tBlended = lesMode_i*tLES + (1.0-lesMode_i)*tRANS;
+    su2double tRat = timeStep / tBlended;
+    
+    su2double corrFac = 1.0;
+    if (time_marching == TIME_MARCHING::DT_STEPPING_2ND) {
+      corrFac = sqrt(0.5*(1.0+tRat)*(4.0+tRat)/(2.0+tRat));
+    } else if (time_marching == TIME_MARCHING::DT_STEPPING_1ST) {
+      corrFac = sqrt(1.0+0.5*tRat);
     }
+    
+    su2double scaleFactor = lesMode_i * 1.0/tBlended * sqrt(2.0/tRat) * corrFac;
+
+    for (unsigned short iVar = 1; iVar < nVar; iVar++) {
+      Residual[iVar] = scaleFactor * stochSource[iVar-1] - 1.0/tBlended * ScalarVar_i[iVar];
+      Residual[iVar] *= Volume;
+    }
+
+    for (unsigned short iVar = 1; iVar < nVar; iVar++ )
+      Jacobian_i[iVar][iVar] = -1.0/tBlended * Volume;
 
   }
 
@@ -163,7 +157,8 @@ class CSourceBase_TurbSA : public CNumerics {
     /*--- Use the mean (time-averaged) eddy viscosity to scale the stochastic forcing when requested. ---*/
     su2double nut = config->GetSBSParam().useMeanTurb ? max(avg_eddy_visc_i, 1e-10)
                                                        : max(ScalarVar_i[0] * var.fv1, 1e-10);
-    su2double tke = pow(nut/dist_i, 2);
+    su2double lengthscale = config->GetConst_DES()*maxDelta_i;
+    su2double tke = pow(nut/lengthscale, 2);
 
     const bool isLangevin = (config->GetSBSParam().stochSourceType == LANGEVIN);
 
@@ -174,11 +169,11 @@ class CSourceBase_TurbSA : public CNumerics {
       StochDotVor = - Cmag * tke * (Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2]);
 
     su2double fac = 1.0 / (var.fv1 + ScalarVar_i[0] * var.d_fv1);
-    su2double timeScale = dist_i*dist_i/(2.0*nut);
+    su2double timeScale = lengthscale*lengthscale/(2.0*nut);
     su2double stochProdNut = StochDotVor * timeScale * fac;
     stochProdNut = max(-limiter*prod, min(limiter*prod, stochProdNut));
 
-    prod += stochProdNut;
+    prod -= stochProdNut;
 
   }
 
@@ -288,7 +283,7 @@ class CSourceBase_TurbSA : public CNumerics {
       rFunc::get(ScalarVar_i[0], var);
 
       if (sbsLESOverride) {
-        var.fw = 0.0;
+        var.fw = 1.0;
         var.d_fw = 0.0;
       } else {
         var.g = var.r + var.cw2 * (pow(var.r, 6) - var.r);
@@ -353,8 +348,8 @@ class CSourceBase_TurbSA : public CNumerics {
       /*--- Compute residual for Langevin equations (Stochastic Backscatter Model). ---*/
 
       if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
-        ResidualStochEquations(config->GetSBSParam().useMeanTurb, config->GetDelta_UnstTime(), config->GetSBSParam().SBS_Ctau,
-                               dist_i/config->GetConst_DES(), wallDist_i, var, config->GetTime_Marching(), config->GetSBSParam().stochFdThreshold);
+        ResidualStochEquations(config->GetSBSParam().useMeanTurb, config->GetDelta_UnstTimeND(), config->GetSBSParam().SBS_Ctau, maxDelta_i, wallDist_i,
+                               var, config->GetTime_Marching(), config->GetSBSParam().stochFdThreshold);
       }
     }
 
