@@ -191,21 +191,12 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
     tke_i = (lesMode_i > sensorThreshold) ? turbKinEn_i : 0.0;
     tke_j = (lesMode_j > sensorThreshold) ? turbKinEn_j : 0.0;
   } else {
+    su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_i : Eddy_Viscosity_i / PrimVar_i[nDim+2];
+    su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_j : Eddy_Viscosity_j / PrimVar_j[nDim+2];
     su2double lengthscale_i = config->GetConst_DES() * maxDelta_i;
     su2double lengthscale_j = config->GetConst_DES() * maxDelta_j;
-
-    /*--- Yoshizawa (1986) SGS kinetic energy estimate from resolved strain rate. ---*/
-    const su2double yoshizawaConst = 0.0066;
-    su2double meanStrainMagSq = 0.0;
-    for (unsigned short iDim = 0; iDim < nDim; iDim++)
-      meanStrainMagSq += pow(Mean_GradPrimVar[iDim+1][iDim], 2);
-    for (unsigned short iDim = 0; iDim < nDim; iDim++)
-      for (unsigned short jDim = iDim+1; jDim < nDim; jDim++)
-        meanStrainMagSq += 2.0*pow(0.5*(Mean_GradPrimVar[iDim+1][jDim] + Mean_GradPrimVar[jDim+1][iDim]), 2);
-    su2double meanStrainMag = sqrt(2.0*meanStrainMagSq);
-
-    tke_i = (lesMode_i > sensorThreshold) ? yoshizawaConst * pow(lengthscale_i*meanStrainMag, 2) : 0.0;
-    tke_j = (lesMode_j > sensorThreshold) ? yoshizawaConst * pow(lengthscale_j*meanStrainMag, 2) : 0.0;
+    tke_i = (lesMode_i > sensorThreshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
+    tke_j = (lesMode_j > sensorThreshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
   }
   
   /*--- Scale the stochastic source term by the fraction of turbulent kinetic energy that is

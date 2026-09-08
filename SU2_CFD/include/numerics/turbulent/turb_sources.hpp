@@ -157,10 +157,7 @@ class CSourceBase_TurbSA : public CNumerics {
     su2double nut = config->GetSBSParam().useMeanTurb ? max(avg_eddy_visc_i, 1e-10)
                                                        : max(ScalarVar_i[0] * var.fv1, 1e-10);
     su2double lengthscale = config->GetConst_DES()*maxDelta_i;
-
-    /*--- Yoshizawa (1986) SGS kinetic energy estimate from resolved strain rate. ---*/
-    const su2double yoshizawaConst = 0.0066;
-    su2double tke = yoshizawaConst * pow(lengthscale*StrainMag_i, 2);
+    su2double tke = pow(nut/lengthscale, 2);
 
     const bool isLangevin = (config->GetSBSParam().stochSourceType == LANGEVIN);
 
@@ -175,6 +172,17 @@ class CSourceBase_TurbSA : public CNumerics {
     su2double stochProdNut = StochDotVor * timeScale * fac;
 
     prod -= stochProdNut;
+
+    /*--- d(stochProdNut)/d(nu_tilde): stochProdNut = -(Cmag/2)(Omega.B)*nut, linear in nut here. ---*/
+    const bool nutFromNuTilde = !config->GetSBSParam().useMeanTurb && (ScalarVar_i[0] * var.fv1 > 1e-10);
+    if (nutFromNuTilde) Jacobian_i[0][0] -= stochProdNut / nut;
+
+    /*--- d(stochProdNut)/d(stochVar), the coupling AddStochSource introduces. ---*/
+    if (isLangevin) {
+      const su2double dStochProdNut_dStochVar = Cmag * tke * timeScale * fac;
+      for (unsigned short iDim = 0; iDim < 3; iDim++)
+        Jacobian_i[0][1+iDim] += dStochProdNut_dStochVar * Vorticity_i[iDim] * Volume;
+    }
 
   }
 

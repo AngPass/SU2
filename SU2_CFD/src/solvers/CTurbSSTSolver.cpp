@@ -1028,7 +1028,8 @@ void CTurbSSTSolver::SetLangevinSourceTerms(CConfig *config, CGeometry* geometry
     SU2_OMP_FOR_STAT(OMP_MIN_SIZE)
     for (unsigned long iVertex = 0; iVertex < geometry->nVertex[iMarker]; iVertex++) {
       unsigned long iPoint = geometry->vertex[iMarker][iVertex]->GetNode();
-      if (config->GetMarker_All_KindBC(iMarker) != SEND_RECEIVE) {
+      const auto kindBC = config->GetMarker_All_KindBC(iMarker);
+      if (kindBC != SEND_RECEIVE && kindBC != PERIODIC_BOUNDARY) {
         for (unsigned short iDim = 0; iDim < nDim; iDim++) {
           nodes->SetLangevinSourceTermsOld(iPoint, iDim, dummySource);
           nodes->SetLangevinSourceTerms(iPoint, iDim, 0.0);

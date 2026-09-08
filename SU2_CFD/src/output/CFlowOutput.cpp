@@ -4469,8 +4469,8 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
         tke_estim = (lesSensor > threshold) ? tke: 0.0;
       } else {
         const su2double lengthscale = config->GetConst_DES() * Node_Turb->GetDES_FilterWidth(iPoint);
-        const su2double yoshizawaConst = 0.0066;
-        tke_estim = (lesSensor > threshold) ? yoshizawaConst * pow(lengthscale*Node_Flow->GetStrainMag(iPoint), 2) : 0.0;
+        const su2double nutScale = (config->GetSBSParam().useMeanTurb) ? Node_Turb->GetMeanEddyViscosity(iPoint) : nu_t;
+        tke_estim = (lesSensor > threshold) ? pow(nutScale/lengthscale, 2) : 0.0;
       }
       su2double csi_x, csi_y, csi_z;
       if (config->GetSBSParam().stochSourceType == LANGEVIN) {
