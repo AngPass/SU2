@@ -68,6 +68,7 @@ CTurbSAVariable::CTurbSAVariable(su2double val_nu_tilde, su2double val_muT, unsi
               added to the (always centered) convective discretization of the Langevin equations. ---*/
         Undivided_Laplacian.resize(nPoint, nVar) = su2double(0.0);
       }
+      sbsAmplitude.resize(nPoint) = su2double(0.0);
       stochSource.resize(nPoint, nDim) = su2double(0.0);
       stochSourceOld.resize(nPoint, nDim) = su2double(0.0);
       besselIntegral.resize(nPoint) = su2double(0.0);

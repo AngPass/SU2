@@ -182,23 +182,32 @@ void CAvgGrad_Base::SetStressTensor(const su2double *val_primvar,
 }
 
 void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
-  su2double tke_i = 0.0, tke_j = 0.0;
-  su2double sensorThreshold = config->GetSBSParam().stochFdThreshold;
-  
-  if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
-    su2double turbKinEn_i = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_i : turb_ke_i;
-    su2double turbKinEn_j = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_j : turb_ke_j;
-    tke_i = (lesMode_i > sensorThreshold) ? turbKinEn_i : 0.0;
-    tke_j = (lesMode_j > sensorThreshold) ? turbKinEn_j : 0.0;
-  } else {
-    su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_i : Eddy_Viscosity_i / PrimVar_i[nDim+2];
-    su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_j : Eddy_Viscosity_j / PrimVar_j[nDim+2];
-    su2double lengthscale_i = config->GetConst_DES() * maxDelta_i;
-    su2double lengthscale_j = config->GetConst_DES() * maxDelta_j;
-    tke_i = (lesMode_i > sensorThreshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
-    tke_j = (lesMode_j > sensorThreshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
+
+  if (!IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
+    /*--- SA/DES: amplitude A(x) from the DDES excess-destruction power balance (see
+          CSourceBase_TurbSA::ComputeSBSAmplitude), gated smoothly by the LES sensor
+          (continuous, unlike the hard threshold used below for SST). ---*/
+    const su2double lesSensorAvg = 0.5 * (lesMode_i + lesMode_j);
+    const su2double amplitudeAvg = 0.5 * (sbsAmplitude_i + sbsAmplitude_j);
+    const su2double scale = lesSensorAvg * amplitudeAvg;
+
+    stochStressTensor[0][0] = stochStressTensor[1][1] = stochStressTensor[2][2] = 0.0;
+    stochStressTensor[0][1] = scale * 0.5 * (stochVar_i[2]+stochVar_j[2]);
+    stochStressTensor[1][0] = - stochStressTensor[0][1];
+    stochStressTensor[0][2] = - scale * 0.5 * (stochVar_i[1]+stochVar_j[1]);
+    stochStressTensor[2][0] = - stochStressTensor[0][2];
+    stochStressTensor[1][2] = scale * 0.5 * (stochVar_i[0]+stochVar_j[0]);
+    stochStressTensor[2][1] = - stochStressTensor[1][2];
+    return;
   }
-  
+
+  su2double sensorThreshold = config->GetSBSParam().stochFdThreshold;
+
+  su2double turbKinEn_i = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_i : turb_ke_i;
+  su2double turbKinEn_j = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_j : turb_ke_j;
+  su2double tke_i = (lesMode_i > sensorThreshold) ? turbKinEn_i : 0.0;
+  su2double tke_j = (lesMode_j > sensorThreshold) ? turbKinEn_j : 0.0;
+
   /*--- Scale the stochastic source term by the fraction of turbulent kinetic energy that is
         modeled rather than resolved (see CFlowOutput) only if explicitly requested via
         SBS_DAMP_SOURCE; by default the modeled fraction is 1, i.e. no damping. ---*/

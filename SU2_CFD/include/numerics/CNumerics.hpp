@@ -213,6 +213,9 @@ protected:
   stochVar_i[3] = {0.0}, /*!< \brief Stochastic variables at point i for Stochastic Backscatter Model. */
   stochVar_j[3] = {0.0}; /*!< \brief Stochastic variables at point j for Stochastic Backscatter Model. */
   su2double
+  sbsAmplitude_i = 0.0, /*!< \brief Stochastic forcing amplitude at point i (DDES excess-destruction power balance, SA). */
+  sbsAmplitude_j = 0.0; /*!< \brief Stochastic forcing amplitude at point j (DDES excess-destruction power balance, SA). */
+  su2double
   meanStrainRate_i[6] = {0.0}, /*!< \brief Mean strain-rate tensor at point i (built from the time-averaged
                                             velocity gradient), packed as (xx,yy,zz,xy,xz,yz). */
   meanStrainRate_j[6] = {0.0}; /*!< \brief Mean strain-rate tensor at point j (built from the time-averaged
@@ -912,6 +915,21 @@ public:
     stochVar_i[iDim] = val_stochvar_i;
     stochVar_j[iDim] = val_stochvar_j;
   }
+
+  /*!
+   * \brief Set the stochastic forcing amplitude (DDES excess-destruction power balance, SA).
+   * \param[in] val_amplitude_i - Value of the amplitude at point i.
+   * \param[in] val_amplitude_j - Value of the amplitude at point j.
+   */
+  inline void SetSBSAmplitude(su2double val_amplitude_i, su2double val_amplitude_j) {
+    sbsAmplitude_i = val_amplitude_i;
+    sbsAmplitude_j = val_amplitude_j;
+  }
+
+  /*!
+   * \brief Get the stochastic forcing amplitude computed internally (DDES excess-destruction power balance, SA).
+   */
+  su2double GetSBSAmplitude() const { return sbsAmplitude_i; }
 
   /*!
    * \brief Set a component of the mean strain-rate tensor (Stochastic Backscatter Model, stress filtering).
