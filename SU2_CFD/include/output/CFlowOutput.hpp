@@ -398,18 +398,16 @@ protected:
 
     /*--- Compute forcing intensity at point i ---*/
 
-    su2double tkeEstim_i = 0.0;
+    su2double effScale_i = 0.0;
     const su2double lesSensor_i = node_flow->GetLES_Mode(iPoint);
 
     if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
       su2double tke_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanTurbKinEnergy(iPoint) : node_turb->GetSolution(iPoint, 0);
-      tkeEstim_i = (lesSensor_i > threshold) ? tke_i : 0.0;
+      effScale_i = (lesSensor_i > threshold) ? mag * tke_i : 0.0;
     } else {
-      const su2double rho_i = node_flow->GetDensity(iPoint);
-      const su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(iPoint)
-                                                                    : node_flow->GetEddyViscosity(iPoint) / rho_i;
-      const su2double lengthscale_i = config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint);
-      tkeEstim_i = (lesSensor_i > threshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
+      /*--- SA: amplitude A(x) from the DDES excess-destruction power balance, gated smoothly
+            by the (continuous) LES sensor rather than the hard threshold used above for SST. ---*/
+      effScale_i = lesSensor_i * node_turb->GetSBSAmplitude(iPoint);
     }
 
     su2double stochVec_i[3] = {0.0};
@@ -421,7 +419,7 @@ protected:
         stochVec_i[iDim] = node_turb->GetOU_Process(iPoint, iDim);
       else
         stochVec_i[iDim] = node_turb->GetLangevinSourceTerms(iPoint, iDim);
-      stochVec_i[iDim] *= tkeEstim_i * mag;
+      stochVec_i[iDim] *= effScale_i;
     }
 
     /*--- Evaluate the curl of the stochastic vector ---*/
@@ -436,18 +434,14 @@ protected:
 
       /*--- Compute forcing intensity at point j ---*/
 
-      su2double tkeEstim_j = 0.0;
+      su2double effScale_j = 0.0;
       const su2double lesSensor_j = node_flow->GetLES_Mode(jPoint);
 
       if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
         su2double tke_j = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanTurbKinEnergy(jPoint) : node_turb->GetSolution(jPoint, 0);
-        tkeEstim_j = (lesSensor_j > threshold) ? tke_j : 0.0;
+        effScale_j = (lesSensor_j > threshold) ? mag * tke_j : 0.0;
       } else {
-        const su2double rho_j = node_flow->GetDensity(jPoint);
-        const su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(jPoint)
-                                                                      : node_flow->GetEddyViscosity(jPoint) / rho_j;
-        const su2double lengthscale_j = config->GetConst_DES() * node_turb->GetDES_FilterWidth(jPoint);
-        tkeEstim_j = (lesSensor_j > threshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
+        effScale_j = lesSensor_j * node_turb->GetSBSAmplitude(jPoint);
       }
 
       su2double stochVec_j[3] = {0.0};
@@ -458,7 +452,7 @@ protected:
           stochVec_j[iDim] = node_turb->GetOU_Process(jPoint, iDim);
         else
           stochVec_j[iDim] = node_turb->GetLangevinSourceTerms(jPoint, iDim);
-        stochVec_j[iDim] *= tkeEstim_j * mag;
+        stochVec_j[iDim] *= effScale_j;
       }
 
       /*--- Compute fluxes ---*/
@@ -500,18 +494,16 @@ protected:
 
     /*--- Compute forcing intensity at point i ---*/
 
-    su2double tkeEstim_i = 0.0;
+    su2double effScale_i = 0.0;
     const su2double lesSensor_i = node_flow->GetLES_Mode(iPoint);
 
     if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
       su2double tke_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanTurbKinEnergy(iPoint) : node_turb->GetSolution(iPoint, 0);
-      tkeEstim_i = (lesSensor_i > threshold) ? tke_i : 0.0;
+      effScale_i = (lesSensor_i > threshold) ? mag * tke_i : 0.0;
     } else {
-      const su2double rho_i = node_flow->GetDensity(iPoint);
-      const su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(iPoint)
-                                                                    : node_flow->GetEddyViscosity(iPoint) / rho_i;
-      const su2double lengthscale_i = config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint);
-      tkeEstim_i = (lesSensor_i > threshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
+      /*--- SA: amplitude A(x) from the DDES excess-destruction power balance, gated smoothly
+            by the (continuous) LES sensor rather than the hard threshold used above for SST. ---*/
+      effScale_i = lesSensor_i * node_turb->GetSBSAmplitude(iPoint);
     }
 
     su2double stochVec_i[3] = {0.0};
@@ -523,7 +515,7 @@ protected:
         stochVec_i[iDim] = node_turb->GetOU_Process(iPoint, iDim);
       else
         stochVec_i[iDim] = node_turb->GetLangevinSourceTerms(iPoint, iDim);
-      stochVec_i[iDim] *= tkeEstim_i * mag;
+      stochVec_i[iDim] *= effScale_i;
     }
 
     /*--- Evaluate the dot product of the stochastic vector and the vorticity vector ---*/

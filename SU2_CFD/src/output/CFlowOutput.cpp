@@ -1651,6 +1651,10 @@ void CFlowOutput::SetVolumeOutputFieldsScalarMisc(const CConfig* config) {
       AddVolumeOutput("STOCHSOURCE_X", "StochSource_x", "BACKSCATTER", "x-component of the stochastic source vector");
       AddVolumeOutput("STOCHSOURCE_Y", "StochSource_y", "BACKSCATTER", "y-component of the stochastic source vector");
       AddVolumeOutput("STOCHSOURCE_Z", "StochSource_z", "BACKSCATTER", "z-component of the stochastic source vector");
+      if (!IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
+        AddVolumeOutput("SBS_AMPLITUDE", "SBS_Amplitude", "BACKSCATTER",
+                         "Stochastic forcing amplitude from the DDES excess-destruction power balance (SA)");
+      }
     }
     if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().StochasticBackscatter &&
         (config->GetSBSParam().dampTimeFiltering || config->GetSBSParam().dampStochTerm)) {
@@ -1774,6 +1778,9 @@ void CFlowOutput::LoadVolumeDataScalar(const CConfig* config, const CSolver* con
       SetVolumeOutputValue("STOCHSOURCE_X", iPoint, Node_Turb->GetLangevinSourceTerms(iPoint, 0));
       SetVolumeOutputValue("STOCHSOURCE_Y", iPoint, Node_Turb->GetLangevinSourceTerms(iPoint, 1));
       SetVolumeOutputValue("STOCHSOURCE_Z", iPoint, Node_Turb->GetLangevinSourceTerms(iPoint, 2));
+      if (!IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
+        SetVolumeOutputValue("SBS_AMPLITUDE", iPoint, Node_Turb->GetSBSAmplitude(iPoint));
+      }
     }
   }
 
@@ -4463,14 +4470,14 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
       const su2double lesSensor = Node_Flow->GetLES_Mode(iPoint);
       const su2double mag = config->GetSBSParam().SBS_Cmag;
       const su2double threshold = config->GetSBSParam().stochFdThreshold;
-      su2double tke_estim = 0.0;
+      su2double effScale = 0.0;
       if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
         su2double tke = (config->GetSBSParam().useMeanTurb) ? Node_Turb->GetMeanTurbKinEnergy(iPoint) : Node_Turb->GetSolution(iPoint, 0);
-        tke_estim = (lesSensor > threshold) ? tke: 0.0;
+        effScale = (lesSensor > threshold) ? mag * tke : 0.0;
       } else {
-        const su2double lengthscale = config->GetConst_DES() * Node_Turb->GetDES_FilterWidth(iPoint);
-        const su2double nutScale = (config->GetSBSParam().useMeanTurb) ? Node_Turb->GetMeanEddyViscosity(iPoint) : nu_t;
-        tke_estim = (lesSensor > threshold) ? pow(nutScale/lengthscale, 2) : 0.0;
+        /*--- SA: amplitude A(x) from the DDES excess-destruction power balance, gated smoothly
+              by the (continuous) LES sensor rather than the hard threshold used above for SST. ---*/
+        effScale = lesSensor * Node_Turb->GetSBSAmplitude(iPoint);
       }
       su2double csi_x, csi_y, csi_z;
       if (config->GetSBSParam().stochSourceType == LANGEVIN) {
@@ -4487,9 +4494,9 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
         csi_y = Node_Turb->GetLangevinSourceTerms(iPoint, 1);
         csi_z = Node_Turb->GetLangevinSourceTerms(iPoint, 2);
       }
-      su2double stochSource_x = mag * tke_estim * csi_x;
-      su2double stochSource_y = mag * tke_estim * csi_y;
-      su2double stochSource_z = mag * tke_estim * csi_z;
+      su2double stochSource_x = effScale * csi_x;
+      su2double stochSource_y = effScale * csi_y;
+      su2double stochSource_z = effScale * csi_z;
       SetAvgVolumeOutputValue("MEAN_BACKSCATTER_INTENSITY-X", iPoint, stochSource_x);
       SetAvgVolumeOutputValue("MEAN_BACKSCATTER_INTENSITY-Y", iPoint, stochSource_y);
       SetAvgVolumeOutputValue("MEAN_BACKSCATTER_INTENSITY-Z", iPoint, stochSource_z);
