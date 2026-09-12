@@ -147,38 +147,6 @@ class CSourceBase_TurbSA : public CNumerics {
   }
 
   /*!
-   * \brief Stochastic forcing amplitude from the DDES excess-destruction power balance, independent of AddStochSource.
-   */
-  inline void ComputeSBSAmplitude(const CConfig* config, const CSAVariables& var, su2double density) {
-
-    /*--- Excess destruction introduced by the DDES length scale vs. plain RANS/production. ---*/
-    const su2double nue2 = pow(ScalarVar_i[0], 2);
-    const su2double destructionCurrent = var.cw1 * var.fw * nue2 / var.dist_i_2;
-    const su2double wallDist2 = max(pow(wallDist_i, 2), EPS);
-    const su2double destructionRANS = var.cw1 * var.fw * nue2 / wallDist2;
-    const su2double productionModel = var.cb1 * var.Shat * ScalarVar_i[0];
-    const su2double epsTr = destructionCurrent - max(destructionRANS, productionModel);
-
-    /*--- Convert to an equivalent k-space rate via the same fac/timeScale chain as AddStochSource. ---*/
-    const su2double lengthscale = config->GetConst_DES() * maxDelta_i;
-    const su2double nut = max(ScalarVar_i[0] * var.fv1, 1e-10);
-    const su2double fac = 1.0 / (var.fv1 + ScalarVar_i[0] * var.d_fv1);
-    const su2double timeScale = lengthscale * lengthscale / (2.0 * nut);
-    const su2double epsTrK = max(epsTr / (fac * timeScale), 0.0);
-
-    /*--- Local correlation time of the stochastic forcing, same definition as ResidualStochEquations. ---*/
-    const su2double tRANS = min(wallDist_i*wallDist_i/nut, 10.0*config->GetDelta_UnstTimeND());
-    const su2double tLES = config->GetSBSParam().SBS_Ctau * lengthscale * lengthscale / nut;
-    const su2double t_s = max(lesMode_i*tLES + (1.0-lesMode_i)*tRANS, 1e-10);
-
-    /*--- Power balance: kappa0 = SBS_Cmag, to be calibrated. ---*/
-    const su2double b2 = config->GetSBSParam().SBS_Cdelta * maxDelta_i * maxDelta_i;
-    const su2double kappa0 = max(config->GetSBSParam().SBS_Cmag, 1e-10);
-
-    sbsAmplitude_i = sqrt(2.0 * density * b2 * epsTrK / (kappa0 * t_s));
-  }
-
-  /*!
    * \brief Include stochastic source term in the Spalart-Allmaras turbulence model equation (Stochastic Backscatter Model).
    */
   inline void AddStochSource(const CConfig* config, CSAVariables& var, su2double& prod) {
@@ -336,8 +304,6 @@ class CSourceBase_TurbSA : public CNumerics {
       }
 
       var.norm2_Grad = GeometryToolbox::SquaredNorm(nDim, ScalarVar_Grad_i[0]);
-
-      if (config->GetSBSParam().StochasticBackscatter) ComputeSBSAmplitude(config, var, density);
 
       if (options.bc) {
         /*--- BC transition model (2020 revision). This should only be used with SA-noft2.

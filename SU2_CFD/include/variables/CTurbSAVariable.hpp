@@ -41,7 +41,6 @@ class CTurbSAVariable final : public CTurbVariable {
 private:
   VectorType DES_LengthScale;
   VectorType DES_FilterWidth;
-  VectorType sbsAmplitude;
   VectorType lesMode;
   VectorType MeanEddyViscosity;
   MatrixType stochSource;
@@ -101,18 +100,6 @@ public:
    * \param[in] iPoint - Point index.
    */
   inline void SetDES_FilterWidth(unsigned long iPoint, su2double val_des_filterwidth) override { DES_FilterWidth(iPoint) = val_des_filterwidth; }
-
-  /*!
-   * \brief Get the stochastic forcing amplitude (DDES excess-destruction power balance).
-   * \param[in] iPoint - Point index.
-   */
-  inline su2double GetSBSAmplitude(unsigned long iPoint) const override { return sbsAmplitude(iPoint); }
-
-  /*!
-   * \brief Set the stochastic forcing amplitude (DDES excess-destruction power balance).
-   * \param[in] iPoint - Point index.
-   */
-  inline void SetSBSAmplitude(unsigned long iPoint, su2double val_amplitude) override { sbsAmplitude(iPoint) = val_amplitude; }
 
   /*!
    * \brief Get the source terms for the stochastic equations.

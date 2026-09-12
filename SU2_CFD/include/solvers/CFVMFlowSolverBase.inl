@@ -505,7 +505,6 @@ CNumerics::ResidualType<> CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsign
     }
     if (!IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
       numerics->SetMaxDelta(turbNodes->GetDES_FilterWidth(iPoint), turbNodes->GetDES_FilterWidth(jPoint));
-      numerics->SetSBSAmplitude(turbNodes->GetSBSAmplitude(iPoint), turbNodes->GetSBSAmplitude(jPoint));
     }
     if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().useMeanTurb) {
       numerics->SetAvgTurbKineticEnergy(turbNodes->GetMeanTurbKinEnergy(iPoint), turbNodes->GetMeanTurbKinEnergy(jPoint));

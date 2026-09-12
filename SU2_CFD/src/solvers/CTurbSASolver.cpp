@@ -480,13 +480,7 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
     if (transition_BC || config->GetKind_Trans_Model() != TURB_TRANS_MODEL::NONE) {
       nodes->SetIntermittency(iPoint,numerics->GetIntermittencyEff());
     }
-
-    /*--- Store the stochastic forcing amplitude (DDES excess-destruction power balance). ---*/
-
-    if (config->GetSBSParam().StochasticBackscatter) {
-      nodes->SetSBSAmplitude(iPoint, numerics->GetSBSAmplitude());
-    }
-
+    
     /*--- Subtract residual and the Jacobian ---*/
 
     LinSysRes.SubtractBlock(iPoint, residual);
