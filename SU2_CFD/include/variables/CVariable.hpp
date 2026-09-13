@@ -428,49 +428,6 @@ public:
   inline virtual void SetLocalCI(unsigned long iPoint, su2double val_local_ci) {}
 
   /*!
-   * \brief A virtual member: get the exponential moving average of the measured stochastic forcing
-   *        power (SBS_ADAPTIVE_INTENSITY).
-   * \param[in] iPoint - Point index.
-   */
-  inline virtual su2double GetP1_EMA(unsigned long iPoint) const { return 0.0; }
-
-  /*!
-   * \brief A virtual member.
-   * \param[in] iPoint - Point index.
-   */
-  inline virtual void SetP1_EMA(unsigned long iPoint, su2double val_p1_ema) {}
-
-  /*!
-   * \brief A virtual member: get a component of the exponential moving average of the resolved
-   *        velocity, used to extract the velocity fluctuation (SBS_ADAPTIVE_INTENSITY).
-   * \param[in] iPoint - Point index.
-   * \param[in] iDim - Dimension index.
-   */
-  inline virtual su2double GetMeanVelocityEMA(unsigned long iPoint, unsigned short iDim) const { return 0.0; }
-
-  /*!
-   * \brief A virtual member.
-   * \param[in] iPoint - Point index.
-   * \param[in] iDim - Dimension index.
-   */
-  inline virtual void SetMeanVelocityEMA(unsigned long iPoint, unsigned short iDim, su2double val_mean_vel) {}
-
-  /*!
-   * \brief A virtual member: get a component of the Green-Gauss gradient of the DES length scale
-   *        (SBS_ADAPTIVE_INTENSITY).
-   * \param[in] iPoint - Point index.
-   * \param[in] iDim - Dimension index.
-   */
-  inline virtual su2double GetDES_LengthScaleGrad(unsigned long iPoint, unsigned short iDim) const { return 0.0; }
-
-  /*!
-   * \brief A virtual member.
-   * \param[in] iPoint - Point index.
-   * \param[in] iDim - Dimension index.
-   */
-  inline virtual void SetDES_LengthScaleGrad(unsigned long iPoint, unsigned short iDim, su2double val_grad) {}
-
-  /*!
    * \brief A virtual member: get the ratio of the RANS lengthscale to the Hybrid RANS/LES lengthscale
    *        (as computed by SetDES_LengthScale), used by the Stochastic Backscatter Model hybrid
    *        transition correction (SST-based hybrid models only). Equal to 1 in pure RANS regions.
