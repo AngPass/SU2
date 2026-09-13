@@ -82,22 +82,6 @@ private:
   void SmoothLangevinSourceTerms(CConfig* config, CGeometry* geometry);
 
   /*!
-   * \brief Compute the Green-Gauss gradient of the DES length scale (SBS_ADAPTIVE_INTENSITY).
-   * \param[in] geometry - Geometrical definition.
-   * \param[in] config - Definition of the particular problem.
-   */
-  void ComputeDES_LengthScaleGradient(CGeometry* geometry, const CConfig* config);
-
-  /*!
-   * \brief Update the local, adaptive Stochastic Backscatter Model intensity coefficient C_I(x,t),
-   *        driven by the measured power of the momentum stochastic forcing (SBS_ADAPTIVE_INTENSITY).
-   * \param[in] solver - Solver container.
-   * \param[in] geometry - Geometrical definition.
-   * \param[in] config - Definition of the particular problem.
-   */
-  void ComputeAdaptiveIntensity(CSolver** solver, CGeometry* geometry, CConfig* config);
-
-  /*!
    * \brief Compute nu tilde from the wall functions.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] solver_container - Container vector with all the solutions.

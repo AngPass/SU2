@@ -230,16 +230,7 @@ void CTurbSASolver::Preprocessing(CGeometry *geometry, CSolver **solver_containe
 
     bool backscatter = config->GetSBSParam().StochasticBackscatter;
     bool backscatterInBox = config->GetSBSParam().StochBackscatterInBox;
-    bool adaptiveIntensity = config->GetSBSParam().adaptiveIntensity;
     if (backscatter && backscatterInBox) SetBackscatterInBox(config, geometry);
-
-    /*--- DES length scale must reach halo points before its gradient can be computed
-          (SBS_ADAPTIVE_INTENSITY). ---*/
-    if (backscatter && adaptiveIntensity) {
-      InitiateComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
-      CompleteComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
-      ComputeDES_LengthScaleGradient(geometry, config);
-    }
 
     /*--- maxDelta must reach halo points for SetStochSourceMom. ---*/
     if (backscatter) {
@@ -261,13 +252,6 @@ void CTurbSASolver::Preprocessing(CGeometry *geometry, CSolver **solver_containe
         InitiateComms(geometry, config, MPI_QUANTITIES::MEAN_EDDY_VISC);
         CompleteComms(geometry, config, MPI_QUANTITIES::MEAN_EDDY_VISC);
       }
-
-      /*--- Update the local, adaptive intensity coefficient C_I(x,t) using the forcing (stochSource/
-            OU_Process) and C_I values that were actually applied to momentum during the previous
-            iteration, and the flow velocity as it stands now (already advanced) -- causal, no
-            lookahead. Must run before the Langevin numbers below are overwritten for this
-            iteration. ---*/
-      if (adaptiveIntensity) ComputeAdaptiveIntensity(solver_container, geometry, config);
 
       SetLangevinSourceTerms(config, geometry);
       const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
@@ -1743,148 +1727,6 @@ void CTurbSASolver::SetLangevinSourceTerms(CConfig *config, CGeometry* geometry)
     }
     END_SU2_OMP_FOR
   }
-}
-
-void CTurbSASolver::ComputeDES_LengthScaleGradient(CGeometry* geometry, const CConfig* config) {
-  SU2_ZONE_SCOPED
-
-  /*--- Plain Green-Gauss gradient of the DES length scale, built from interior point-to-point
-        edges only (no boundary-marker corrections), mirroring the same edge/normal idiom already
-        used by CFlowOutput::GetPowerStochForcing for the discrete curl of the stochastic forcing.
-        Only ever read at owned points (see ComputeAdaptiveIntensity), so no halo sync is needed
-        for the result. ---*/
-
-  SU2_OMP_FOR_STAT(omp_chunk_size)
-  for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-    su2double grad[3] = {0.0, 0.0, 0.0};
-    const su2double phi_i = nodes->GetDES_LengthScale(iPoint);
-
-    for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
-      const auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
-      const auto iEdge = geometry->nodes->GetEdge(iPoint, iNode);
-      const su2double sign = (geometry->edges->GetNode(iEdge, 0) == iPoint) ? 1.0 : -1.0;
-      const auto* normal = geometry->edges->GetNormal(iEdge);
-      const su2double phiFace = 0.5 * (phi_i + nodes->GetDES_LengthScale(jPoint));
-
-      for (unsigned short iDim = 0; iDim < nDim; iDim++)
-        grad[iDim] += sign * normal[iDim] * phiFace;
-    }
-
-    const su2double volume = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
-    for (unsigned short iDim = 0; iDim < nDim; iDim++)
-      nodes->SetDES_LengthScaleGrad(iPoint, iDim, grad[iDim] / max(volume, 1e-10));
-  }
-  END_SU2_OMP_FOR
-}
-
-void CTurbSASolver::ComputeAdaptiveIntensity(CSolver** solver, CGeometry* geometry, CConfig* config) {
-  SU2_ZONE_SCOPED
-
-  auto* flowNodes = su2staticcast_p<CFlowVariable*>(solver[FLOW_SOL]->GetNodes());
-  const auto& sbs = config->GetSBSParam();
-  const su2double threshold = sbs.stochFdThreshold;
-  const su2double beta = sbs.SBS_CI_FilterBeta;
-  const su2double ciMin = sbs.SBS_CI_Min;
-  const su2double ciMax = sbs.SBS_CI_Max;
-  const su2double p1Floor = sbs.SBS_CI_P1Floor;
-  const bool isLangevin = (sbs.stochSourceType == LANGEVIN);
-  const bool isOU = (sbs.stochSourceType == ORNSTEIN_UHLENBECK);
-  const bool updateCI = (config->GetTimeIter() % sbs.SBS_CI_UpdateFreq) == 0;
-
-  SU2_OMP_FOR_DYN(omp_chunk_size)
-  for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-
-    su2double velocity[3] = {0.0, 0.0, 0.0};
-    for (unsigned short iDim = 0; iDim < nDim; iDim++) velocity[iDim] = flowNodes->GetVelocity(iPoint, iDim);
-
-    /*--- Exponential moving average of the resolved velocity, used to extract the fluctuation u'
-          that the forcing actually works against (as opposed to the raw, mean-laden velocity). ---*/
-    su2double uPrime[3] = {0.0, 0.0, 0.0};
-    for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-      const su2double meanOld = nodes->GetMeanVelocityEMA(iPoint, iDim);
-      const su2double meanNew = (1.0-beta)*meanOld + beta*velocity[iDim];
-      nodes->SetMeanVelocityEMA(iPoint, iDim, meanNew);
-      uPrime[iDim] = velocity[iDim] - meanNew;
-    }
-
-    /*--- Reconstruct the momentum forcing f_i actually applied last iteration: same discrete
-          edge/normal curl as CFlowOutput::GetPowerStochForcing, but with the new amplitude
-          A = C_I * l_DDES^2 * S^2 in place of the global SBS_Cmag times the nu_t-based estimate.
-          Reads the SAME field the momentum forcing actually used last iteration (the transported
-          Langevin solution for LANGEVIN, the OU process for ORNSTEIN_UHLENBECK, the raw noise for
-          WHITE_NOISE), matching CFVMFlowSolverBase.inl. ---*/
-
-    auto StochVec = [&](unsigned long point, su2double* vec) {
-      const su2double lesSensor = nodes->GetLES_Mode(point) * nodes->GetSBSInBox(point);
-      const su2double CI = nodes->GetLocalCI(point);
-      const su2double lengthScale = nodes->GetDES_LengthScale(point);
-      const su2double strainMag = flowNodes->GetStrainMag(point);
-      /*--- Amplitude A = C_I * l_DDES^2 * S^2 (single factor of C_I), matching exactly the
-            momentum forcing amplitude in CAvgGrad_Base::SetStochSourceMom. ---*/
-      const su2double amplitude = CI * lengthScale*lengthScale * strainMag*strainMag;
-      for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-        su2double psi;
-        if (isLangevin) psi = nodes->GetSolution(point, iDim+1);
-        else if (isOU) psi = nodes->GetOU_Process(point, iDim);
-        else psi = nodes->GetLangevinSourceTerms(point, iDim);
-        vec[iDim] = (lesSensor > threshold) ? amplitude * psi : 0.0;
-      }
-    };
-
-    su2double stochVec_i[3] = {0.0};
-    StochVec(iPoint, stochVec_i);
-
-    su2double curlStochVec[3] = {0.0};
-    for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
-      const auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
-      const auto iEdge = geometry->nodes->GetEdge(iPoint, iNode);
-      const su2double sign = (geometry->edges->GetNode(iEdge, 0) == iPoint) ? 1.0 : -1.0;
-      const auto* normal = geometry->edges->GetNormal(iEdge);
-
-      su2double stochVec_j[3] = {0.0};
-      StochVec(jPoint, stochVec_j);
-
-      su2double meanStochVec[3];
-      for (unsigned short iDim = 0; iDim < nDim; iDim++)
-        meanStochVec[iDim] = 0.5 * (stochVec_i[iDim] + stochVec_j[iDim]);
-
-      curlStochVec[0] += sign*(normal[1]*meanStochVec[2] - normal[2]*meanStochVec[1]);
-      curlStochVec[1] += sign*(normal[2]*meanStochVec[0] - normal[0]*meanStochVec[2]);
-      curlStochVec[2] += sign*(normal[0]*meanStochVec[1] - normal[1]*meanStochVec[0]);
-    }
-
-    const su2double volume = max(geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint), 1e-10);
-
-    su2double p1_inst = 0.0;
-    for (unsigned short iDim = 0; iDim < nDim; iDim++)
-      p1_inst += uPrime[iDim] * curlStochVec[iDim] / volume;
-
-    const su2double p1Old = nodes->GetP1_EMA(iPoint);
-    const su2double p1New = (1.0-beta)*p1Old + beta*p1_inst;
-    nodes->SetP1_EMA(iPoint, p1New);
-
-    /*--- Recompute C_I only every SBS_CI_UPDATE_FREQ iterations, and only where the LES sensor is
-          active; elsewhere, and whenever the measured power is too small to divide by safely, hold
-          C_I at its previous value (guardrails from the request: no reset on re-entering LES mode,
-          no division by a noisy near-zero power). ---*/
-    const su2double lesSensor_i = nodes->GetLES_Mode(iPoint) * nodes->GetSBSInBox(iPoint);
-    if (updateCI && (lesSensor_i > threshold) && (fabs(p1New) >= p1Floor)) {
-      const su2double Delta_i = nodes->GetDES_FilterWidth(iPoint);
-      const su2double S_i = flowNodes->GetStrainMag(iPoint);
-      su2double matDeriv = 0.0;
-      for (unsigned short iDim = 0; iDim < nDim; iDim++)
-        matDeriv += velocity[iDim] * nodes->GetDES_LengthScaleGrad(iPoint, iDim);
-
-      const su2double CI_old = nodes->GetLocalCI(iPoint);
-      su2double CI_new = 2.0 * Delta_i * S_i*S_i * matDeriv * CI_old*CI_old / p1New;
-      CI_new = min(max(CI_new, ciMin), ciMax);
-      nodes->SetLocalCI(iPoint, CI_new);
-    }
-  }
-  END_SU2_OMP_FOR
-
-  InitiateComms(geometry, config, MPI_QUANTITIES::SBS_LOCAL_CI);
-  CompleteComms(geometry, config, MPI_QUANTITIES::SBS_LOCAL_CI);
 }
 
 void CTurbSASolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeometry *geometry) {

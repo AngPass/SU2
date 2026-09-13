@@ -4325,10 +4325,6 @@ void CFlowOutput::SetTimeAveragedFields(const CConfig *config) {
       AddVolumeOutput("MEAN_SOURCE_LANGEVIN-X", "MeanSourceLangevin_x", "BACKSCATTER", "Mean stochastic source term in x-Langevin equation");
       AddVolumeOutput("MEAN_SOURCE_LANGEVIN-Y", "MeanSourceLangevin_y", "BACKSCATTER", "Mean stochastic source term in y-Langevin equation");
       AddVolumeOutput("MEAN_SOURCE_LANGEVIN-Z", "MeanSourceLangevin_z", "BACKSCATTER", "Mean stochastic source term in z-Langevin equation");
-      if (config->GetSBSParam().adaptiveIntensity) {
-        AddVolumeOutput("LOCAL_CI", "LocalIntensityCoeff", "BACKSCATTER",
-                         "Local, adaptive Stochastic Backscatter Model intensity coefficient C_I(x,t)");
-      }
     }
   }
 }
@@ -4502,9 +4498,6 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
       SetAvgVolumeOutputValue("MEAN_SOURCE_LANGEVIN-Z", iPoint, Node_Turb->GetLangevinSourceTerms(iPoint, 2));
       SetAvgVolumeOutputValue("MEAN_STOCHASTIC_POWER", iPoint, GetPowerStochForcing(iPoint, config, Node_Flow, Node_Turb, geometry));
       SetAvgVolumeOutputValue("MEAN_ENERGY_BACKSCATTER", iPoint, GetEnergyBackscatter(iPoint, config, Node_Flow, Node_Turb, geometry));
-      if (config->GetSBSParam().adaptiveIntensity) {
-        SetVolumeOutputValue("LOCAL_CI", iPoint, Node_Turb->GetLocalCI(iPoint));
-      }
     }
   }
 }
