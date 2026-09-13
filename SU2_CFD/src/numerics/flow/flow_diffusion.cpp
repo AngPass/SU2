@@ -184,12 +184,24 @@ void CAvgGrad_Base::SetStressTensor(const su2double *val_primvar,
 void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
   su2double tke_i = 0.0, tke_j = 0.0;
   su2double sensorThreshold = config->GetSBSParam().stochFdThreshold;
-  
-  if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
+  const bool sstHybrid = IsHybridRANSLES_SST(config->GetKind_HybridRANSLES());
+  const bool adaptiveIntensity = !sstHybrid && config->GetSBSParam().adaptiveIntensity;
+
+  if (sstHybrid) {
     su2double turbKinEn_i = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_i : turb_ke_i;
     su2double turbKinEn_j = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_j : turb_ke_j;
     tke_i = (lesMode_i > sensorThreshold) ? turbKinEn_i : 0.0;
     tke_j = (lesMode_j > sensorThreshold) ? turbKinEn_j : 0.0;
+  } else if (adaptiveIntensity) {
+    /*--- Local, Smagorinsky-type closure used only by the SBS momentum forcing (does not affect
+          the actual SA closure): k_m = l_DDES^2 * S^2, with S the resolved strain-rate norm already
+          computed for the flow solver (CFlowVariable::ComputeVorticityAndStrainMag). The intensity
+          coefficient C_I(x,t) is applied pointwise below instead of via a single edge-uniform
+          SBS_Cmag, consistently with how tke_i/tke_j are already kept separate before combining. ---*/
+    su2double km_i = desLengthScale_i*desLengthScale_i * StrainMag_i*StrainMag_i;
+    su2double km_j = desLengthScale_j*desLengthScale_j * StrainMag_j*StrainMag_j;
+    tke_i = (lesMode_i > sensorThreshold) ? km_i : 0.0;
+    tke_j = (lesMode_j > sensorThreshold) ? km_j : 0.0;
   } else {
     su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_i : Eddy_Viscosity_i / PrimVar_i[nDim+2];
     su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_j : Eddy_Viscosity_j / PrimVar_j[nDim+2];
@@ -198,26 +210,36 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
     tke_i = (lesMode_i > sensorThreshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
     tke_j = (lesMode_j > sensorThreshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
   }
-  
+
   /*--- Scale the stochastic source term by the fraction of turbulent kinetic energy that is
         modeled rather than resolved (see CFlowOutput) only if explicitly requested via
         SBS_DAMP_SOURCE; by default the modeled fraction is 1, i.e. no damping. ---*/
   const su2double modeledFraction = config->GetSBSParam().dampStochTerm ?
                                      0.5 * (modeledFraction_i + modeledFraction_j) : 1.0;
-  su2double intensityCoeff = config->GetSBSParam().SBS_Cmag * modeledFraction;
   su2double density = Mean_PrimVar[nDim+2];
 
+  /*--- Amplitude of the momentum forcing: with the adaptive intensity coefficient, C_I(x,t)*k_m(x)
+        is combined pointwise at i and j before summing (local amplitude); otherwise, as before, a
+        single edge-uniform SBS_Cmag scales the summed tke_i+tke_j. ---*/
+  su2double tensorScale;
+  if (adaptiveIntensity) {
+    tensorScale = 0.5 * density * modeledFraction * (localCI_i*tke_i + localCI_j*tke_j);
+  } else {
+    su2double intensityCoeff = config->GetSBSParam().SBS_Cmag * modeledFraction;
+    tensorScale = intensityCoeff * 0.5 * density * (tke_i + tke_j);
+  }
+
   stochStressTensor[0][0] = stochStressTensor[1][1] = stochStressTensor[2][2] = 0.0;
-  stochStressTensor[0][1] = intensityCoeff * 0.5 * (stochVar_i[2]+stochVar_j[2]);
+  stochStressTensor[0][1] = 0.5 * (stochVar_i[2]+stochVar_j[2]);
   stochStressTensor[1][0] = - stochStressTensor[0][1];
-  stochStressTensor[0][2] = - intensityCoeff * 0.5 * (stochVar_i[1]+stochVar_j[1]);
+  stochStressTensor[0][2] = - 0.5 * (stochVar_i[1]+stochVar_j[1]);
   stochStressTensor[2][0] = - stochStressTensor[0][2];
-  stochStressTensor[1][2] = intensityCoeff * 0.5 * (stochVar_i[0]+stochVar_j[0]);
+  stochStressTensor[1][2] = 0.5 * (stochVar_i[0]+stochVar_j[0]);
   stochStressTensor[2][1] = - stochStressTensor[1][2];
 
   for (unsigned short iDim = 0; iDim < nDim; iDim++) {
     for (unsigned short jDim = 0; jDim < nDim; jDim++) {
-      stochStressTensor[iDim][jDim] *= 0.5 * density * (tke_i + tke_j);
+      stochStressTensor[iDim][jDim] *= tensorScale;
     }
   }
 }

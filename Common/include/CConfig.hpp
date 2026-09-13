@@ -1128,6 +1128,12 @@ private:
     bool dampTimeFiltering;                 /*!< \brief Option for scaling the high-pass stress filtering (filterStresses) by the modeled turbulent kinetic energy fraction (SST-based Stochastic Backscatter Model only). If false, the filtering is applied at full strength (modeled fraction = 1). */
     bool dampStochTerm;                     /*!< \brief Option for scaling the stochastic source terms (momentum and turbulence equations) by the modeled turbulent kinetic energy fraction (SST-based Stochastic Backscatter Model only). If false, the modeled fraction is 1, i.e. no damping. */
     bool sbsRansConstraint;                 /*!< \brief Option for reading the turbulent kinetic energy from an external reference RANS restart file (solution_flow_RANS), stored as a measure of the total kinetic energy. Only available for SST-based Hybrid RANS/LES models. */
+    bool adaptiveIntensity;                 /*!< \brief Option for computing a local, adaptive intensity coefficient C_I(x,t) for the momentum stochastic forcing instead of using the global SBS_Cmag constant. SA-based Hybrid RANS/LES models only. */
+    su2double SBS_CI_FilterBeta;            /*!< \brief Exponential moving-average blend weight used to filter the measured forcing power and the resolved velocity when computing the adaptive intensity coefficient. */
+    su2double SBS_CI_Min;                   /*!< \brief Lower clip bound for the adaptive intensity coefficient C_I(x,t). */
+    su2double SBS_CI_Max;                   /*!< \brief Upper clip bound for the adaptive intensity coefficient C_I(x,t). */
+    su2double SBS_CI_P1Floor;               /*!< \brief Floor on the magnitude of the measured forcing power below which the adaptive intensity coefficient is held at its previous value instead of being updated. */
+    unsigned short SBS_CI_UpdateFreq;       /*!< \brief Number of iterations between successive updates of the adaptive intensity coefficient (the underlying moving averages are still updated every iteration). */
   } SBSParam;
   bool enforceLES;                          /*!< \brief Option to enforce LES mode in hybrid RANS-LES simulations. */
   su2double LES_FilterWidth;                /*!< \brief LES filter width for hybrid RANS-LES simulations. */

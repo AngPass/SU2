@@ -55,6 +55,10 @@ private:
   VectorType smoothDiag;         /*!< \brief Diagonal coefficient of the system matrix for the Laplacian smoothing. */
   MatrixType smoothPhat;         /*!< \brief Jacobi-preconditioned BiCGSTAB search direction "p" for the Laplacian smoothing. */
   MatrixType smoothShat;         /*!< \brief Jacobi-preconditioned BiCGSTAB stabilizer direction "s" for the Laplacian smoothing. */
+  VectorType LocalCI;            /*!< \brief Local, adaptive Stochastic Backscatter Model intensity coefficient C_I(x,t) (SBS_ADAPTIVE_INTENSITY). */
+  VectorType P1_EMA;             /*!< \brief Exponential moving average of the measured stochastic forcing power (SBS_ADAPTIVE_INTENSITY). */
+  MatrixType MeanVelocityEMA;    /*!< \brief Exponential moving average of the resolved velocity, used to extract the velocity fluctuation (SBS_ADAPTIVE_INTENSITY). */
+  MatrixType DES_LengthScaleGrad; /*!< \brief Green-Gauss gradient of the DES length scale (SBS_ADAPTIVE_INTENSITY). */
   su2double MAXNNEIGHBORS = 32;
 
 public:
@@ -301,5 +305,57 @@ public:
    * \return Value of the integral.
    */
   inline su2double GetBesselIntegral(unsigned long iPoint) const override { return besselIntegral(iPoint); }
+
+  /*!
+   * \brief Get the local, adaptive Stochastic Backscatter Model intensity coefficient C_I(x,t).
+   * \param[in] iPoint - Point index.
+   */
+  inline su2double GetLocalCI(unsigned long iPoint) const override { return LocalCI(iPoint); }
+
+  /*!
+   * \brief Set the local, adaptive Stochastic Backscatter Model intensity coefficient C_I(x,t).
+   * \param[in] iPoint - Point index.
+   */
+  inline void SetLocalCI(unsigned long iPoint, su2double val_local_ci) override { LocalCI(iPoint) = val_local_ci; }
+
+  /*!
+   * \brief Get the exponential moving average of the measured stochastic forcing power.
+   * \param[in] iPoint - Point index.
+   */
+  inline su2double GetP1_EMA(unsigned long iPoint) const { return P1_EMA(iPoint); }
+
+  /*!
+   * \brief Set the exponential moving average of the measured stochastic forcing power.
+   * \param[in] iPoint - Point index.
+   */
+  inline void SetP1_EMA(unsigned long iPoint, su2double val_p1_ema) { P1_EMA(iPoint) = val_p1_ema; }
+
+  /*!
+   * \brief Get a component of the exponential moving average of the resolved velocity.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   */
+  inline su2double GetMeanVelocityEMA(unsigned long iPoint, unsigned short iDim) const { return MeanVelocityEMA(iPoint, iDim); }
+
+  /*!
+   * \brief Set a component of the exponential moving average of the resolved velocity.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   */
+  inline void SetMeanVelocityEMA(unsigned long iPoint, unsigned short iDim, su2double val_mean_vel) { MeanVelocityEMA(iPoint, iDim) = val_mean_vel; }
+
+  /*!
+   * \brief Get a component of the Green-Gauss gradient of the DES length scale.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   */
+  inline su2double GetDES_LengthScaleGrad(unsigned long iPoint, unsigned short iDim) const { return DES_LengthScaleGrad(iPoint, iDim); }
+
+  /*!
+   * \brief Set a component of the Green-Gauss gradient of the DES length scale.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Dimension index.
+   */
+  inline void SetDES_LengthScaleGrad(unsigned long iPoint, unsigned short iDim, su2double val_grad) { DES_LengthScaleGrad(iPoint, iDim) = val_grad; }
 
 };

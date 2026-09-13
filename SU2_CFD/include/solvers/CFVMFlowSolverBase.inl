@@ -506,6 +506,15 @@ CNumerics::ResidualType<> CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsign
     if (!IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
       numerics->SetMaxDelta(turbNodes->GetDES_FilterWidth(iPoint), turbNodes->GetDES_FilterWidth(jPoint));
     }
+
+    /*--- Local, adaptive intensity coefficient C_I(x,t) for the momentum stochastic forcing
+          (SBS_ADAPTIVE_INTENSITY), replacing the global SBS_Cmag constant. SA-based models only. ---*/
+
+    if (!IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().adaptiveIntensity) {
+      numerics->SetLocalCI(turbNodes->GetLocalCI(iPoint), turbNodes->GetLocalCI(jPoint));
+      numerics->SetDES_LengthScale(turbNodes->GetDES_LengthScale(iPoint), turbNodes->GetDES_LengthScale(jPoint));
+      numerics->SetStrainMag(nodes->GetStrainMag(iPoint), nodes->GetStrainMag(jPoint));
+    }
     if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().useMeanTurb) {
       numerics->SetAvgTurbKineticEnergy(turbNodes->GetMeanTurbKinEnergy(iPoint), turbNodes->GetMeanTurbKinEnergy(jPoint));
     }

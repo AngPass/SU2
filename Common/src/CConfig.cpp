@@ -3145,6 +3145,29 @@ void CConfig::SetConfig_Options() {
    *              available for SST-based Hybrid RANS/LES models. */
   addBoolOption("SBS_RANS_CONSTRAINT", SBSParam.sbsRansConstraint, false);
 
+  /* DESCRIPTION: Compute a local, adaptive intensity coefficient C_I(x,t) for the momentum
+   *              stochastic forcing instead of using the global SBS_INTENSITY_COEFF constant.
+   *              SA-based Hybrid RANS/LES models only. */
+  addBoolOption("SBS_ADAPTIVE_INTENSITY", SBSParam.adaptiveIntensity, false);
+
+  /* DESCRIPTION: Exponential moving-average blend weight used to filter the measured forcing
+   *              power and the resolved velocity for SBS_ADAPTIVE_INTENSITY. */
+  addDoubleOption("SBS_CI_FILTER_BETA", SBSParam.SBS_CI_FilterBeta, 0.01);
+
+  /* DESCRIPTION: Lower clip bound for the adaptive intensity coefficient C_I(x,t). */
+  addDoubleOption("SBS_CI_MIN", SBSParam.SBS_CI_Min, 0.0);
+
+  /* DESCRIPTION: Upper clip bound for the adaptive intensity coefficient C_I(x,t). */
+  addDoubleOption("SBS_CI_MAX", SBSParam.SBS_CI_Max, 50.0);
+
+  /* DESCRIPTION: Floor on the magnitude of the measured forcing power below which the adaptive
+   *              intensity coefficient is held at its previous value instead of being updated. */
+  addDoubleOption("SBS_CI_P1_FLOOR", SBSParam.SBS_CI_P1Floor, 1e-12);
+
+  /* DESCRIPTION: Number of iterations between successive updates of the adaptive intensity
+   *              coefficient (the underlying moving averages are still updated every iteration). */
+  addUnsignedShortOption("SBS_CI_UPDATE_FREQ", SBSParam.SBS_CI_UpdateFreq, 1);
+
   /* DESCRIPTION: Filter width for LES (if negative, it is computed based on the local cell size) */
   addDoubleOption("LES_FILTER_WIDTH", LES_FilterWidth, -1.0);
 
@@ -6762,6 +6785,12 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
             }
             if (Kind_HybridRANSLES != SA_DES && Kind_HybridRANSLES != SST_DES)
               cout << "| Stochastic source terms suppressed where the shielding function is lower than: " << setw(4) << setprecision(4) << SBSParam.stochFdThreshold << endl;
+            if (SBSParam.adaptiveIntensity) {
+              cout << "| Local, adaptive intensity coefficient C_I(x,t) computed for the momentum forcing (SBS_ADAPTIVE_INTENSITY)." << endl;
+              cout << "|  Filter blend weight (SBS_CI_FILTER_BETA): " << SBSParam.SBS_CI_FilterBeta << endl;
+              cout << "|  Clip range (SBS_CI_MIN, SBS_CI_MAX): [" << SBSParam.SBS_CI_Min << ", " << SBSParam.SBS_CI_Max << "]" << endl;
+              cout << "|  Update frequency (SBS_CI_UPDATE_FREQ): every " << SBSParam.SBS_CI_UpdateFreq << " iteration(s)." << endl;
+            }
           } else {
             cout << "OFF" << endl;
           }
@@ -6770,6 +6799,18 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
           SU2_MPI::Error("Stochastic Backscatter can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);
         if (SBSParam.sbsRansConstraint && !IsHybridRANSLES_SST(Kind_HybridRANSLES))
           SU2_MPI::Error("SBS_RANS_CONSTRAINT can only be activated with a SST-based Hybrid RANS/LES model.", CURRENT_FUNCTION);
+        if (SBSParam.adaptiveIntensity) {
+          if (!SBSParam.StochasticBackscatter)
+            SU2_MPI::Error("SBS_ADAPTIVE_INTENSITY requires STOCHASTIC_BACKSCATTER to be enabled.", CURRENT_FUNCTION);
+          if (IsHybridRANSLES_SST(Kind_HybridRANSLES))
+            SU2_MPI::Error("SBS_ADAPTIVE_INTENSITY is only available for SA-based Hybrid RANS/LES models.", CURRENT_FUNCTION);
+          if (SBSParam.SBS_CI_Min > SBSParam.SBS_CI_Max)
+            SU2_MPI::Error("SBS_CI_MIN must not be greater than SBS_CI_MAX.", CURRENT_FUNCTION);
+          if (SBSParam.SBS_CI_FilterBeta <= 0.0 || SBSParam.SBS_CI_FilterBeta > 1.0)
+            SU2_MPI::Error("SBS_CI_FILTER_BETA must be in the range (0, 1].", CURRENT_FUNCTION);
+          if (SBSParam.SBS_CI_UpdateFreq == 0)
+            SU2_MPI::Error("SBS_CI_UPDATE_FREQ must be at least 1.", CURRENT_FUNCTION);
+        }
         if (enforceLES) {
           if (Kind_HybridRANSLES == NO_HYBRIDRANSLES)
             SU2_MPI::Error("ENFORCE_LES can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);

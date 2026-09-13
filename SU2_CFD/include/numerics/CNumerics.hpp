@@ -119,6 +119,12 @@ protected:
   maxDelta_i,  /*!< \brief Maximum cell size at point i (LES filter width). */
   maxDelta_j;  /*!< \brief Maximum cell size at point j (LES filter width). */
   su2double
+  localCI_i = 0.0,  /*!< \brief Local, adaptive Stochastic Backscatter Model intensity coefficient C_I(x,t) at point i (SBS_ADAPTIVE_INTENSITY). */
+  localCI_j = 0.0;  /*!< \brief Local, adaptive Stochastic Backscatter Model intensity coefficient C_I(x,t) at point j (SBS_ADAPTIVE_INTENSITY). */
+  su2double
+  desLengthScale_i = 0.0,  /*!< \brief DES length scale at point i, used by the adaptive intensity coefficient (SBS_ADAPTIVE_INTENSITY). */
+  desLengthScale_j = 0.0;  /*!< \brief DES length scale at point j, used by the adaptive intensity coefficient (SBS_ADAPTIVE_INTENSITY). */
+  su2double
   FDDES_i, /*!< \brief Ratio of RANS to DDES lengthscale at point i (SST turbulence model). */
   FDDES_j; /*!< \brief Ratio of RANS to DDES lengthscale at point j (SST turbulence model). */
   su2double
@@ -962,6 +968,26 @@ public:
   void SetMaxDelta(su2double val_maxDelta_i, su2double val_maxDelta_j) {
     maxDelta_i = val_maxDelta_i;
     maxDelta_j = val_maxDelta_j;
+  }
+
+  /*!
+   * \brief Set the local, adaptive Stochastic Backscatter Model intensity coefficient C_I(x,t).
+   * \param[in] val_localCI_i - Value of the local intensity coefficient at point i.
+   * \param[in] val_localCI_j - Value of the local intensity coefficient at point j.
+   */
+  void SetLocalCI(su2double val_localCI_i, su2double val_localCI_j) {
+    localCI_i = val_localCI_i;
+    localCI_j = val_localCI_j;
+  }
+
+  /*!
+   * \brief Set the DES length scale, used by the adaptive intensity coefficient.
+   * \param[in] val_desLengthScale_i - Value of the DES length scale at point i.
+   * \param[in] val_desLengthScale_j - Value of the DES length scale at point j.
+   */
+  void SetDES_LengthScale(su2double val_desLengthScale_i, su2double val_desLengthScale_j) {
+    desLengthScale_i = val_desLengthScale_i;
+    desLengthScale_j = val_desLengthScale_j;
   }
 
   /*!

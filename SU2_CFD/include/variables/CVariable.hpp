@@ -414,6 +414,20 @@ public:
   inline virtual void SetDES_FilterWidth(unsigned long iPoint, su2double val_des_filterwidth) {}
 
   /*!
+   * \brief A virtual member: get the local, adaptive Stochastic Backscatter Model intensity
+   *        coefficient C_I(x,t) (SBS_ADAPTIVE_INTENSITY), used in place of the global
+   *        SBS_INTENSITY_COEFF constant to scale the momentum stochastic forcing.
+   * \param[in] iPoint - Point index.
+   */
+  inline virtual su2double GetLocalCI(unsigned long iPoint) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   */
+  inline virtual void SetLocalCI(unsigned long iPoint, su2double val_local_ci) {}
+
+  /*!
    * \brief A virtual member: get the ratio of the RANS lengthscale to the Hybrid RANS/LES lengthscale
    *        (as computed by SetDES_LengthScale), used by the Stochastic Backscatter Model hybrid
    *        transition correction (SST-based hybrid models only). Equal to 1 in pure RANS regions.

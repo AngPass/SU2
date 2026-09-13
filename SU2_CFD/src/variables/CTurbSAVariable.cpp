@@ -80,6 +80,14 @@ CTurbSAVariable::CTurbSAVariable(su2double val_nu_tilde, su2double val_muT, unsi
       smoothPhat.resize(nPoint, 3) = su2double(0.0);
       smoothShat.resize(nPoint, 3) = su2double(0.0);
       MeanEddyViscosity.resize(nPoint) = su2double(0.0);
+      if (config->GetSBSParam().adaptiveIntensity) {
+        /*--- Bootstrap: the adaptive intensity coefficient starts at the global constant and is
+              overwritten by the local update once a measured forcing power becomes available. ---*/
+        LocalCI.resize(nPoint) = su2double(config->GetSBSParam().SBS_Cmag);
+        P1_EMA.resize(nPoint) = su2double(0.0);
+        MeanVelocityEMA.resize(nPoint, 3) = su2double(0.0);
+        DES_LengthScaleGrad.resize(nPoint, 3) = su2double(0.0);
+      }
     }
   }
 
