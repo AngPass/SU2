@@ -504,13 +504,14 @@ CNumerics::ResidualType<> CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsign
                                     turbNodes->GetLangevinSourceTerms(jPoint, iDim));
     }
     if (!IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
+      /*--- Strain-rate magnitude and LES filter width, used to scale the intensity of the
+            stochastic momentum source term (Stochastic Backscatter Model, SA-based hybrid
+            models). ---*/
       numerics->SetMaxDelta(turbNodes->GetDES_FilterWidth(iPoint), turbNodes->GetDES_FilterWidth(jPoint));
+      numerics->SetStrainMag(nodes->GetStrainMag(iPoint), nodes->GetStrainMag(jPoint));
     }
     if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().useMeanTurb) {
       numerics->SetAvgTurbKineticEnergy(turbNodes->GetMeanTurbKinEnergy(iPoint), turbNodes->GetMeanTurbKinEnergy(jPoint));
-    }
-    if (!IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().useMeanTurb) {
-      numerics->SetAvgEddyViscosity(turbNodes->GetMeanEddyViscosity(iPoint), turbNodes->GetMeanEddyViscosity(jPoint));
     }
 
     /*--- Fraction of turbulent kinetic energy that is modeled (as opposed to resolved), used to

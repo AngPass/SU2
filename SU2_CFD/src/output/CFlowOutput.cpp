@@ -4468,9 +4468,10 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
         su2double tke = (config->GetSBSParam().useMeanTurb) ? Node_Turb->GetMeanTurbKinEnergy(iPoint) : Node_Turb->GetSolution(iPoint, 0);
         tke_estim = (lesSensor > threshold) ? tke: 0.0;
       } else {
-        const su2double lengthscale = config->GetConst_DES() * Node_Turb->GetDES_FilterWidth(iPoint);
-        const su2double nutScale = (config->GetSBSParam().useMeanTurb) ? Node_Turb->GetMeanEddyViscosity(iPoint) : nu_t;
-        tke_estim = (lesSensor > threshold) ? pow(nutScale/lengthscale, 2) : 0.0;
+        /*--- Intensity of the stochastic forcing, scaled by the resolved strain rate and the LES
+         * filter width (rather than the eddy viscosity). ---*/
+        const su2double delta = Node_Turb->GetDES_FilterWidth(iPoint);
+        tke_estim = (lesSensor > threshold) ? pow(strainMag * delta, 2) : 0.0;
       }
       su2double csi_x, csi_y, csi_z;
       if (config->GetSBSParam().stochSourceType == LANGEVIN) {
