@@ -201,15 +201,12 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
     const su2double sigma = 2.0 / 3.0;
     const su2double cw1 = cb1/k2 + (1.0+cb2)/sigma;
 
-    /*--- nu~ is clamped to zero: tke is linear and unclamped in nu~ here, so without the clamp a
-     * negative excursion of nu~ is not damped the way it would be through a floored nut, and can
-     * produce a spuriously large forcing (this was causing the solver to diverge immediately). ---*/
     auto StochTKE = [&](const su2double* primVar, const su2double* scalarVar, const su2double* auxVarGrad,
                         su2double distDDES, su2double wallDist, su2double delta) {
       su2double velGradDelta = 0.0;
       for (unsigned short iDim = 0; iDim < nDim; iDim++)
         velGradDelta += primVar[1+iDim] * auxVarGrad[iDim];
-      return cw1 * max(scalarVar[0], 0.0) * (1.0/(distDDES*distDDES) - 1.0/(wallDist*wallDist)) * velGradDelta * delta;
+      return cw1 * scalarVar[0] * (1.0/(distDDES*distDDES) - 1.0/(wallDist*wallDist)) * velGradDelta * delta;
     };
 
     tke_i = (lesMode_i > sensorThreshold) ?

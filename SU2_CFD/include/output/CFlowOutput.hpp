@@ -410,8 +410,7 @@ protected:
     for (unsigned short iDim = 0; iDim < nDim; iDim++)
       velGradDelta += node_flow->GetVelocity(iPoint, iDim) * node_turb->GetAuxVarGradient(iPoint, 0, iDim);
 
-    /*--- nu~ clamped to zero: see the matching clamp and comment in CSourceBase_TurbSA::AddStochSource. ---*/
-    return cw1 * max(node_turb->GetSolution(iPoint, 0), 0.0) * (1.0/(distDDES*distDDES) - 1.0/(wallDist*wallDist)) *
+    return cw1 * node_turb->GetSolution(iPoint, 0) * (1.0/(distDDES*distDDES) - 1.0/(wallDist*wallDist)) *
            velGradDelta * delta;
   }
 
