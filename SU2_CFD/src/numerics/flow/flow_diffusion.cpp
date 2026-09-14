@@ -191,28 +191,12 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
     tke_i = (lesMode_i > sensorThreshold) ? turbKinEn_i : 0.0;
     tke_j = (lesMode_j > sensorThreshold) ? turbKinEn_j : 0.0;
   } else {
-    /*--- Same forcing intensity as the SA scalar equation source term (see
-     * CSourceBase_TurbSA::AddStochSource): under the f_v1=f_w=1 override that applies wherever
-     * lesMode > sensorThreshold (the only region where tke_i/j below is actually used), the
-     * formula reduces to cw1 * nu~ * (1/l_DDES^2 - 1/d_w^2) * (u.gradDelta) * Delta. ---*/
-    const su2double k2 = pow(0.41, 2);
-    const su2double cb1 = 0.1355;
-    const su2double cb2 = 0.622;
-    const su2double sigma = 2.0 / 3.0;
-    const su2double cw1 = cb1/k2 + (1.0+cb2)/sigma;
-
-    auto StochTKE = [&](const su2double* primVar, const su2double* scalarVar, const su2double* auxVarGrad,
-                        su2double distDDES, su2double wallDist, su2double delta) {
-      su2double velGradDelta = 0.0;
-      for (unsigned short iDim = 0; iDim < nDim; iDim++)
-        velGradDelta += primVar[1+iDim] * auxVarGrad[iDim];
-      return cw1 * scalarVar[0] * (1.0/(distDDES*distDDES) - 1.0/(wallDist*wallDist)) * velGradDelta * delta;
-    };
-
-    tke_i = (lesMode_i > sensorThreshold) ?
-            StochTKE(PrimVar_i, ScalarVar_i, AuxVar_Grad_i[0], dist_i, wallDist_i, maxDelta_i) : 0.0;
-    tke_j = (lesMode_j > sensorThreshold) ?
-            StochTKE(PrimVar_j, ScalarVar_j, AuxVar_Grad_j[0], dist_j, wallDist_j, maxDelta_j) : 0.0;
+    su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_i : Eddy_Viscosity_i / PrimVar_i[nDim+2];
+    su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_j : Eddy_Viscosity_j / PrimVar_j[nDim+2];
+    su2double lengthscale_i = config->GetConst_DES() * maxDelta_i;
+    su2double lengthscale_j = config->GetConst_DES() * maxDelta_j;
+    tke_i = (lesMode_i > sensorThreshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
+    tke_j = (lesMode_j > sensorThreshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
   }
   
   /*--- Scale the stochastic source term by the fraction of turbulent kinetic energy that is

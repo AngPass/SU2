@@ -383,38 +383,6 @@ protected:
   void SetFixedCLScreenOutput(const CConfig *config);
 
   /*!
-   * \brief Forcing intensity for the SA-based Stochastic Backscatter Model, i.e. the same
-   * quantity computed by CSourceBase_TurbSA::AddStochSource: under the f_v1=f_w=1 override that
-   * applies wherever the LES sensor is active (the only region where callers use this value),
-   * the formula reduces to cw1 * nu~ * (1/l_DDES^2 - 1/d_w^2) * (u.gradDelta) * Delta.
-   * \param iPoint - Index of the point.
-   * \param node_flow - Flow solver solution.
-   * \param node_turb - Turbulence-model solver solution.
-   * \param geometry - Geometrical definition of the problem.
-   * \return Forcing intensity (tke-like quantity) at the point.
-   */
-  inline su2double GetStochForcingTKE_SA(unsigned long iPoint, const CVariable *node_flow,
-                                         const CVariable *node_turb, const CGeometry *geometry) {
-
-    const su2double k2 = pow(0.41, 2);
-    const su2double cb1 = 0.1355;
-    const su2double cb2 = 0.622;
-    const su2double sigma = 2.0 / 3.0;
-    const su2double cw1 = cb1/k2 + (1.0+cb2)/sigma;
-
-    const su2double distDDES = node_turb->GetDES_LengthScale(iPoint);
-    const su2double wallDist = geometry->nodes->GetWall_Distance(iPoint);
-    const su2double delta = node_turb->GetDES_FilterWidth(iPoint);
-
-    su2double velGradDelta = 0.0;
-    for (unsigned short iDim = 0; iDim < nDim; iDim++)
-      velGradDelta += node_flow->GetVelocity(iPoint, iDim) * node_turb->GetAuxVarGradient(iPoint, 0, iDim);
-
-    return cw1 * node_turb->GetSolution(iPoint, 0) * (1.0/(distDDES*distDDES) - 1.0/(wallDist*wallDist)) *
-           velGradDelta * delta;
-  }
-
-  /*!
    * \brief Compute the power of the stochastic forcing (Backscatter Model).
    * \param iPoint - Index of the point.
    * \param config - Definition of the particular problem.
@@ -437,7 +405,11 @@ protected:
       su2double tke_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanTurbKinEnergy(iPoint) : node_turb->GetSolution(iPoint, 0);
       tkeEstim_i = (lesSensor_i > threshold) ? tke_i : 0.0;
     } else {
-      tkeEstim_i = (lesSensor_i > threshold) ? GetStochForcingTKE_SA(iPoint, node_flow, node_turb, geometry) : 0.0;
+      const su2double rho_i = node_flow->GetDensity(iPoint);
+      const su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(iPoint)
+                                                                    : node_flow->GetEddyViscosity(iPoint) / rho_i;
+      const su2double lengthscale_i = config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint);
+      tkeEstim_i = (lesSensor_i > threshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
     }
 
     su2double stochVec_i[3] = {0.0};
@@ -471,7 +443,11 @@ protected:
         su2double tke_j = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanTurbKinEnergy(jPoint) : node_turb->GetSolution(jPoint, 0);
         tkeEstim_j = (lesSensor_j > threshold) ? tke_j : 0.0;
       } else {
-        tkeEstim_j = (lesSensor_j > threshold) ? GetStochForcingTKE_SA(jPoint, node_flow, node_turb, geometry) : 0.0;
+        const su2double rho_j = node_flow->GetDensity(jPoint);
+        const su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(jPoint)
+                                                                      : node_flow->GetEddyViscosity(jPoint) / rho_j;
+        const su2double lengthscale_j = config->GetConst_DES() * node_turb->GetDES_FilterWidth(jPoint);
+        tkeEstim_j = (lesSensor_j > threshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
       }
 
       su2double stochVec_j[3] = {0.0};
@@ -531,7 +507,11 @@ protected:
       su2double tke_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanTurbKinEnergy(iPoint) : node_turb->GetSolution(iPoint, 0);
       tkeEstim_i = (lesSensor_i > threshold) ? tke_i : 0.0;
     } else {
-      tkeEstim_i = (lesSensor_i > threshold) ? GetStochForcingTKE_SA(iPoint, node_flow, node_turb, geometry) : 0.0;
+      const su2double rho_i = node_flow->GetDensity(iPoint);
+      const su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(iPoint)
+                                                                    : node_flow->GetEddyViscosity(iPoint) / rho_i;
+      const su2double lengthscale_i = config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint);
+      tkeEstim_i = (lesSensor_i > threshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
     }
 
     su2double stochVec_i[3] = {0.0};

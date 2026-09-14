@@ -236,17 +236,6 @@ void CTurbSASolver::Preprocessing(CGeometry *geometry, CSolver **solver_containe
     if (backscatter) {
       InitiateComms(geometry, config, MPI_QUANTITIES::DES_FILTERWIDTH);
       CompleteComms(geometry, config, MPI_QUANTITIES::DES_FILTERWIDTH);
-
-      /*--- Gradient of the LES filter width, used to scale the backscatter forcing by
-            (u . grad(Delta)) advected through the grid. ---*/
-      SU2_OMP_FOR_STAT(omp_chunk_size)
-      for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
-        nodes->SetAuxVar(iPoint, 0, nodes->GetDES_FilterWidth(iPoint));
-      }
-      END_SU2_OMP_FOR
-
-      if (config->GetKind_Gradient_Method() == GREEN_GAUSS) SetAuxVar_Gradient_GG(geometry, config);
-      else SetAuxVar_Gradient_LS(geometry, config);
     }
 
     /*--- Only needed by backscatter/ hybrid models with filtered stresses. ---*/
@@ -461,7 +450,6 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
         numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), 0.0);
         numerics->SetMaxDelta(nodes->GetDES_FilterWidth(iPoint), 0.0);
         numerics->SetWallDistance(geometry->nodes->GetWall_Distance(iPoint), 0.0);
-        numerics->SetAuxVarGrad(nodes->GetAuxVarGradient(iPoint), nullptr);
 
         /*--- Time-averaged eddy viscosity, used instead of the instantaneous one to scale the
               stochastic forcing when SBS_USE_MEAN_TURB is active. ---*/

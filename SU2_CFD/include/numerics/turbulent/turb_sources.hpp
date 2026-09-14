@@ -153,26 +153,11 @@ class CSourceBase_TurbSA : public CNumerics {
 
     su2double Cmag = config->GetSBSParam().SBS_Cmag;
 
-    /*--- Use the mean (time-averaged) eddy viscosity to scale the local turbulent time scale when requested. ---*/
+    /*--- Use the mean (time-averaged) eddy viscosity to scale the stochastic forcing when requested. ---*/
     su2double nut = config->GetSBSParam().useMeanTurb ? max(avg_eddy_visc_i, 1e-10)
                                                        : max(ScalarVar_i[0] * var.fv1, 1e-10);
     su2double lengthscale = config->GetConst_DES()*maxDelta_i;
-
-    /*--- Intensity of the stochastic forcing, scaled to match the extra SA destruction introduced
-     * by shortening the length scale from d_w to l_DDES, advected through the grid by the flow:
-     *   f_v1(4-3f_v1) c_w1 f_w nu~^2 (1/l_DDES^2 - 1/d_w^2) (u.gradDelta) Delta / (f_v1 nu~).
-     * f_v1 and one power of nu~ cancel algebraically; the form below is exactly equivalent and
-     * stays well-behaved as nu~ -> 0 (dist_i holds l_DDES here, see SetDistance() in the DDES
-     * branch of CTurbSASolver::Source_Residual). ---*/
-    AD::SetPreaccIn(&V_i[idx.Velocity()], nDim);
-    AD::SetPreaccIn(AuxVar_Grad_i[0], nDim);
-    AD::SetPreaccIn(wallDist_i, maxDelta_i);
-
-    const su2double velGradDelta = GeometryToolbox::DotProduct(nDim, &V_i[idx.Velocity()], AuxVar_Grad_i[0]);
-    const su2double invLenDDES2 = 1.0 / (dist_i * dist_i);
-    const su2double invWallDist2 = 1.0 / (wallDist_i * wallDist_i);
-    su2double tke = (4.0 - 3.0*var.fv1) * var.cw1 * var.fw * ScalarVar_i[0] *
-                     (invLenDDES2 - invWallDist2) * velGradDelta * maxDelta_i;
+    su2double tke = pow(nut/lengthscale, 2);
 
     const bool isLangevin = (config->GetSBSParam().stochSourceType == LANGEVIN);
 
@@ -188,12 +173,9 @@ class CSourceBase_TurbSA : public CNumerics {
 
     prod -= stochProdNut;
 
-    /*--- d(stochProdNut)/d(nu_tilde): tke is now linear in nu_tilde directly (not through nut),
-     * so stochProdNut ~ nu_tilde/nut. When nut is frozen (useMeanTurb) or pinned at its floor,
-     * that ratio is exactly linear in nu_tilde; when nut = fv1*nu_tilde unclamped (the common
-     * case), the two nu_tilde dependencies cancel and this path contributes nothing. ---*/
+    /*--- d(stochProdNut)/d(nu_tilde): stochProdNut = -(Cmag/2)(Omega.B)*nut, linear in nut here. ---*/
     const bool nutFromNuTilde = !config->GetSBSParam().useMeanTurb && (ScalarVar_i[0] * var.fv1 > 1e-10);
-    if (!nutFromNuTilde) Jacobian_i[0][0] -= stochProdNut / max(ScalarVar_i[0], 1e-10);
+    if (nutFromNuTilde) Jacobian_i[0][0] -= stochProdNut / nut;
 
     /*--- d(stochProdNut)/d(stochVar), the coupling AddStochSource introduces. ---*/
     if (isLangevin) {
