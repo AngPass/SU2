@@ -123,7 +123,7 @@ class CSourceBase_TurbSA : public CNumerics {
     const su2double nut = (meanTurb) ? max(avg_eddy_visc_i, 1e-10) : max(nue*var.fv1, 1e-10);
 
     su2double tRANS = min(wallDist*wallDist/nut, 10.0*timeStep);
-    su2double tLES = ct*delta/sqrt(max(nut*StrainMag_i, 1e-10));
+    su2double tLES = ct*delta*delta/nut;
     su2double tBlended = lesMode_i*tLES + (1.0-lesMode_i)*tRANS;
     su2double tRat = timeStep / tBlended;
     
@@ -153,13 +153,15 @@ class CSourceBase_TurbSA : public CNumerics {
 
     su2double Cmag = config->GetSBSParam().SBS_Cmag;
 
-    /*--- Use the mean (time-averaged) eddy viscosity to scale the stochastic forcing when requested. ---*/
+    /*--- Intensity of the stochastic forcing, scaled by the resolved strain rate and the LES
+     * filter width (rather than the eddy viscosity), so it no longer depends on nu_tilde. ---*/
+    su2double tke = pow(StrainMag_i * maxDelta_i, 2);
+
+    /*--- Use the mean (time-averaged) eddy viscosity, when requested, for the local turbulent
+     * time scale below. ---*/
     su2double nut = config->GetSBSParam().useMeanTurb ? max(avg_eddy_visc_i, 1e-10)
                                                        : max(ScalarVar_i[0] * var.fv1, 1e-10);
     su2double lengthscale = config->GetConst_DES()*maxDelta_i;
-
-    /*--- Intensity of the stochastic forcing. ---*/
-    su2double tke = nut * StrainMag_i;
 
     const bool isLangevin = (config->GetSBSParam().stochSourceType == LANGEVIN);
 
@@ -175,9 +177,11 @@ class CSourceBase_TurbSA : public CNumerics {
 
     prod -= stochProdNut;
 
-    /*--- d(stochProdNut)/d(nu_tilde): tke = nut*StrainMag_i and timeScale = lengthscale^2/(2*nut)
-     * cancel exactly in nut, so stochProdNut = -(Cmag/2)*StrainMag_i*(Omega.B)*lengthscale^2*fac
-     * has no direct dependence on nut (hence none on nu_tilde through this path). ---*/
+    /*--- d(stochProdNut)/d(nu_tilde): with tke now independent of nu_tilde, stochProdNut scales
+     * as 1/nut (through timeScale) instead of nut, so this approximate derivative has the
+     * opposite sign compared to the eddy-viscosity-based scaling. ---*/
+    const bool nutFromNuTilde = !config->GetSBSParam().useMeanTurb && (ScalarVar_i[0] * var.fv1 > 1e-10);
+    if (nutFromNuTilde) Jacobian_i[0][0] += stochProdNut / nut;
 
     /*--- d(stochProdNut)/d(stochVar), the coupling AddStochSource introduces. ---*/
     if (isLangevin) {
