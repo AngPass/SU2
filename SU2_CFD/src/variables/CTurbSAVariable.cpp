@@ -80,6 +80,12 @@ CTurbSAVariable::CTurbSAVariable(su2double val_nu_tilde, su2double val_muT, unsi
       smoothPhat.resize(nPoint, 3) = su2double(0.0);
       smoothShat.resize(nPoint, 3) = su2double(0.0);
       MeanEddyViscosity.resize(nPoint) = su2double(0.0);
+
+      /*--- Gradient of the LES filter width (maxDelta), needed to scale the stochastic forcing
+            by the rate of change of the filter width following the flow (u . grad(Delta)). ---*/
+      nAuxVar = 1;
+      AuxVar.resize(nPoint, nAuxVar) = su2double(0.0);
+      Grad_AuxVar.resize(nPoint, nAuxVar, nDim, 0.0);
     }
   }
 

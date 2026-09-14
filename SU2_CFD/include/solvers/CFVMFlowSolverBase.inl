@@ -505,6 +505,14 @@ CNumerics::ResidualType<> CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsign
     }
     if (!IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
       numerics->SetMaxDelta(turbNodes->GetDES_FilterWidth(iPoint), turbNodes->GetDES_FilterWidth(jPoint));
+
+      /*--- nu_tilde, l_DDES, wall distance and grad(maxDelta), needed to scale the stochastic
+            momentum source term the same way as the SA scalar equation source term, see
+            CSourceBase_TurbSA::AddStochSource. ---*/
+      numerics->SetScalarVar(turbNodes->GetSolution(iPoint), turbNodes->GetSolution(jPoint));
+      numerics->SetDistance(turbNodes->GetDES_LengthScale(iPoint), turbNodes->GetDES_LengthScale(jPoint));
+      numerics->SetWallDistance(geometry->nodes->GetWall_Distance(iPoint), geometry->nodes->GetWall_Distance(jPoint));
+      numerics->SetAuxVarGrad(turbNodes->GetAuxVarGradient(iPoint), turbNodes->GetAuxVarGradient(jPoint));
     }
     if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().useMeanTurb) {
       numerics->SetAvgTurbKineticEnergy(turbNodes->GetMeanTurbKinEnergy(iPoint), turbNodes->GetMeanTurbKinEnergy(jPoint));
