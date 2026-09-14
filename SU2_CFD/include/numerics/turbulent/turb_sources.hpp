@@ -168,10 +168,15 @@ class CSourceBase_TurbSA : public CNumerics {
     AD::SetPreaccIn(AuxVar_Grad_i[0], nDim);
     AD::SetPreaccIn(wallDist_i, maxDelta_i);
 
+    /*--- nu~ is clamped to zero here: the destruction-difference argument behind this scaling
+     * assumes nu~ >= 0, and without the clamp a negative excursion of nu~ (common transiently,
+     * e.g. right after initialization) is NOT damped by the nut floor below (unlike the previous
+     * eddy-viscosity-based scaling, tke here is linear and unclamped in nu~), which was causing
+     * the solver to diverge within the first inner iteration. ---*/
     const su2double velGradDelta = GeometryToolbox::DotProduct(nDim, &V_i[idx.Velocity()], AuxVar_Grad_i[0]);
     const su2double invLenDDES2 = 1.0 / (dist_i * dist_i);
     const su2double invWallDist2 = 1.0 / (wallDist_i * wallDist_i);
-    su2double tke = (4.0 - 3.0*var.fv1) * var.cw1 * var.fw * ScalarVar_i[0] *
+    su2double tke = (4.0 - 3.0*var.fv1) * var.cw1 * var.fw * max(ScalarVar_i[0], 0.0) *
                      (invLenDDES2 - invWallDist2) * velGradDelta * maxDelta_i;
 
     const bool isLangevin = (config->GetSBSParam().stochSourceType == LANGEVIN);
@@ -188,12 +193,11 @@ class CSourceBase_TurbSA : public CNumerics {
 
     prod -= stochProdNut;
 
-    /*--- d(stochProdNut)/d(nu_tilde): tke is now linear in nu_tilde directly (not through nut),
-     * so stochProdNut ~ nu_tilde/nut. When nut is frozen (useMeanTurb) or pinned at its floor,
-     * that ratio is exactly linear in nu_tilde; when nut = fv1*nu_tilde unclamped (the common
-     * case), the two nu_tilde dependencies cancel and this path contributes nothing. ---*/
-    const bool nutFromNuTilde = !config->GetSBSParam().useMeanTurb && (ScalarVar_i[0] * var.fv1 > 1e-10);
-    if (!nutFromNuTilde) Jacobian_i[0][0] -= stochProdNut / max(ScalarVar_i[0], 1e-10);
+    /*--- d(stochProdNut)/d(nu_tilde): with the nu~ >= 0 clamp above, tke/nut is piecewise either
+     * exactly constant in nu~ (nu~ > 0, since tke ~ nu~ and nut ~ nu~ or is frozen, and their
+     * ratio's nu~-dependence cancels or is otherwise ill-conditioned right at the clamp) or
+     * exactly zero (nu~ <= 0). No well-conditioned approximate derivative is worth adding here;
+     * the base SA production/destruction Jacobian already sets Jacobian_i[0][0]. ---*/
 
     /*--- d(stochProdNut)/d(stochVar), the coupling AddStochSource introduces. ---*/
     if (isLangevin) {
