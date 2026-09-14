@@ -232,10 +232,14 @@ void CTurbSASolver::Preprocessing(CGeometry *geometry, CSolver **solver_containe
     bool backscatterInBox = config->GetSBSParam().StochBackscatterInBox;
     if (backscatter && backscatterInBox) SetBackscatterInBox(config, geometry);
 
-    /*--- maxDelta must reach halo points for SetStochSourceMom. ---*/
+    /*--- maxDelta and the DES length scale must reach halo points for SetStochSourceMom
+          (edge-based, so it can touch a halo point's l_DDES/maxDelta on the other side). ---*/
     if (backscatter) {
       InitiateComms(geometry, config, MPI_QUANTITIES::DES_FILTERWIDTH);
       CompleteComms(geometry, config, MPI_QUANTITIES::DES_FILTERWIDTH);
+
+      InitiateComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
+      CompleteComms(geometry, config, MPI_QUANTITIES::DES_LENGTHSCALE);
 
       /*--- Gradient of the LES filter width, used to scale the backscatter forcing by
             (u . grad(Delta)) advected through the grid. ---*/
