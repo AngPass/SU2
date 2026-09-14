@@ -191,10 +191,12 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
     tke_i = (lesMode_i > sensorThreshold) ? turbKinEn_i : 0.0;
     tke_j = (lesMode_j > sensorThreshold) ? turbKinEn_j : 0.0;
   } else {
-    /*--- Intensity of the stochastic forcing, scaled by the resolved strain rate and the LES
-     * filter width (rather than the eddy viscosity). ---*/
-    tke_i = (lesMode_i > sensorThreshold) ? pow(StrainMag_i * maxDelta_i, 2) : 0.0;
-    tke_j = (lesMode_j > sensorThreshold) ? pow(StrainMag_j * maxDelta_j, 2) : 0.0;
+    su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_i : Eddy_Viscosity_i / PrimVar_i[nDim+2];
+    su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_j : Eddy_Viscosity_j / PrimVar_j[nDim+2];
+    su2double lengthscale_i = config->GetConst_DES() * maxDelta_i;
+    su2double lengthscale_j = config->GetConst_DES() * maxDelta_j;
+    tke_i = (lesMode_i > sensorThreshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
+    tke_j = (lesMode_j > sensorThreshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
   }
   
   /*--- Scale the stochastic source term by the fraction of turbulent kinetic energy that is

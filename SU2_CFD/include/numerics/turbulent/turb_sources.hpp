@@ -153,15 +153,11 @@ class CSourceBase_TurbSA : public CNumerics {
 
     su2double Cmag = config->GetSBSParam().SBS_Cmag;
 
-    /*--- Intensity of the stochastic forcing, scaled by the resolved strain rate and the LES
-     * filter width (rather than the eddy viscosity), so it no longer depends on nu_tilde. ---*/
-    su2double tke = pow(StrainMag_i * maxDelta_i, 2);
-
-    /*--- Use the mean (time-averaged) eddy viscosity, when requested, for the local turbulent
-     * time scale below. ---*/
+    /*--- Use the mean (time-averaged) eddy viscosity to scale the stochastic forcing when requested. ---*/
     su2double nut = config->GetSBSParam().useMeanTurb ? max(avg_eddy_visc_i, 1e-10)
                                                        : max(ScalarVar_i[0] * var.fv1, 1e-10);
     su2double lengthscale = config->GetConst_DES()*maxDelta_i;
+    su2double tke = pow(nut/lengthscale, 2);
 
     const bool isLangevin = (config->GetSBSParam().stochSourceType == LANGEVIN);
 
@@ -177,11 +173,9 @@ class CSourceBase_TurbSA : public CNumerics {
 
     prod -= stochProdNut;
 
-    /*--- d(stochProdNut)/d(nu_tilde): with tke now independent of nu_tilde, stochProdNut scales
-     * as 1/nut (through timeScale) instead of nut, so this approximate derivative has the
-     * opposite sign compared to the eddy-viscosity-based scaling. ---*/
+    /*--- d(stochProdNut)/d(nu_tilde): stochProdNut = -(Cmag/2)(Omega.B)*nut, linear in nut here. ---*/
     const bool nutFromNuTilde = !config->GetSBSParam().useMeanTurb && (ScalarVar_i[0] * var.fv1 > 1e-10);
-    if (nutFromNuTilde) Jacobian_i[0][0] += stochProdNut / nut;
+    if (nutFromNuTilde) Jacobian_i[0][0] -= stochProdNut / nut;
 
     /*--- d(stochProdNut)/d(stochVar), the coupling AddStochSource introduces. ---*/
     if (isLangevin) {

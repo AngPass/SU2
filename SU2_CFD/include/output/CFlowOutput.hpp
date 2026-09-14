@@ -405,10 +405,11 @@ protected:
       su2double tke_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanTurbKinEnergy(iPoint) : node_turb->GetSolution(iPoint, 0);
       tkeEstim_i = (lesSensor_i > threshold) ? tke_i : 0.0;
     } else {
-      /*--- Intensity of the stochastic forcing, scaled by the resolved strain rate and the LES
-       * filter width (rather than the eddy viscosity). ---*/
-      const su2double delta_i = node_turb->GetDES_FilterWidth(iPoint);
-      tkeEstim_i = (lesSensor_i > threshold) ? pow(node_flow->GetStrainMag(iPoint) * delta_i, 2) : 0.0;
+      const su2double rho_i = node_flow->GetDensity(iPoint);
+      const su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(iPoint)
+                                                                    : node_flow->GetEddyViscosity(iPoint) / rho_i;
+      const su2double lengthscale_i = config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint);
+      tkeEstim_i = (lesSensor_i > threshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
     }
 
     su2double stochVec_i[3] = {0.0};
@@ -442,8 +443,11 @@ protected:
         su2double tke_j = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanTurbKinEnergy(jPoint) : node_turb->GetSolution(jPoint, 0);
         tkeEstim_j = (lesSensor_j > threshold) ? tke_j : 0.0;
       } else {
-        const su2double delta_j = node_turb->GetDES_FilterWidth(jPoint);
-        tkeEstim_j = (lesSensor_j > threshold) ? pow(node_flow->GetStrainMag(jPoint) * delta_j, 2) : 0.0;
+        const su2double rho_j = node_flow->GetDensity(jPoint);
+        const su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(jPoint)
+                                                                      : node_flow->GetEddyViscosity(jPoint) / rho_j;
+        const su2double lengthscale_j = config->GetConst_DES() * node_turb->GetDES_FilterWidth(jPoint);
+        tkeEstim_j = (lesSensor_j > threshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
       }
 
       su2double stochVec_j[3] = {0.0};
@@ -503,10 +507,11 @@ protected:
       su2double tke_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanTurbKinEnergy(iPoint) : node_turb->GetSolution(iPoint, 0);
       tkeEstim_i = (lesSensor_i > threshold) ? tke_i : 0.0;
     } else {
-      /*--- Intensity of the stochastic forcing, scaled by the resolved strain rate and the LES
-       * filter width (rather than the eddy viscosity). ---*/
-      const su2double delta_i = node_turb->GetDES_FilterWidth(iPoint);
-      tkeEstim_i = (lesSensor_i > threshold) ? pow(node_flow->GetStrainMag(iPoint) * delta_i, 2) : 0.0;
+      const su2double rho_i = node_flow->GetDensity(iPoint);
+      const su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(iPoint)
+                                                                    : node_flow->GetEddyViscosity(iPoint) / rho_i;
+      const su2double lengthscale_i = config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint);
+      tkeEstim_i = (lesSensor_i > threshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
     }
 
     su2double stochVec_i[3] = {0.0};
