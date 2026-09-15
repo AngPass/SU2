@@ -66,8 +66,14 @@ protected:
   VectorType smoothDiag;         /*!< \brief Diagonal coefficient of the system matrix for the Laplacian smoothing. */
   MatrixType smoothPhat;         /*!< \brief Jacobi-preconditioned BiCGSTAB search direction "p" for the Laplacian smoothing. */
   MatrixType smoothShat;         /*!< \brief Jacobi-preconditioned BiCGSTAB stabilizer direction "s" for the Laplacian smoothing. */
-  su2double MAXNNEIGHBORS = 32;
+
 public:
+  /*!< \brief Max number of point-to-point neighbors supported by the fixed-size smoothMatrix/
+   *          smoothBetaVec storage used for the Laplacian smoothing of the Langevin source term
+   *          (Stochastic Backscatter Model). The solver must reject (not silently overrun) any
+   *          point whose actual mesh connectivity exceeds this. */
+  static constexpr unsigned short MAXNNEIGHBORS = 32;
+
   /*!
    * \brief Constructor of the class.
    * \param[in] kine - Turbulence kinetic energy (k) (initialization value).

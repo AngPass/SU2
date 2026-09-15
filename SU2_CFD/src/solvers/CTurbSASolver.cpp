@@ -1802,8 +1802,19 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
       su2double b2 = cDelta * maxDelta * maxDelta;
       su2double volume_iPoint = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
       auto coord_i = geometry->nodes->GetCoord(iPoint);
+      const auto nNeighbors = geometry->nodes->GetnPoint(iPoint);
+
+      /*--- smoothMatrix/smoothBetaVec (see CTurbSAVariable) are fixed-size, MAXNNEIGHBORS wide;
+            silently exceeding that bound here would overrun those buffers. ---*/
+      if (nNeighbors > CTurbSAVariable::MAXNNEIGHBORS) {
+        SU2_MPI::Error("Point " + std::to_string(iPoint) + " has " + std::to_string(nNeighbors) +
+                       " point-to-point neighbors, exceeding CTurbSAVariable::MAXNNEIGHBORS (" +
+                       std::to_string(CTurbSAVariable::MAXNNEIGHBORS) + "). Increase MAXNNEIGHBORS "
+                       "in CTurbSAVariable.hpp and recompile.", CURRENT_FUNCTION);
+      }
+
       su2double diag = 1.0;
-      for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
+      for (unsigned short iNode = 0; iNode < nNeighbors; iNode++) {
         auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
         auto coord_j = geometry->nodes->GetCoord(jPoint);
         auto iEdge = geometry->nodes->GetEdge(iPoint, iNode);
