@@ -60,6 +60,12 @@ class CScalarSolver : public CSolver {
   const bool Conservative; /*!< \brief Transported Variable is conservative. Solution has to be multiplied with rho. */
   const bool BoundedScalar; /*!< \brief Whether the derived solver uses the bounded-scalar convective scheme. */
 
+  /*!< \brief Number of leading solution variables (out of nVar) that MUSCL_TURB reconstructs and limits.
+   *          0 (default) means "all nVar". Derived solvers set this to fewer than nVar to keep trailing
+   *          equations on a first-order/centered treatment regardless of MUSCL_TURB, e.g. the Stochastic
+   *          Backscatter Model's Langevin components, which must always use a centered scheme. */
+  unsigned short nVarConvRecon = 0;
+
   const CPrimitiveIndices<unsigned short> prim_idx; /*!< \brief Indices of the primitive flow variables. */
 
   vector<su2matrix<su2double*> > SlidingState; // vector of matrix of pointers... inner dim alloc'd elsewhere (welcome, to the twilight zone)

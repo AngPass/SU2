@@ -259,7 +259,12 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
         }
 
         if (muscl) {
-          /*--- Reconstruct scalar variables. ---*/
+          /*--- Reconstruct scalar variables. Only the leading nVarRecon components are MUSCL-reconstructed;
+                any trailing ones (e.g. the Stochastic Backscatter Model's Langevin components, see
+                nVarConvRecon) must always keep their raw nodal values, since those equations rely on a
+                centered discretization (with 4th-order JST-type dissipation) independent of MUSCL_TURB. ---*/
+
+          const unsigned short nVarRecon = (nVarConvRecon != 0) ? nVarConvRecon : nVar;
 
           auto Gradient_i = nodes->GetGradient_Reconstruction(iPoint);
           auto Gradient_j = nodes->GetGradient_Reconstruction(jPoint);
@@ -269,7 +274,7 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
             Limiter_j = nodes->GetLimiter(jPoint);
           }
 
-          for (auto iVar = 0u; iVar < nVar; iVar++) {
+          for (auto iVar = 0u; iVar < nVarRecon; iVar++) {
             const su2double U_ij = Scalar_j[iVar] - Scalar_i[iVar];
 
             su2double Project_Grad_i = MUSCL_Reconstruction(Gradient_i[iVar], Vector_ij, U_ij, kappa, musclRamp);
@@ -282,6 +287,10 @@ void CScalarSolver<VariableType>::Upwind_Residual(CGeometry* geometry, CSolver**
 
             solution_i[iVar] = Scalar_i[iVar] + 0.5 * Project_Grad_i;
             solution_j[iVar] = Scalar_j[iVar] - 0.5 * Project_Grad_j;
+          }
+          for (auto iVar = nVarRecon; iVar < nVar; iVar++) {
+            solution_i[iVar] = Scalar_i[iVar];
+            solution_j[iVar] = Scalar_j[iVar];
           }
 
           numerics->SetScalarVar(solution_i, solution_j);

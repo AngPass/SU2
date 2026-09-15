@@ -61,6 +61,10 @@ CTurbSASolver::CTurbSASolver(CGeometry *geometry, CConfig *config, unsigned shor
   if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
     nVar += 3;
     nVarGrad = nPrimVar = nVar;
+
+    /*--- Only nu_tilde (index 0) is MUSCL-reconstructed when MUSCL_TURB=YES; the 3 Langevin
+          components always keep their raw nodal values, see nVarConvRecon. ---*/
+    nVarConvRecon = 1;
   }
 
   /*--- Single grid simulation ---*/
