@@ -83,12 +83,41 @@ void CNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, C
 
   CommonPreprocessing(geometry, solver_container, config, iMesh, iRKStep, RunTime_EqSystem, Output);
 
-  /*--- Exchange the mean strain-rate tensor once per physical time step, since it is only
-        updated once per physical time step (hybrid RANS/LES stress filtering). ---*/
+  /*--- Rebuild the mean (deviatoric) strain-rate tensor from the gradient of the time-averaged
+        velocity, once per physical time step, since the mean velocity (persisted/restored via
+        WRT_RESTART_AVERAGES, see CFlowOutput::LoadTimeAveragedData) is only updated once per
+        physical time step (hybrid RANS/LES stress filtering). The mean velocity itself is
+        exchanged first so the gradient stencil has valid halo values; the gradient computation
+        communicates its own result (including at halo points) internally, so the strain tensor
+        built from it below needs no separate communication. ---*/
 
   if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses && InnerIter == 0) {
-    InitiateComms(geometry, config, MPI_QUANTITIES::MEAN_STRAIN_RATE);
-    CompleteComms(geometry, config, MPI_QUANTITIES::MEAN_STRAIN_RATE);
+    InitiateComms(geometry, config, MPI_QUANTITIES::MEAN_VELOCITY);
+    CompleteComms(geometry, config, MPI_QUANTITIES::MEAN_VELOCITY);
+
+    if (config->GetKind_Gradient_Method() == GREEN_GAUSS) {
+      computeGradientsGreenGauss(this, MPI_QUANTITIES::MEAN_VELOCITY_GRADIENT, PERIODIC_MEAN_VEL_GG, *geometry, *config,
+                                  nodes->GetMeanVelocity(), 0, nDim, 0, nodes->GetMeanVelocityGradient());
+    } else {
+      computeGradientsLeastSquares(this, MPI_QUANTITIES::MEAN_VELOCITY_GRADIENT, PERIODIC_MEAN_VEL_LS, *geometry, *config,
+                                   true, nodes->GetMeanVelocity(), 0, nDim, 0, nodes->GetMeanVelocityGradient(),
+                                   nodes->GetRmatrix());
+    }
+
+    SU2_OMP_FOR_STAT(omp_chunk_size)
+    for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
+      const auto grad = nodes->GetMeanVelocityGradient(iPoint);
+      const su2double div = grad(0,0) + grad(1,1) + (nDim == 3 ? grad(2,2) : 0.0);
+      nodes->SetMeanStrainRate(iPoint, 0, 2.0*grad(0,0) - (2.0/3.0)*div);
+      nodes->SetMeanStrainRate(iPoint, 1, 2.0*grad(1,1) - (2.0/3.0)*div);
+      nodes->SetMeanStrainRate(iPoint, 3, grad(0,1) + grad(1,0));
+      if (nDim == 3) {
+        nodes->SetMeanStrainRate(iPoint, 2, 2.0*grad(2,2) - (2.0/3.0)*div);
+        nodes->SetMeanStrainRate(iPoint, 4, grad(0,2) + grad(2,0));
+        nodes->SetMeanStrainRate(iPoint, 5, grad(1,2) + grad(2,1));
+      }
+    }
+    END_SU2_OMP_FOR
   }
 
   /*--- Compute gradient for MUSCL reconstruction, for output (i.e. the

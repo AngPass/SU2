@@ -261,6 +261,19 @@ void CSolver::GetPeriodicCommCountAndType(const CConfig* config,
       ICOUNT           = nPrimVarGrad;
       JCOUNT           = nDim;
       break;
+    case PERIODIC_MEAN_VEL_GG:
+      COUNT_PER_POINT  = nDim*nDim;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      ICOUNT           = nDim;
+      JCOUNT           = nDim;
+      break;
+    case PERIODIC_MEAN_VEL_LS:
+    case PERIODIC_MEAN_VEL_ULS:
+      COUNT_PER_POINT  = nDim*nDim + nDim*nDim;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      ICOUNT           = nDim;
+      JCOUNT           = nDim;
+      break;
     case PERIODIC_LIM_PRIM_1:
       COUNT_PER_POINT  = nPrimVarGrad*2;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
@@ -301,6 +314,11 @@ namespace PeriodicCommHelpers {
       case PERIODIC_SOL_ULS:
         return nodes->GetGradient();
         break;
+      case PERIODIC_MEAN_VEL_GG:
+      case PERIODIC_MEAN_VEL_LS:
+      case PERIODIC_MEAN_VEL_ULS:
+        return nodes->GetMeanVelocityGradient();
+        break;
       default:
         return nodes->GetGradient_Reconstruction();
         break;
@@ -318,6 +336,11 @@ namespace PeriodicCommHelpers {
       case PERIODIC_LIM_PRIM_1:
       case PERIODIC_LIM_PRIM_2:
         return nodes->GetPrimitive();
+        break;
+      case PERIODIC_MEAN_VEL_GG:
+      case PERIODIC_MEAN_VEL_LS:
+      case PERIODIC_MEAN_VEL_ULS:
+        return nodes->GetMeanVelocity();
         break;
       default:
         return nodes->GetSolution();
@@ -356,6 +379,14 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
 
   bool boundary_i, boundary_j;
   bool weighted = true;
+
+  /*--- MEAN_VEL_* fields are purely a velocity vector (no leading scalar like
+        Temperature/density), so the vector components to be rotated under
+        rotationally-periodic transforms start at index 0, unlike SOLUTION and
+        PRIMITIVE which carry the vector starting at index 1. ---*/
+  const unsigned short velOffset = (commType == PERIODIC_MEAN_VEL_GG ||
+                                     commType == PERIODIC_MEAN_VEL_LS ||
+                                     commType == PERIODIC_MEAN_VEL_ULS) ? 0 : 1;
 
   unsigned short iVar, jVar, iDim;
   unsigned short nNeighbor       = 0;
@@ -725,6 +756,7 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
           case PERIODIC_SOL_GG_R:
           case PERIODIC_PRIM_GG:
           case PERIODIC_PRIM_GG_R:
+          case PERIODIC_MEAN_VEL_GG:
 
             /*--- Access and rotate the partial G-G gradient. These will be
              summed on both sides of the periodic faces before dividing
@@ -747,13 +779,13 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
             if (rotate_periodic) {
               for (iDim = 0; iDim < nDim; iDim++) {
                 su2double d_diDim[3] = {0.0};
-                for (iVar = 1; iVar < 1+nDim; ++iVar) {
-                  d_diDim[iVar-1] = rotBlock(iVar, iDim);
+                for (iVar = velOffset; iVar < velOffset+nDim; ++iVar) {
+                  d_diDim[iVar-velOffset] = rotBlock(iVar, iDim);
                 }
                 su2double rotated[3] = {0.0};
                 Rotate(zeros, d_diDim, rotated);
-                for (iVar = 1; iVar < 1+nDim; ++iVar) {
-                  rotBlock(iVar, iDim) = rotated[iVar-1];
+                for (iVar = velOffset; iVar < velOffset+nDim; ++iVar) {
+                  rotBlock(iVar, iDim) = rotated[iVar-velOffset];
                 }
               }
             }
@@ -772,6 +804,7 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
           case PERIODIC_SOL_LS_R: case PERIODIC_SOL_ULS_R:
           case PERIODIC_PRIM_LS: case PERIODIC_PRIM_ULS:
           case PERIODIC_PRIM_LS_R: case PERIODIC_PRIM_ULS_R:
+          case PERIODIC_MEAN_VEL_LS: case PERIODIC_MEAN_VEL_ULS:
 
             /*--- For L-S gradient calculations with rotational periodicity,
              we will need to rotate the x,y,z components. To make the process
@@ -786,6 +819,7 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
               case PERIODIC_SOL_ULS_R:
               case PERIODIC_PRIM_ULS:
               case PERIODIC_PRIM_ULS_R:
+              case PERIODIC_MEAN_VEL_ULS:
                 weighted = false;
                 break;
               default:
@@ -811,7 +845,7 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
               rotPrim_i[iVar] = field(iPoint, iVar);
 
             if (rotate_periodic) {
-              Rotate(zeros, &field(iPoint,1), &rotPrim_i[1]);
+              Rotate(zeros, &field(iPoint,velOffset), &rotPrim_i[velOffset]);
             }
 
             /*--- Inizialization of variables ---*/
@@ -846,7 +880,7 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
                   rotPrim_j[iVar] = field(jPoint,iVar);
 
                 if (rotate_periodic) {
-                  Rotate(zeros, &field(jPoint,1), &rotPrim_j[1]);
+                  Rotate(zeros, &field(jPoint,velOffset), &rotPrim_j[velOffset]);
                 }
 
                 if (weighted) {
@@ -1233,6 +1267,7 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
             case PERIODIC_SOL_GG_R:
             case PERIODIC_PRIM_GG:
             case PERIODIC_PRIM_GG_R:
+            case PERIODIC_MEAN_VEL_GG:
 
               /*--- For G-G, we accumulate partial gradients then compute
                the final value using the entire volume of the periodic cell. ---*/
@@ -1247,6 +1282,7 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
             case PERIODIC_SOL_LS_R: case PERIODIC_SOL_ULS_R:
             case PERIODIC_PRIM_LS: case PERIODIC_PRIM_ULS:
             case PERIODIC_PRIM_LS_R: case PERIODIC_PRIM_ULS_R:
+            case PERIODIC_MEAN_VEL_LS: case PERIODIC_MEAN_VEL_ULS:
 
               /*--- For L-S, we build the upper triangular matrix and the
                r.h.s. vector by accumulating from all periodic partial
@@ -1376,8 +1412,12 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       COUNT_PER_POINT  = 1;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
-    case MPI_QUANTITIES::MEAN_STRAIN_RATE:
-      COUNT_PER_POINT  = 6;
+    case MPI_QUANTITIES::MEAN_VELOCITY:
+      COUNT_PER_POINT  = nDim;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      break;
+    case MPI_QUANTITIES::MEAN_VELOCITY_GRADIENT:
+      COUNT_PER_POINT  = nDim*nDim;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case MPI_QUANTITIES::STOCH_SOURCE_LANG:
@@ -1449,6 +1489,7 @@ namespace CommHelpers {
       case MPI_QUANTITIES::PRIMITIVE_GRADIENT: return nodes->GetGradient_Primitive();
       case MPI_QUANTITIES::PRIMITIVE_GRAD_REC: return nodes->GetGradient_Reconstruction();
       case MPI_QUANTITIES::AUXVAR_GRADIENT: return nodes->GetAuxVarGradient();
+      case MPI_QUANTITIES::MEAN_VELOCITY_GRADIENT: return nodes->GetMeanVelocityGradient();
       default: return nodes->GetGradient();
     }
   }
@@ -1546,9 +1587,9 @@ void CSolver::InitiateComms(CGeometry *geometry,
           case MPI_QUANTITIES::MEAN_EDDY_VISC:
             bufDSend[buf_offset] = base_nodes->GetMeanEddyViscosity(iPoint);
             break;
-          case MPI_QUANTITIES::MEAN_STRAIN_RATE:
-            for (iVar = 0; iVar < 6; iVar++)
-              bufDSend[buf_offset+iVar] = base_nodes->GetMeanStrainRate(iPoint, iVar);
+          case MPI_QUANTITIES::MEAN_VELOCITY:
+            for (iDim = 0; iDim < nDim; iDim++)
+              bufDSend[buf_offset+iDim] = base_nodes->GetMeanVelocity(iPoint, iDim);
             break;
           case MPI_QUANTITIES::STOCH_SOURCE_LANG:
             for (iDim = 0; iDim < nDim; iDim++)
@@ -1599,6 +1640,7 @@ void CSolver::InitiateComms(CGeometry *geometry,
           case MPI_QUANTITIES::SOLUTION_GRAD_REC:
           case MPI_QUANTITIES::PRIMITIVE_GRAD_REC:
           case MPI_QUANTITIES::AUXVAR_GRADIENT:
+          case MPI_QUANTITIES::MEAN_VELOCITY_GRADIENT:
             for (iVar = 0; iVar < nVarGrad; iVar++)
               for (iDim = 0; iDim < nDim; iDim++)
                 bufDSend[buf_offset+iVar*nDim+iDim] = gradient(iPoint, iVar, iDim);
@@ -1734,9 +1776,9 @@ void CSolver::CompleteComms(CGeometry *geometry,
           case MPI_QUANTITIES::MEAN_EDDY_VISC:
             base_nodes->SetMeanEddyViscosity(iPoint, bufDRecv[buf_offset]);
             break;
-          case MPI_QUANTITIES::MEAN_STRAIN_RATE:
-            for (iVar = 0; iVar < 6; iVar++)
-              base_nodes->SetMeanStrainRate(iPoint, iVar, bufDRecv[buf_offset+iVar]);
+          case MPI_QUANTITIES::MEAN_VELOCITY:
+            for (iDim = 0; iDim < nDim; iDim++)
+              base_nodes->SetMeanVelocity(iPoint, iDim, bufDRecv[buf_offset+iDim]);
             break;
           case MPI_QUANTITIES::STOCH_SOURCE_LANG:
             for (iDim = 0; iDim < nDim; iDim++)
@@ -1787,6 +1829,7 @@ void CSolver::CompleteComms(CGeometry *geometry,
           case MPI_QUANTITIES::SOLUTION_GRAD_REC:
           case MPI_QUANTITIES::PRIMITIVE_GRAD_REC:
           case MPI_QUANTITIES::AUXVAR_GRADIENT:
+          case MPI_QUANTITIES::MEAN_VELOCITY_GRADIENT:
             for (iVar = 0; iVar < nVarGrad; iVar++)
               for (iDim = 0; iDim < nDim; iDim++)
                 gradient(iPoint,iVar,iDim) = bufDRecv[buf_offset+iVar*nDim+iDim];

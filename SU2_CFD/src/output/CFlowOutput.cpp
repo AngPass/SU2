@@ -4292,10 +4292,14 @@ void CFlowOutput::SetTimeAveragedFields(const CConfig *config) {
     }
 
     if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses) {
-      /*--- Mean (deviatoric) strain-rate tensor built from the time-averaged velocity gradient, used
-            to high-pass filter the modeled stresses (see CAvgGrad_Base::SetStressTensor): the low-frequency
-            part of the eddy-viscosity closure is evaluated with these mean strain components and the
-            current (instantaneous) eddy viscosity, then subtracted from the instantaneous stress. ---*/
+      /*--- Mean (deviatoric) strain-rate tensor, built by the solver from the gradient of the
+            time-averaged velocity (see CNSSolver/CIncNSSolver::Preprocessing) and used to high-pass
+            filter the modeled stresses (see CAvgGrad_Base::SetStressTensor): the low-frequency part
+            of the eddy-viscosity closure is evaluated with these mean strain components and the
+            current (instantaneous) eddy viscosity, then subtracted from the instantaneous stress.
+            Exposed here purely as a read-only diagnostic (not averaged by COutput itself, and not
+            part of the WRT_RESTART_AVERAGES companion file: MEAN_VELOCITY-X/Y/Z is persisted
+            instead, see LoadTimeAveragedData below). ---*/
       AddVolumeOutput("MEAN_STRAIN_XX", "MeanStrainRate_XX", "TIME_AVERAGE", "Mean strain-rate tensor xx-component");
       AddVolumeOutput("MEAN_STRAIN_YY", "MeanStrainRate_YY", "TIME_AVERAGE", "Mean strain-rate tensor yy-component");
       AddVolumeOutput("MEAN_STRAIN_XY", "MeanStrainRate_XY", "TIME_AVERAGE", "Mean strain-rate tensor xy-component");
@@ -4335,6 +4339,17 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
   SetAvgVolumeOutputValue("MEAN_VELOCITY-Y", iPoint, Node_Flow->GetVelocity(iPoint,1));
   if (nDim == 3)
     SetAvgVolumeOutputValue("MEAN_VELOCITY-Z", iPoint, Node_Flow->GetVelocity(iPoint,2));
+
+  if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses) {
+    /*--- Feed the running-average velocity (persisted/restored via WRT_RESTART_AVERAGES) back into
+          the flow solver's node storage: CNSSolver/CIncNSSolver::Preprocessing takes its gradient,
+          once per physical time step, to rebuild the mean strain-rate tensor used to high-pass
+          filter the modeled stresses (FILTER_STRESSES). ---*/
+    Node_Flow->SetMeanVelocity(iPoint, 0, GetVolumeOutputValue("MEAN_VELOCITY-X", iPoint));
+    Node_Flow->SetMeanVelocity(iPoint, 1, GetVolumeOutputValue("MEAN_VELOCITY-Y", iPoint));
+    if (nDim == 3)
+      Node_Flow->SetMeanVelocity(iPoint, 2, GetVolumeOutputValue("MEAN_VELOCITY-Z", iPoint));
+  }
 
   SetAvgVolumeOutputValue("MEAN_PRESSURE", iPoint, Node_Flow->GetPressure(iPoint));
   SetAvgVolumeOutputValue("RMS_U", iPoint, pow(Node_Flow->GetVelocity(iPoint,0),2));
@@ -4391,25 +4406,18 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
     }
 
     if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses) {
-      /*--- Time-average the (kinematic) strain-rate tensor itself, not the modeled stress. Since
-            time-averaging is linear, this running average equals the strain-rate tensor built from
-            the time-averaged velocity gradient, <dUi/dxj> = d<Ui>/dxj. Combined with the current
-            (instantaneous) eddy viscosity in CAvgGrad_Base::SetStressTensor, this isolates the part
-            of the eddy-viscosity closure driven by the mean flow, filtered out of the instantaneous
-            diffusive stress. ---*/
-      SetAvgVolumeOutputValue("MEAN_STRAIN_XX", iPoint, strain_xx);
-      SetAvgVolumeOutputValue("MEAN_STRAIN_YY", iPoint, strain_yy);
-      SetAvgVolumeOutputValue("MEAN_STRAIN_XY", iPoint, strain_xy);
-      Node_Flow->SetMeanStrainRate(iPoint, 0, GetVolumeOutputValue("MEAN_STRAIN_XX", iPoint));
-      Node_Flow->SetMeanStrainRate(iPoint, 1, GetVolumeOutputValue("MEAN_STRAIN_YY", iPoint));
-      Node_Flow->SetMeanStrainRate(iPoint, 3, GetVolumeOutputValue("MEAN_STRAIN_XY", iPoint));
+      /*--- MEAN_STRAIN_* is a read-only diagnostic here: the solver (CNSSolver/CIncNSSolver::
+            Preprocessing) builds it once per physical time step from the gradient of the persisted
+            MEAN_VELOCITY-X/Y/Z field (see the SetMeanVelocity calls below), not by time-averaging the
+            instantaneous strain, so it is displayed as-is rather than accumulated with
+            SetAvgVolumeOutputValue. ---*/
+      SetVolumeOutputValue("MEAN_STRAIN_XX", iPoint, Node_Flow->GetMeanStrainRate(iPoint, 0));
+      SetVolumeOutputValue("MEAN_STRAIN_YY", iPoint, Node_Flow->GetMeanStrainRate(iPoint, 1));
+      SetVolumeOutputValue("MEAN_STRAIN_XY", iPoint, Node_Flow->GetMeanStrainRate(iPoint, 3));
       if (nDim == 3) {
-        SetAvgVolumeOutputValue("MEAN_STRAIN_ZZ", iPoint, strain_zz);
-        SetAvgVolumeOutputValue("MEAN_STRAIN_XZ", iPoint, strain_xz);
-        SetAvgVolumeOutputValue("MEAN_STRAIN_YZ", iPoint, strain_yz);
-        Node_Flow->SetMeanStrainRate(iPoint, 2, GetVolumeOutputValue("MEAN_STRAIN_ZZ", iPoint));
-        Node_Flow->SetMeanStrainRate(iPoint, 4, GetVolumeOutputValue("MEAN_STRAIN_XZ", iPoint));
-        Node_Flow->SetMeanStrainRate(iPoint, 5, GetVolumeOutputValue("MEAN_STRAIN_YZ", iPoint));
+        SetVolumeOutputValue("MEAN_STRAIN_ZZ", iPoint, Node_Flow->GetMeanStrainRate(iPoint, 2));
+        SetVolumeOutputValue("MEAN_STRAIN_XZ", iPoint, Node_Flow->GetMeanStrainRate(iPoint, 4));
+        SetVolumeOutputValue("MEAN_STRAIN_YZ", iPoint, Node_Flow->GetMeanStrainRate(iPoint, 5));
       }
     }
 

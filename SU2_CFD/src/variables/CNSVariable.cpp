@@ -40,8 +40,11 @@ CNSVariable::CNSVariable(su2double density, const su2double *velocity, su2double
   Tau_Wall.resize(nPoint) = su2double(-1.0);
   DES_LengthScale.resize(nPoint) = su2double(0.0);
   MeanTurbKE.resize(nPoint) = su2double(0.0);
-  if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses)
+  if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses) {
     MeanStrainRate.resize(nPoint, 6) = su2double(0.0);
+    MeanVelocity.resize(nPoint, nDim) = su2double(0.0);
+    Grad_MeanVelocity.resize(nPoint, nDim, nDim, 0.0);
+  }
   lesMode.resize(nPoint) = su2double(0.0);
   Roe_Dissipation.resize(nPoint) = su2double(0.0);
   Vortex_Tilting.resize(nPoint) = su2double(0.0);

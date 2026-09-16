@@ -2793,6 +2793,9 @@ enum PERIODIC_QUANTITIES {
   PERIODIC_PRIM_LS_R  ,  /*!< \brief Same but reconstruction. */
   PERIODIC_SOL_ULS_R  ,  /*!< \brief Same but reconstruction. */
   PERIODIC_PRIM_ULS_R ,  /*!< \brief Same but reconstruction. */
+  PERIODIC_MEAN_VEL_GG ,  /*!< \brief Time-averaged velocity gradient communication for Green-Gauss (periodic only). */
+  PERIODIC_MEAN_VEL_LS ,  /*!< \brief Time-averaged velocity gradient communication for weighted Least Squares (periodic only). */
+  PERIODIC_MEAN_VEL_ULS,  /*!< \brief Time-averaged velocity gradient communication for unweighted Least Squares (periodic only). */
   PERIODIC_LIM_SOL_1  ,  /*!< \brief Solution limiter communication phase 1 of 2 (periodic only). */
   PERIODIC_LIM_SOL_2  ,  /*!< \brief Solution limiter communication phase 2 of 2 (periodic only). */
   PERIODIC_LIM_PRIM_1 ,  /*!< \brief Primitive limiter communication phase 1 of 2 (periodic only). */
@@ -2824,7 +2827,8 @@ enum class MPI_QUANTITIES {
   SOLUTION_EDDY        ,  /*!< \brief Turbulent solution plus eddy viscosity communication. */
   MEAN_TKE             ,  /*!< \brief Mean turbulent kinetic energy communication. */
   MEAN_EDDY_VISC       ,  /*!< \brief Mean eddy viscosity communication. */
-  MEAN_STRAIN_RATE     ,  /*!< \brief Mean strain-rate tensor communication. */
+  MEAN_VELOCITY        ,  /*!< \brief Time-averaged velocity communication (halo values, before its gradient is computed). */
+  MEAN_VELOCITY_GRADIENT, /*!< \brief Gradient of the time-averaged velocity communication. */
   STOCH_SOURCE_LANG    ,  /*!< \brief Stochastic source term for Langevin equations communication. */
   STOCH_SOURCE_LANG_GRAD, /*!< \brief Gradient of the stochastic source term being Laplacian-smoothed. */
   SMOOTH_PHAT          ,  /*!< \brief Preconditioned search direction (BiCGSTAB) for the Langevin source Laplacian smoothing. */

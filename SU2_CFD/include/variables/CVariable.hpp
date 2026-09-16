@@ -82,6 +82,9 @@ protected:
   MatrixType AuxVar;             /*!< \brief Auxiliary variable for gradient computation. */
   CVectorOfMatrix Grad_AuxVar;   /*!< \brief Gradient of the auxiliary variables of the problem. */
 
+  MatrixType MeanVelocity;             /*!< \brief Time-averaged velocity (hybrid RANS/LES stress filtering, FILTER_STRESSES). */
+  CVectorOfMatrix Grad_MeanVelocity;   /*!< \brief Gradient of the time-averaged velocity. */
+
   VectorType Max_Lambda_Inv;   /*!< \brief Maximun inviscid eingenvalue. */
   VectorType Max_Lambda_Visc;  /*!< \brief Maximun viscous eingenvalue. */
   VectorType Lambda;           /*!< \brief Value of the eingenvalue. */
@@ -866,6 +869,54 @@ public:
    */
   inline CMatrixView<su2double> GetAuxVarGradient(unsigned long iPoint) {
     return Grad_AuxVar[iPoint];
+  }
+
+  /*!
+   * \brief Get the entire time-averaged velocity matrix (hybrid RANS/LES stress filtering).
+   * \return Reference to the mean velocity matrix.
+   */
+  inline const MatrixType& GetMeanVelocity(void) const { return MeanVelocity; }
+
+  /*!
+   * \brief Get the time-averaged velocity component at a point.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Spatial index.
+   */
+  inline su2double GetMeanVelocity(unsigned long iPoint, unsigned long iDim) const { return MeanVelocity(iPoint,iDim); }
+
+  /*!
+   * \brief Set the time-averaged velocity component at a point.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Spatial index.
+   * \param[in] val_mean_velocity - Value of the time-averaged velocity component.
+   */
+  inline void SetMeanVelocity(unsigned long iPoint, unsigned long iDim, su2double val_mean_velocity) {
+    MeanVelocity(iPoint,iDim) = val_mean_velocity;
+  }
+
+  /*!
+   * \brief Get the gradient of the time-averaged velocity.
+   * \return Reference to gradient.
+   */
+  inline CVectorOfMatrix& GetMeanVelocityGradient(void) { return Grad_MeanVelocity; }
+
+  /*!
+   * \brief Get the value of the time-averaged velocity gradient.
+   * \param[in] iPoint - Point index.
+   * \param[in] iDim - Index of the velocity component.
+   * \param[in] jDim - Index of the derivative direction.
+   */
+  inline su2double GetMeanVelocityGradient(unsigned long iPoint, unsigned long iDim, unsigned long jDim) const {
+    return Grad_MeanVelocity(iPoint,iDim,jDim);
+  }
+
+  /*!
+   * \brief Get the value of the time-averaged velocity gradient.
+   * \param[in] iPoint - Point index.
+   * \return Value of the gradient.
+   */
+  inline CMatrixView<su2double> GetMeanVelocityGradient(unsigned long iPoint) {
+    return Grad_MeanVelocity[iPoint];
   }
 
   /*!

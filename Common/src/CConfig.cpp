@@ -3782,14 +3782,14 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
   }
 
   /*--- If WRT_RESTART_AVERAGES is on and the user did not specify RESTART_AVG_FIELDS, default to
-        persisting the mean turbulent kinetic energy and the mean strain-rate tensor (the fields
-        used by SBS_USE_MEAN_TURB/FILTER_STRESSES). ---*/
+        persisting the mean turbulent kinetic energy and the mean velocity (used by
+        SBS_USE_MEAN_TURB/FILTER_STRESSES: the solver rebuilds the mean strain-rate tensor from the
+        gradient of the restored mean velocity, see CNSSolver/CIncNSSolver::Preprocessing, rather
+        than persisting the strain tensor itself). ---*/
   if (Wrt_Restart_Averages && nRestartAvgFields == 0) {
     static const string defaultRestartAvgFields[] = {
-      "MEAN_TURB_KIN_ENERGY", "MEAN_STRAIN_XX", "MEAN_STRAIN_YY",
-      "MEAN_STRAIN_ZZ", "MEAN_STRAIN_XY", "MEAN_STRAIN_XZ",
-      "MEAN_STRAIN_YZ"};
-    nRestartAvgFields = 7;
+      "MEAN_TURB_KIN_ENERGY", "MEAN_VELOCITY-X", "MEAN_VELOCITY-Y", "MEAN_VELOCITY-Z"};
+    nRestartAvgFields = 4;
     RestartAvgFields = new string[nRestartAvgFields];
     for (unsigned short iField = 0; iField < nRestartAvgFields; iField++)
       RestartAvgFields[iField] = defaultRestartAvgFields[iField];
