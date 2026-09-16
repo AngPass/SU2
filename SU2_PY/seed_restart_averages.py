@@ -75,12 +75,14 @@ Which fields can be derived, and from which source
     "MeanVelocity" point-data vector (SU2 bundles same-named "_x"/"_y"/"_z" scalar fields into one
     vector array for ParaView, see CParaviewXMLFileWriter::WriteData in the C++ source -- so
     MEAN_VELOCITY-X/Y/Z appears there as a single 3-component array named "MeanVelocity"), and
-    MEAN_TURB_KIN_ENERGY from the scalar "MeanTurbulentKineticEnergy". Requires the 'meshio' package
-    (pip install meshio). Use --velocity-field/--tke-field if your .vtu uses different array names
-    (e.g. a plain steady RANS .vtu with just "Velocity", or a field renamed by another tool). Reading a
-    .vtu also loses precision: SU2 writes volume output fields as float32, vs. float64 in a native
-    restart file -- fine for seeding a mean that will keep evolving, less so if you need bit-for-bit
-    reproducibility.
+    MEAN_TURB_KIN_ENERGY from the scalar "MeanTurbulentKineticEnergy". Parsed by a small,
+    dependency-free reader (no VTK/meshio required) written specifically against SU2's own .vtu output
+    (uncompressed, "appended"/"raw" encoding -- the only variant SU2 ever writes; a .vtu re-saved or
+    re-encoded by another tool, e.g. to base64 or ASCII inline data, is not supported). Use
+    --velocity-field/--tke-field if your .vtu uses different array names (e.g. a plain steady RANS
+    .vtu with just "Velocity", or a field renamed by another tool). Reading a .vtu also loses
+    precision: SU2 writes volume output fields as float32, vs. float64 in a native restart file --
+    fine for seeding a mean that will keep evolving, less so if you need bit-for-bit reproducibility.
   IMPORTANT for all three: the point order in the source file must match the mesh's global point
   index order (point i in the file = global point index i), which holds for a full-volume file written
   by SU2 itself, but NOT for a decimated/surface-only export or one reordered by another tool.
@@ -123,6 +125,7 @@ Examples
 import argparse
 import struct
 import sys
+import xml.etree.ElementTree as ET
 
 import numpy as np
 
@@ -244,34 +247,98 @@ def _read_su2_binary(path):
     return header, data
 
 
+_VTK_TYPE_TO_NUMPY = {
+    "Float32": "f4", "Float64": "f8",
+    "Int8": "i1", "Int16": "i2", "Int32": "i4", "Int64": "i8",
+    "UInt8": "u1", "UInt16": "u2", "UInt32": "u4", "UInt64": "u8",
+}
+
+
 def _read_vtu(path):
-    try:
-        import meshio
-    except ImportError:
-        raise ImportError(
-            "Reading a .vtu file requires the 'meshio' package. Install it with 'pip install meshio' "
-            "and try again."
+    """Parse a .vtu written by SU2's own writer (CParaviewXMLFileWriter::WriteData), by hand, without
+    any third-party VTK library: this format is a small, fixed, fully-documented subset of the VTK XML
+    UnstructuredGrid spec (single Piece, "appended"/"raw" encoding, no compression -- SU2 never writes
+    any other variant), so a dependency-free reader tailored to exactly this is both simpler and more
+    robust than pulling in a general-purpose VTK reader for the one thing we need: the PointData
+    arrays. (A third-party library is more general but also has far more format variations to get
+    right; a hand-rolled parser scoped to SU2's own fixed writer output has none of that surface.)"""
+
+    with open(path, "rb") as f:
+        raw = f.read()
+
+    # The header (plain ASCII XML) and the appended binary blob must be separated before doing any XML
+    # parsing, since the blob can contain arbitrary bytes that are not valid XML/UTF-8. Per the VTK XML
+    # spec, "appended" data starts with a single "_" right after the AppendedData tag's ">".
+    marker = b'encoding="raw">\n_'
+    marker_pos = raw.find(marker)
+    if marker_pos == -1:
+        marker = b'encoding="raw">_'
+        marker_pos = raw.find(marker)
+    if marker_pos == -1:
+        raise ValueError(
+            "'{}': could not find a raw/appended AppendedData section. This reader only supports "
+            "SU2's own .vtu format (uncompressed, appended, raw encoding); a .vtu re-saved by another "
+            "tool (e.g. ASCII or base64-encoded) is not supported.".format(path)
         )
+    head = raw[: marker_pos + len(marker)]
+    blob_start = marker_pos + len(marker)
+    blob_end = raw.find(b"</AppendedData>", blob_start)
+    if blob_end == -1:
+        raise ValueError("'{}': could not find the closing </AppendedData> tag.".format(path))
+    blob = raw[blob_start:blob_end]
 
-    mesh = meshio.read(path)
+    # Close out the two still-open elements (AppendedData, VTKFile) so the head parses as valid XML;
+    # its own content (the lone "_") is irrelevant, we already sliced the real binary data into "blob".
+    root = ET.fromstring(head + b"</AppendedData></VTKFile>")
 
-    # SU2's VTU writer (CParaviewXMLFileWriter) bundles same-named "_x"/"_y"/"_z" scalar fields into
-    # one 3-component vector array (e.g. MEAN_VELOCITY-X/Y/Z -> a single "MeanVelocity" array), and
-    # always writes 3 components even for a 2D case (z padded with 0). Undo that bundling here so the
-    # rest of the script can work with the same flat, named-column layout for every input format:
-    # point i in the file is assumed to be global point index i (see the module docstring).
+    byte_order = root.attrib.get("byte_order", "LittleEndian")
+    endian = "<" if byte_order == "LittleEndian" else ">"
+    header_dtype = np.dtype(endian + ("u8" if root.attrib.get("header_type") == "UInt64" else "u4"))
+    header_size = header_dtype.itemsize
+
+    piece = root.find(".//Piece")
+    if piece is None:
+        raise ValueError("'{}': no <Piece> element found.".format(path))
+    nPoints = int(piece.attrib["NumberOfPoints"])
+
+    point_data = piece.find("PointData")
+    if point_data is None:
+        raise ValueError("'{}': no <PointData> found (nothing to read).".format(path))
+
     header = ["PointID"]
-    columns = [np.arange(mesh.points.shape[0], dtype=np.float64)]
+    columns = [np.arange(nPoints, dtype=np.float64)]
     suffixes = ["x", "y", "z"]
-    for name, array in mesh.point_data.items():
-        array = np.asarray(array)
-        if array.ndim == 2 and array.shape[1] > 1:
-            for i in range(array.shape[1]):
+
+    for data_array in point_data.findall("DataArray"):
+        name = data_array.attrib["Name"]
+        nComp = int(data_array.attrib.get("NumberOfComponents", "1"))
+        offset = int(data_array.attrib["offset"])
+        vtk_type = data_array.attrib.get("type", "Float32")
+        if vtk_type not in _VTK_TYPE_TO_NUMPY:
+            raise ValueError("'{}': unsupported DataArray type '{}' for '{}'.".format(path, vtk_type, name))
+        dtype = np.dtype(endian + _VTK_TYPE_TO_NUMPY[vtk_type])
+
+        # Per-array layout (CParaviewXMLFileWriter::WriteDataArray): a header-sized byte count,
+        # immediately followed by that many bytes of raw, tightly-packed data, both starting at the
+        # array's declared "offset" from the first byte of the blob (i.e. right after the "_" marker).
+        nbytes = int(np.frombuffer(blob, dtype=header_dtype, count=1, offset=offset)[0])
+        values = np.frombuffer(blob, dtype=dtype, count=nbytes // dtype.itemsize, offset=offset + header_size)
+        values = values.astype(np.float64)
+        if nPoints * nComp != values.size:
+            raise ValueError(
+                "'{}': array '{}' has {} value(s), expected {} ({} points x {} component(s)).".format(
+                    path, name, values.size, nPoints * nComp, nPoints, nComp
+                )
+            )
+
+        if nComp > 1:
+            values = values.reshape(nPoints, nComp)
+            for i in range(nComp):
                 header.append("{}_{}".format(name, suffixes[i]))
-                columns.append(array[:, i])
+                columns.append(values[:, i])
         else:
             header.append(name)
-            columns.append(array.reshape(-1))
+            columns.append(values)
 
     return header, np.column_stack(columns)
 
