@@ -2,8 +2,9 @@
 
 ## \file seed_restart_averages.py
 #  \brief Seed the WRT_RESTART_AVERAGES companion file (RESTART_FILENAME_average_XXXXX.dat) from a
-#         converged steady RANS solution, so an unsteady run (DDES/URANS) can start FILTER_STRESSES
-#         with a physically-reasonable mean flow instead of accumulating it from scratch.
+#         steady RANS solution or an existing mean-velocity field (restart/solution file or .vtu), so
+#         an unsteady run (DDES/URANS) can start FILTER_STRESSES with a physically-reasonable mean
+#         flow instead of accumulating it from scratch.
 #  \author SU2 Team
 #  \version 8.5.0 "Harrier"
 #
@@ -28,8 +29,9 @@
 # License along with SU2. If not, see <http://www.gnu.org/licenses/>.
 
 """
-Builds a WRT_RESTART_AVERAGES companion file directly from a steady RANS restart/solution file,
-instead of accumulating it by running an unsteady simulation first.
+Builds a WRT_RESTART_AVERAGES companion file directly from an existing mean-velocity field (a steady
+RANS restart/solution file, or a .vtu volume output snapshot), instead of accumulating it by running
+an unsteady simulation first.
 
 Background
 ----------
@@ -60,19 +62,34 @@ All integers/floats are written little-endian, double precision, matching a stan
 build. This is the same assumption the C++ writer itself makes ("not portable across endianness or
 precision"); it will not match a build using single precision or a different endianness.
 
-Which fields can be derived
-----------------------------
-From a plain RANS restart file (i.e. the default SOLUTION-group columns, without extra fields added
-via VOLUME_OUTPUT), this script derives:
-  - MEAN_VELOCITY-X/Y/Z: read directly (incompressible solver, columns "Velocity_x/y/z") or computed
-    as Momentum_i / Density (compressible solver, columns "Momentum_x/y/z" and "Density").
-  - MEAN_TURB_KIN_ENERGY: read directly from "Turb_Kin_Energy" (SST only; not available for SA, since
-    SA has no separate k equation -- the script simply omits this field in that case).
-These are exactly the RESTART_AVG_FIELDS SU2 defaults to when WRT_RESTART_AVERAGES=YES and
-RESTART_AVG_FIELDS is left empty. If you have customized RESTART_AVG_FIELDS to include additional
-fields, this script will NOT seed those (SU2 will not error, but each missing field silently restarts
-from zero while being weighted as if it already had --samples prior samples -- see the warning SU2
-prints on restore, and CFlowOutput::RestoreAveragedFields in the C++ source).
+Which fields can be derived, and from which source
+----------------------------------------------------
+--solution accepts three kinds of input, auto-detected by content/extension:
+  - A native SU2 ASCII restart/solution file (.csv, or .dat without the binary magic number): derives
+    MEAN_VELOCITY-X/Y/Z from "Velocity_x/y/z" (incompressible) or "Momentum_x/y/z" / "Density"
+    (compressible), and MEAN_TURB_KIN_ENERGY from "Turb_Kin_Energy" (SST only).
+  - A native SU2 binary restart/solution file (.dat, with the binary magic number): same fields, same
+    derivation, just parsed from the binary layout instead.
+  - A SU2 volume output file (.vtu, ParaView XML unstructured grid), e.g. a snapshot written mid-run
+    with VOLUME_OUTPUT including TIME_AVERAGE fields: reads MEAN_VELOCITY-X/Y/Z directly from the
+    "MeanVelocity" point-data vector (SU2 bundles same-named "_x"/"_y"/"_z" scalar fields into one
+    vector array for ParaView, see CParaviewXMLFileWriter::WriteData in the C++ source -- so
+    MEAN_VELOCITY-X/Y/Z appears there as a single 3-component array named "MeanVelocity"), and
+    MEAN_TURB_KIN_ENERGY from the scalar "MeanTurbulentKineticEnergy". Requires the 'meshio' package
+    (pip install meshio). Use --velocity-field/--tke-field if your .vtu uses different array names
+    (e.g. a plain steady RANS .vtu with just "Velocity", or a field renamed by another tool). Reading a
+    .vtu also loses precision: SU2 writes volume output fields as float32, vs. float64 in a native
+    restart file -- fine for seeding a mean that will keep evolving, less so if you need bit-for-bit
+    reproducibility.
+  IMPORTANT for all three: the point order in the source file must match the mesh's global point
+  index order (point i in the file = global point index i), which holds for a full-volume file written
+  by SU2 itself, but NOT for a decimated/surface-only export or one reordered by another tool.
+These are exactly the RESTART_AVG_FIELDS SU2 defaults to when WRT_RESTART_AVERAGES=YES (or, with
+WRT_RESTART_AVERAGES=NO, when RESTART_AVERAGE=YES and FILTER_STRESSES is active -- the "frozen mean"
+case) and RESTART_AVG_FIELDS is left empty. If you have customized RESTART_AVG_FIELDS to include
+additional fields, this script will NOT seed those (SU2 will not error, but each missing field
+silently restarts from zero while being weighted as if it already had --samples prior samples -- see
+the warning SU2 prints on restore, and CFlowOutput::RestoreAveragedFields in the C++ source).
 
 Output filename
 ----------------
@@ -97,9 +114,10 @@ weight 1/(n+1)):
 There is no universally correct value; pick it based on how much you trust the steady RANS mean for
 your case. The default below (100) is a moderate middle ground, not a validated recommendation.
 
-Example
--------
+Examples
+--------
     python seed_restart_averages.py --solution solution_flow.csv --output solution_flow_average_00000.dat
+    python seed_restart_averages.py --solution flow_snapshot.vtu --output solution_flow_average_00000.dat
 """
 
 import argparse
@@ -120,7 +138,9 @@ def main():
     parser.add_argument(
         "--solution",
         required=True,
-        help="Path to the converged steady RANS restart/solution file (.csv/.dat ASCII, or .dat binary).",
+        help="Path to the source file: a converged steady RANS restart/solution file (.csv/.dat ASCII, "
+        "or .dat binary), or a SU2 volume output file (.vtu) containing a mean/instantaneous velocity "
+        "field. See the 'Which fields can be derived' section in this script's module docstring.",
     )
     parser.add_argument(
         "--output",
@@ -135,13 +155,27 @@ def main():
         help="Number of prior samples to record in the seeded file (default: %(default)s). See the "
         "'Choosing --samples' section in this script's module docstring.",
     )
+    parser.add_argument(
+        "--velocity-field",
+        default=None,
+        help="Base name of the velocity point-data array to use instead of the built-in candidates "
+        "(MeanVelocity, Velocity). For a .vtu, this is the bundled vector array's name (e.g. "
+        "'Velocity' if the array is named 'Velocity' rather than split into Velocity_x/y/z); for a "
+        "restart/solution file, the scalar columns '<name>_x'/'<name>_y'/'<name>_z' are used.",
+    )
+    parser.add_argument(
+        "--tke-field",
+        default=None,
+        help="Name of the turbulent kinetic energy point-data array to use instead of the built-in "
+        "candidates (MeanTurbulentKineticEnergy, Turb_Kin_Energy).",
+    )
     args = parser.parse_args()
 
     if args.samples < 1:
         parser.error("--samples must be at least 1.")
 
     header, data = read_su2_solution(args.solution)
-    fields, values = derive_mean_fields(header, data)
+    fields, values = derive_mean_fields(header, data, args.velocity_field, args.tke_field)
 
     if not fields:
         sys.exit(
@@ -158,9 +192,13 @@ def main():
 
 
 def read_su2_solution(path):
-    """Read a SU2 native restart/solution file, ASCII (.csv) or binary (.dat), auto-detected.
-    Returns (header, data) where header is a list of column names (including "PointID") and data is a
-    2D numpy array of shape (nPoints, nColumns) in the same column order as header."""
+    """Read a SU2 native restart/solution file (ASCII .csv, or binary .dat) or a SU2 volume output
+    file (.vtu), auto-detected. Returns (header, data) where header is a list of column names
+    (including "PointID") and data is a 2D numpy array of shape (nPoints, nColumns) in the same
+    column order as header."""
+
+    if path.lower().endswith(".vtu"):
+        return _read_vtu(path)
 
     with open(path, "rb") as f:
         first_bytes = f.read(4)
@@ -206,31 +244,77 @@ def _read_su2_binary(path):
     return header, data
 
 
-def derive_mean_fields(header, data):
-    """Derive the MEAN_VELOCITY-X/Y/Z and MEAN_TURB_KIN_ENERGY columns from a RANS solution's native
-    field set. Returns (field_names, field_value_arrays), only including fields that could be derived
-    from the columns actually present."""
+def _read_vtu(path):
+    try:
+        import meshio
+    except ImportError:
+        raise ImportError(
+            "Reading a .vtu file requires the 'meshio' package. Install it with 'pip install meshio' "
+            "and try again."
+        )
+
+    mesh = meshio.read(path)
+
+    # SU2's VTU writer (CParaviewXMLFileWriter) bundles same-named "_x"/"_y"/"_z" scalar fields into
+    # one 3-component vector array (e.g. MEAN_VELOCITY-X/Y/Z -> a single "MeanVelocity" array), and
+    # always writes 3 components even for a 2D case (z padded with 0). Undo that bundling here so the
+    # rest of the script can work with the same flat, named-column layout for every input format:
+    # point i in the file is assumed to be global point index i (see the module docstring).
+    header = ["PointID"]
+    columns = [np.arange(mesh.points.shape[0], dtype=np.float64)]
+    suffixes = ["x", "y", "z"]
+    for name, array in mesh.point_data.items():
+        array = np.asarray(array)
+        if array.ndim == 2 and array.shape[1] > 1:
+            for i in range(array.shape[1]):
+                header.append("{}_{}".format(name, suffixes[i]))
+                columns.append(array[:, i])
+        else:
+            header.append(name)
+            columns.append(array.reshape(-1))
+
+    return header, np.column_stack(columns)
+
+
+# Candidate point-data array names to look for, in priority order, for each derived field. A restart
+# file lists the velocity components as separate scalar columns ("<name>_x"/"_y"/"_z"); a .vtu read via
+# _read_vtu has already been unbundled into the same shape, so the same candidates work for both.
+VELOCITY_FIELD_CANDIDATES = ["MeanVelocity", "Velocity"]
+TKE_FIELD_CANDIDATES = ["MeanTurbulentKineticEnergy", "Turb_Kin_Energy"]
+
+
+def derive_mean_fields(header, data, velocity_field=None, tke_field=None):
+    """Derive the MEAN_VELOCITY-X/Y/Z and MEAN_TURB_KIN_ENERGY columns from the columns/point-data
+    actually present, trying (in order) the explicit --velocity-field/--tke-field override if given,
+    then the built-in candidate names, then (for velocity only) the compressible-restart fallback of
+    deriving it from Momentum_i/Density. Returns (field_names, field_value_arrays), only including
+    fields that could actually be derived."""
 
     col = {name: idx for idx, name in enumerate(header)}
     fields, values = [], []
 
-    if "Turb_Kin_Energy" in col:
-        fields.append("MEAN_TURB_KIN_ENERGY")
-        values.append(data[:, col["Turb_Kin_Energy"]])
+    for name in ([tke_field] if tke_field else TKE_FIELD_CANDIDATES):
+        if name in col:
+            fields.append("MEAN_TURB_KIN_ENERGY")
+            values.append(data[:, col[name]])
+            break
 
-    if "Velocity_x" in col:
-        # Incompressible solver: velocity is a primary solution variable.
-        velocity = [data[:, col["Velocity_x"]], data[:, col["Velocity_y"]]]
-        if "Velocity_z" in col:
-            velocity.append(data[:, col["Velocity_z"]])
-    elif "Momentum_x" in col and "Density" in col:
-        # Compressible solver: velocity_i = momentum_i / density.
+    velocity = None
+    vel_bases = [velocity_field] if velocity_field else VELOCITY_FIELD_CANDIDATES
+    for base in vel_bases:
+        vx, vy, vz = base + "_x", base + "_y", base + "_z"
+        if vx in col and vy in col:
+            velocity = [data[:, col[vx]], data[:, col[vy]]]
+            if vz in col:
+                velocity.append(data[:, col[vz]])
+            break
+
+    if velocity is None and "Momentum_x" in col and "Density" in col:
+        # Compressible native restart file: velocity_i = momentum_i / density.
         rho = data[:, col["Density"]]
         velocity = [data[:, col["Momentum_x"]] / rho, data[:, col["Momentum_y"]] / rho]
         if "Momentum_z" in col:
             velocity.append(data[:, col["Momentum_z"]] / rho)
-    else:
-        velocity = None
 
     if velocity is not None:
         for comp, name in zip(velocity, ["MEAN_VELOCITY-X", "MEAN_VELOCITY-Y", "MEAN_VELOCITY-Z"]):
