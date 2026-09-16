@@ -3781,20 +3781,6 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     }
   }
 
-  /*--- If WRT_RESTART_AVERAGES is on and the user did not specify RESTART_AVG_FIELDS, default to
-        persisting the mean turbulent kinetic energy and the mean velocity (used by
-        SBS_USE_MEAN_TURB/FILTER_STRESSES: the solver rebuilds the mean strain-rate tensor from the
-        gradient of the restored mean velocity, see CNSSolver/CIncNSSolver::Preprocessing, rather
-        than persisting the strain tensor itself). ---*/
-  if (Wrt_Restart_Averages && nRestartAvgFields == 0) {
-    static const string defaultRestartAvgFields[] = {
-      "MEAN_TURB_KIN_ENERGY", "MEAN_VELOCITY-X", "MEAN_VELOCITY-Y", "MEAN_VELOCITY-Z"};
-    nRestartAvgFields = 4;
-    RestartAvgFields = new string[nRestartAvgFields];
-    for (unsigned short iField = 0; iField < nRestartAvgFields; iField++)
-      RestartAvgFields[iField] = defaultRestartAvgFields[iField];
-  }
-
   if (Kind_TimeAvgMethod == TIME_AVG_METHOD::EXPONENTIAL && (TimeAvg_Exp_Const <= 0.0 || TimeAvg_Exp_Const > 1.0)) {
     SU2_MPI::Error("TIME_AVG_EXP_CONST must be in (0, 1] when TIME_AVG_METHOD= EXPONENTIAL.", CURRENT_FUNCTION);
   }
@@ -4175,6 +4161,28 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
         same iteration as the solution unless the user explicitly requests otherwise. ---*/
   if (!OptionIsSet("RESTART_ITER_AVERAGE")) {
     Restart_Iter_Average = Restart_Iter;
+  }
+
+  /*--- If the user did not specify RESTART_AVG_FIELDS, default to persisting the mean turbulent
+        kinetic energy and the mean velocity (used by SBS_USE_MEAN_TURB/FILTER_STRESSES: the solver
+        rebuilds the mean strain-rate tensor from the gradient of the restored mean velocity, see
+        CNSSolver/CIncNSSolver::Preprocessing, rather than persisting the strain tensor itself).
+        Triggered by WRT_RESTART_AVERAGES=YES (the running average is accumulated and written), or by
+        RESTART_AVERAGE=YES with FILTER_STRESSES active even when WRT_RESTART_AVERAGES=NO: in that
+        "frozen" case the mean fields are only read once from an existing companion file and never
+        updated internally (see CFlowOutput::RestoreAveragedFields/LoadTimeAveragedData), but
+        RESTART_AVG_FIELDS still needs to name what to look for in that file. Placed after
+        Restart_Average/Restart_Iter_Average above have resolved their RESTART_SOL/RESTART_ITER
+        defaults, since this check depends on the final value of Restart_Average. ---*/
+  if ((Wrt_Restart_Averages ||
+       (Restart_Average && Kind_HybridRANSLES != NO_HYBRIDRANSLES && SBSParam.filterStresses)) &&
+      nRestartAvgFields == 0) {
+    static const string defaultRestartAvgFields[] = {
+      "MEAN_TURB_KIN_ENERGY", "MEAN_VELOCITY-X", "MEAN_VELOCITY-Y", "MEAN_VELOCITY-Z"};
+    nRestartAvgFields = 4;
+    RestartAvgFields = new string[nRestartAvgFields];
+    for (unsigned short iField = 0; iField < nRestartAvgFields; iField++)
+      RestartAvgFields[iField] = defaultRestartAvgFields[iField];
   }
 
   if (Time_Domain && !GetWrt_Restart_Overwrite()){
@@ -6714,8 +6722,15 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
         }
         if (Kind_HybridRANSLES != NO_HYBRIDRANSLES) {
           if (LES_FilterWidth > 0.0) cout << "User-specified LES filter width: " << LES_FilterWidth << endl;
-          if (SBSParam.filterStresses)
+          if (SBSParam.filterStresses) {
             cout << "| Modeled stress tensor high-pass filtered where the shielding function is above: " << setw(4) << setprecision(4) << SBSParam.stochFdThreshold << endl;
+            if (!Wrt_Restart_Averages && !Restart_Average) {
+              cout << "| Warning: FILTER_STRESSES is active but both WRT_RESTART_AVERAGES and RESTART_AVERAGE are NO, "
+                      "so the mean velocity it filters against is never populated (stays zero): FILTER_STRESSES has no "
+                      "effect. Set WRT_RESTART_AVERAGES=YES to accumulate the mean internally, or RESTART_AVERAGE=YES "
+                      "to read it once from an existing companion restart-average file." << endl;
+            }
+          }
           cout << "Stochastic Backscatter: ";
           if (SBSParam.StochasticBackscatter) {
             cout << "ON" << endl;

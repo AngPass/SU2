@@ -340,11 +340,15 @@ protected:
 
   /*!
    * \brief Restore all TIME_AVERAGE/BACKSCATTER volume output fields from the companion file
-   *        written by WriteAveragedFields, if present.
+   *        written by WriteAveragedFields, if present. With WRT_RESTART_AVERAGES=NO ("frozen" mode,
+   *        see CConfig's RESTART_AVG_FIELDS default-selection comment), also seeds the flow solver's
+   *        mean-velocity node storage directly from the file, since LoadTimeAveragedData will not be
+   *        pushing live updates into it for the rest of the run.
    * \param[in] config - Definition of the particular problem per zone.
    * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] solver_container - The container holding all solution data.
    */
-  void RestoreAveragedFields(CConfig *config, CGeometry *geometry) override;
+  void RestoreAveragedFields(CConfig *config, CGeometry *geometry, CSolver **solver_container) override;
 
   /*!
    * \brief Determines if the the volume output should be written.

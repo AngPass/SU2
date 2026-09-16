@@ -870,14 +870,16 @@ bool COutput::SetResultFiles(CGeometry *geometry, CConfig *config, CSolver** sol
   /*--- Check if the data sorters are allocated, if not, allocate them. --- */
   AllocateDataSorters(config, geometry);
 
-  /*--- Restore TIME_AVERAGE/BACKSCATTER fields from a previous run, if requested, before the first
-        volume data load of the run so the running averages continue coherently (WRT_RESTART_AVERAGES,
-        gated by RESTART_AVERAGE so a fresh, non-restarted run does not pick up a stale companion file).
-        This has to happen exactly once, and before LoadDataIntoSorter below computes the first sample
-        of this run for each field. ---*/
+  /*--- Restore TIME_AVERAGE/BACKSCATTER fields from a previous run, if requested (RESTART_AVERAGE),
+        before the first volume data load of the run so the running averages continue coherently.
+        This is independent of WRT_RESTART_AVERAGES: with WRT_RESTART_AVERAGES=NO the restored mean is
+        instead "frozen" (read once here, never updated internally afterwards -- see
+        CFlowOutput::RestoreAveragedFields/LoadTimeAveragedData), which lets FILTER_STRESSES run off an
+        existing companion file without accumulating or rewriting it. This has to happen exactly once,
+        and before LoadDataIntoSorter below computes the first sample of this run for each field. ---*/
   if (!averagedFieldsRestoreAttempted) {
     averagedFieldsRestoreAttempted = true;
-    if (config->GetWrt_Restart_Averages() && config->GetRestart_Average()) RestoreAveragedFields(config, geometry);
+    if (config->GetRestart_Average()) RestoreAveragedFields(config, geometry, solver_container);
   }
 
   for (unsigned short iFile = 0; iFile < nVolumeFiles; iFile++) {

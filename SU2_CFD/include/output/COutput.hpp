@@ -1077,11 +1077,16 @@ protected:
    * \brief Restore TIME_AVERAGE/BACKSCATTER volume output fields (running averages) from a
    *        companion file written by a previous run (WRT_RESTART_AVERAGES), if present, so the
    *        averages continue coherently instead of resetting. Called once, right after the data
-   *        sorters are allocated and before the first volume data load of the run.
+   *        sorters are allocated and before the first volume data load of the run, whenever
+   *        RESTART_AVERAGE=YES -- independent of WRT_RESTART_AVERAGES, so a "frozen" mean (read
+   *        once, never updated internally) is possible with WRT_RESTART_AVERAGES=NO.
    * \param[in] config - Definition of the particular problem per zone.
    * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] solver_container - The container holding all solution data, used in "frozen" mode
+   *            (WRT_RESTART_AVERAGES=NO) to seed the solver's mean-field node storage directly,
+   *            since nothing else will push the restored values into it afterwards.
    */
-  inline virtual void RestoreAveragedFields(CConfig *config, CGeometry* geometry){}
+  inline virtual void RestoreAveragedFields(CConfig *config, CGeometry* geometry, CSolver** solver_container){}
 
   /*!
    * \brief Write TIME_AVERAGE/BACKSCATTER volume output fields (running averages) to a companion

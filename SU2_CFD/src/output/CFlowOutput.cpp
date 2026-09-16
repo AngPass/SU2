@@ -2630,24 +2630,42 @@ void CFlowOutput::WriteAveragedFields(CConfig *config, CGeometry *geometry) {
       });
 }
 
-void CFlowOutput::RestoreAveragedFields(CConfig *config, CGeometry *geometry) {
+void CFlowOutput::RestoreAveragedFields(CConfig *config, CGeometry *geometry, CSolver **solver_container) {
 
   const string filename = config->GetFilename(config->GetSolution_FileName() + "_average", ".dat", config->GetRestart_Iter_Average());
   unsigned long nSamples = 0;
   vector<string> fileFieldNames;
+
+  /*--- "Frozen" mode: WRT_RESTART_AVERAGES=NO means nothing accumulates new samples into these
+        fields afterwards (the live feed in LoadTimeAveragedData is gated on WRT_RESTART_AVERAGES), so
+        the mean velocity consumed by FILTER_STRESSES has to be seeded directly into the flow solver's
+        node storage here, once, since this is the only place it will ever be set. ---*/
+  CVariable* const Node_Flow = (!config->GetWrt_Restart_Averages() && solver_container != nullptr) ?
+      solver_container[FLOW_SOL]->GetNodes() : nullptr;
 
   const bool found = SBSRestartToolbox::ReadMeanFields(filename, geometry, nSamples,
       [&](unsigned long iPoint, const string& fieldName, su2double value) {
         const auto it = volumeOutput_Map.find(fieldName);
         if (it == volumeOutput_Map.end() || it->second.offset == -1) return;
         volumeDataSorter->SetUnsortedData(iPoint, static_cast<unsigned short>(it->second.offset), value);
+
+        if (Node_Flow != nullptr) {
+          if (fieldName == "MEAN_VELOCITY-X") Node_Flow->SetMeanVelocity(iPoint, 0, value);
+          else if (fieldName == "MEAN_VELOCITY-Y") Node_Flow->SetMeanVelocity(iPoint, 1, value);
+          else if (fieldName == "MEAN_VELOCITY-Z") Node_Flow->SetMeanVelocity(iPoint, 2, value);
+        }
       }, &fileFieldNames);
 
   if (!found) return;
 
   priorAvgSamples = nSamples;
-  if (rank == MASTER_NODE)
+  if (rank == MASTER_NODE) {
     cout << "Restored time-averaged fields from " << filename << " (" << nSamples << " prior samples)." << endl;
+    if (Node_Flow != nullptr) {
+      cout << "WRT_RESTART_AVERAGES=NO: the restored mean velocity is frozen -- FILTER_STRESSES will use it "
+              "as-is and it will not be updated internally for the rest of this run." << endl;
+    }
+  }
 
   /*--- Warn about any field this run expects to continue (RESTART_AVG_FIELDS) that is missing from
         the restored file, e.g. because it was written by a run with a different RESTART_AVG_FIELDS
@@ -4340,11 +4358,14 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
   if (nDim == 3)
     SetAvgVolumeOutputValue("MEAN_VELOCITY-Z", iPoint, Node_Flow->GetVelocity(iPoint,2));
 
-  if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses) {
+  if (config->GetWrt_Restart_Averages() &&
+      config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses) {
     /*--- Feed the running-average velocity (persisted/restored via WRT_RESTART_AVERAGES) back into
           the flow solver's node storage: CNSSolver/CIncNSSolver::Preprocessing takes its gradient,
           once per physical time step, to rebuild the mean strain-rate tensor used to high-pass
-          filter the modeled stresses (FILTER_STRESSES). ---*/
+          filter the modeled stresses (FILTER_STRESSES). Gated on WRT_RESTART_AVERAGES itself (not just
+          RESTART_AVERAGE) so that with WRT_RESTART_AVERAGES=NO the mean velocity seeded once in
+          RestoreAveragedFields stays frozen instead of being overwritten here every iteration. ---*/
     Node_Flow->SetMeanVelocity(iPoint, 0, GetVolumeOutputValue("MEAN_VELOCITY-X", iPoint));
     Node_Flow->SetMeanVelocity(iPoint, 1, GetVolumeOutputValue("MEAN_VELOCITY-Y", iPoint));
     if (nDim == 3)
