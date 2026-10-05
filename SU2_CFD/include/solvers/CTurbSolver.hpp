@@ -42,6 +42,25 @@ protected:
 
   vector<su2activematrix> Inlet_TurbVars;  /*!< \brief Turbulence variables at inlet profiles */
 
+  /*!
+   * \brief Exchange the Stochastic Backscatter Model work buffer (CVariable::GetSBSPeriodicBuf)
+   *        between matching periodic points, for all pairs of periodic markers (no-op without them).
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   * \param[in] commType - PERIODIC_SBS_SUM (complete partial edge-based sums) or PERIODIC_SBS_COPY
+   *                       (copy the master-face values to the passive face).
+   * \note Must be called by all OpenMP threads, outside master-only regions.
+   */
+  void SBSPeriodicComm(CGeometry *geometry, const CConfig *config, unsigned short commType);
+
+  /*!
+   * \brief Stop with an error if the Stochastic Backscatter Model is used on a 2D mesh or with
+   *        rotational periodicity, which is not supported (the stochastic vector fields would have
+   *        to be rotated). The remaining checks are in CConfig::SetPostprocessing.
+   * \param[in] config - Definition of the particular problem.
+   */
+  void CheckSBSSetup(const CConfig *config) const;
+
 public:
   /*!
    * \brief Destructor of the class.

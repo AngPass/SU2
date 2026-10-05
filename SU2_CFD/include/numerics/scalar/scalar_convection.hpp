@@ -121,7 +121,8 @@ class CUpwScalar : public CNumerics {
     AD::SetPreaccIn(V_j[idx.Density()]);
     AD::SetPreaccIn(MassFlux);
     const bool langevin = config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN;
-    if (langevin) {
+    /*--- Und_Lapl_i/j are null for boundary-condition calls (see CNumerics), nothing to register then. ---*/
+    if (langevin && Und_Lapl_i != nullptr && Und_Lapl_j != nullptr) {
       AD::SetPreaccIn(Und_Lapl_i, nVar);
       AD::SetPreaccIn(Und_Lapl_j, nVar);
     }

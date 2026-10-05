@@ -79,9 +79,6 @@ private:
         Flux[iVar] = (a0 + a1) * 0.5 * (ScalarVar_i[iVar] + ScalarVar_j[iVar]) - Epsilon_4 * diffLapl;
         Jacobian_i[iVar][iVar] = 0.5 * (a0+a1) + Epsilon_4 * su2double(Neighbor_i+1);
         Jacobian_j[iVar][iVar] = 0.5 * (a0+a1) - Epsilon_4 * su2double(Neighbor_j+1);
-        Flux[iVar] *= config->GetVelocity_Ref();
-        Jacobian_i[iVar][iVar] *= config->GetVelocity_Ref();
-        Jacobian_j[iVar][iVar] *= config->GetVelocity_Ref();
       }
     }
     Flux[0] = a0*ScalarVar_i[0] + a1*ScalarVar_j[0];
@@ -154,9 +151,6 @@ private:
                      - Epsilon_4 * diffLapl * meanDensity;
         Jacobian_i[iVar][iVar] = 0.5 * (a0+a1) + Epsilon_4 * su2double(Neighbor_i+1);
         Jacobian_j[iVar][iVar] = 0.5 * (a0+a1) - Epsilon_4 * su2double(Neighbor_j+1);
-        Flux[iVar] *= config->GetVelocity_Ref();
-        Jacobian_i[iVar][iVar] *= config->GetVelocity_Ref();
-        Jacobian_j[iVar][iVar] *= config->GetVelocity_Ref();
       }
     }
 

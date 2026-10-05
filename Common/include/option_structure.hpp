@@ -2796,6 +2796,8 @@ enum PERIODIC_QUANTITIES {
   PERIODIC_MEAN_VEL_GG ,  /*!< \brief Time-averaged velocity gradient communication for Green-Gauss (periodic only). */
   PERIODIC_MEAN_VEL_LS ,  /*!< \brief Time-averaged velocity gradient communication for weighted Least Squares (periodic only). */
   PERIODIC_MEAN_VEL_ULS,  /*!< \brief Time-averaged velocity gradient communication for unweighted Least Squares (periodic only). */
+  PERIODIC_SBS_SUM    ,  /*!< \brief Stochastic Backscatter Model work buffer, summed over matching periodic points (periodic only). */
+  PERIODIC_SBS_COPY   ,  /*!< \brief Stochastic Backscatter Model work buffer, copied from the master to the passive periodic face (periodic only). */
   PERIODIC_LIM_SOL_1  ,  /*!< \brief Solution limiter communication phase 1 of 2 (periodic only). */
   PERIODIC_LIM_SOL_2  ,  /*!< \brief Solution limiter communication phase 2 of 2 (periodic only). */
   PERIODIC_LIM_PRIM_1 ,  /*!< \brief Primitive limiter communication phase 1 of 2 (periodic only). */
@@ -2827,6 +2829,7 @@ enum class MPI_QUANTITIES {
   SOLUTION_EDDY        ,  /*!< \brief Turbulent solution plus eddy viscosity communication. */
   MEAN_TKE             ,  /*!< \brief Mean turbulent kinetic energy communication. */
   MEAN_EDDY_VISC       ,  /*!< \brief Mean eddy viscosity communication. */
+  MODELED_FRACTION     ,  /*!< \brief Modeled fraction of the turbulent kinetic energy communication (Stochastic Backscatter Model). */
   MEAN_VELOCITY        ,  /*!< \brief Time-averaged velocity communication (halo values, before its gradient is computed). */
   MEAN_VELOCITY_GRADIENT, /*!< \brief Gradient of the time-averaged velocity communication. */
   STOCH_SOURCE_LANG    ,  /*!< \brief Stochastic source term for Langevin equations communication. */

@@ -130,8 +130,8 @@ inline T GetBesselZero(const T& x) {
                   t * (-0.00157565 +
                        t * (0.00916281 + t * (-0.02057706 + t * (0.02635537 + t * (-0.01647633 + t * 0.00392377)))))));
 
-    T arg = sqrt(abx) * poly;
-    return abx - log(arg);
+    /*--- I0(x) ~ exp(x)/sqrt(x) * poly, hence log(I0(x)) = x - 0.5*log(x) + log(poly). ---*/
+    return abx - 0.5 * log(abx) + log(poly);
   }
 }
 

@@ -215,6 +215,14 @@ public:
   void SetStochSourceMom(const CConfig* config);
 
   /*!
+   * \brief Register as AD preaccumulation inputs the Hybrid RANS/LES quantities used by the Stochastic
+   *        Backscatter Model and by FILTER_STRESSES (only those actually set by the flow solver,
+   *        see CFVMFlowSolverBase::Viscous_Residual_impl).
+   * \param[in] config - Definition of the particular problem.
+   */
+  void SetPreaccInHybridRANSLES(const CConfig* config);
+
+  /*!
    * \brief Get a component of the viscous stress tensor.
    *
    * \param[in] iDim - The first index

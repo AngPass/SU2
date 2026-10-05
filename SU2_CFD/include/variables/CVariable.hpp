@@ -578,6 +578,34 @@ public:
    */
   inline virtual void SetSmoothShat(unsigned long iPoint, unsigned short iDim, su2double val_shat) {}
 
+  /*!< \brief Number of values per point in the work buffer exchanged between matching periodic
+   *          points by the Stochastic Backscatter Model (PERIODIC_SBS_SUM/PERIODIC_SBS_COPY). */
+  static constexpr unsigned short SBS_PERIODIC_NBUF = 8;
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] iVar - Buffer index (< SBS_PERIODIC_NBUF).
+   * \return Value of the periodic work buffer of the Stochastic Backscatter Model.
+   */
+  inline virtual su2double GetSBSPeriodicBuf(unsigned long iPoint, unsigned short iVar) const { return 0.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] iVar - Buffer index (< SBS_PERIODIC_NBUF).
+   * \param[in] val - Value to store in the periodic work buffer of the Stochastic Backscatter Model.
+   */
+  inline virtual void SetSBSPeriodicBuf(unsigned long iPoint, unsigned short iVar, su2double val) {}
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] iVar - Buffer index (< SBS_PERIODIC_NBUF).
+   * \param[in] val - Value to add to the periodic work buffer of the Stochastic Backscatter Model.
+   */
+  inline virtual void AddSBSPeriodicBuf(unsigned long iPoint, unsigned short iVar, su2double val) {}
+
   /*!
    * \brief A virtual member.
    * \param[in] iPoint - Point index.

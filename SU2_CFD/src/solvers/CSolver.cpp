@@ -274,6 +274,11 @@ void CSolver::GetPeriodicCommCountAndType(const CConfig* config,
       ICOUNT           = nDim;
       JCOUNT           = nDim;
       break;
+    case PERIODIC_SBS_SUM:
+    case PERIODIC_SBS_COPY:
+      COUNT_PER_POINT  = CVariable::SBS_PERIODIC_NBUF;
+      MPI_TYPE         = COMM_TYPE::DOUBLE;
+      break;
     case PERIODIC_LIM_PRIM_1:
       COUNT_PER_POINT  = nPrimVarGrad*2;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
@@ -1008,6 +1013,18 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
 
             break;
 
+          case PERIODIC_SBS_SUM:
+          case PERIODIC_SBS_COPY:
+
+            /*--- Stochastic Backscatter Model: generic work buffer, either holding partial (edge-based)
+             sums to be completed with the matching point's contribution, or values to be copied to
+             the passive face. Only translational periodicity is supported (no rotation). ---*/
+
+            for (iVar = 0; iVar < COUNT_PER_POINT; iVar++)
+              bufDSend[buf_offset+iVar] = base_nodes->GetSBSPeriodicBuf(iPoint, iVar);
+
+            break;
+
           default:
             SU2_MPI::Error("Unrecognized quantity for periodic communication.",
                            CURRENT_FUNCTION);
@@ -1338,6 +1355,27 @@ void CSolver::CompletePeriodicComms(CGeometry *geometry,
 
               break;
 
+            case PERIODIC_SBS_SUM:
+
+              /*--- Complete the partial sums with the contribution of the matching point. ---*/
+
+              for (iVar = 0; iVar < COUNT_PER_POINT; iVar++)
+                base_nodes->AddSBSPeriodicBuf(iPoint, iVar, bufDRecv[buf_offset+iVar]);
+
+              break;
+
+            case PERIODIC_SBS_COPY:
+
+              /*--- The passive face takes the values of the master face, so that both copies of a
+               periodic point hold exactly the same data (e.g. the same random numbers). ---*/
+
+              if (iPeriodic == val_periodic_index + nPeriodic/2) {
+                for (iVar = 0; iVar < COUNT_PER_POINT; iVar++)
+                  base_nodes->SetSBSPeriodicBuf(iPoint, iVar, bufDRecv[buf_offset+iVar]);
+              }
+
+              break;
+
             default:
 
               SU2_MPI::Error("Unrecognized quantity for periodic communication.",
@@ -1405,6 +1443,7 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
     case MPI_QUANTITIES::MEAN_TKE:
+    case MPI_QUANTITIES::MODELED_FRACTION:
       COUNT_PER_POINT  = 1;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
@@ -1583,6 +1622,9 @@ void CSolver::InitiateComms(CGeometry *geometry,
             break;
           case MPI_QUANTITIES::MEAN_TKE:
             bufDSend[buf_offset] = base_nodes->GetMeanTurbKinEnergy(iPoint);
+            break;
+          case MPI_QUANTITIES::MODELED_FRACTION:
+            bufDSend[buf_offset] = base_nodes->GetModeledFraction(iPoint);
             break;
           case MPI_QUANTITIES::MEAN_EDDY_VISC:
             bufDSend[buf_offset] = base_nodes->GetMeanEddyViscosity(iPoint);
@@ -1772,6 +1814,9 @@ void CSolver::CompleteComms(CGeometry *geometry,
             break;
           case MPI_QUANTITIES::MEAN_TKE:
             base_nodes->SetMeanTurbKinEnergy(iPoint, bufDRecv[buf_offset]);
+            break;
+          case MPI_QUANTITIES::MODELED_FRACTION:
+            base_nodes->SetModeledFraction(iPoint, bufDRecv[buf_offset]);
             break;
           case MPI_QUANTITIES::MEAN_EDDY_VISC:
             base_nodes->SetMeanEddyViscosity(iPoint, bufDRecv[buf_offset]);

@@ -244,6 +244,8 @@ CTurbSSTSolver::CTurbSSTSolver(CGeometry *geometry, CConfig *config, unsigned sh
   Max_CFL_Local = CFL;
   Avg_CFL_Local = CFL;
 
+  CheckSBSSetup(config);
+
   /*--- Add the solver name. ---*/
   SolverName = "SST";
 
@@ -303,9 +305,22 @@ void CTurbSSTSolver::Preprocessing(CGeometry *geometry, CSolver **solver_contain
       InitiateComms(geometry, config, MPI_QUANTITIES::MEAN_TKE);
       CompleteComms(geometry, config, MPI_QUANTITIES::MEAN_TKE);
 
+      /*--- The modeled fraction is computed (in the output, once per time step) on domain points only,
+            but is also read at halo points by the flow viscous residual. ---*/
+      if (config->GetSBSParam().dampTimeFiltering || config->GetSBSParam().dampStochTerm) {
+        InitiateComms(geometry, config, MPI_QUANTITIES::MODELED_FRACTION);
+        CompleteComms(geometry, config, MPI_QUANTITIES::MODELED_FRACTION);
+      }
+
       SetLangevinSourceTerms(config, geometry);
       const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
       if (maxIter > 0) SmoothLangevinSourceTerms(config, geometry);
+
+      /*--- The final (smoothed and rescaled) source is computed on domain points only, but with
+            WHITE_NOISE it is read at halo points too, by the flow viscous residual. ---*/
+      InitiateComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
+      CompleteComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
+
       if (config->GetSBSParam().stochSourceType == ORNSTEIN_UHLENBECK) ComputeOU_Process(solver_container, config, geometry);
     }
 
@@ -496,7 +511,9 @@ void CTurbSSTSolver::Source_Residual(CGeometry *geometry, CSolver **solver_conta
         for (unsigned short iVar = 0; iVar < 6; iVar++) {
           numerics->SetMeanStrainRate(iVar, flowNodes->GetMeanStrainRate(iPoint, iVar), 0.0);
         }
-        if (config->GetSBSParam().dampTimeFiltering) {
+        /*--- The modeled fraction is only computed (and allocated, see CTurbSSTVariable) when the
+              Stochastic Backscatter Model is active; otherwise the numerics keep their default of 1. ---*/
+        if (config->GetSBSParam().dampTimeFiltering && config->GetSBSParam().StochasticBackscatter) {
           numerics->SetModeledFraction(nodes->GetModeledFraction(iPoint), 0.0);
         }
       }
@@ -1042,6 +1059,32 @@ void CTurbSSTSolver::SetLangevinSourceTerms(CConfig *config, CGeometry* geometry
     }
     END_SU2_OMP_FOR
   }
+
+  /*--- The two copies of a periodic point have different global indices, hence would draw different
+        random numbers: copy the values (and the active/inactive flag, encoded in the "old" value)
+        from the master to the passive periodic face. ---*/
+
+  if (config->GetnMarker_Periodic() > 0) {
+    SU2_OMP_FOR_STAT(omp_chunk_size)
+    for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+      for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+        nodes->SetSBSPeriodicBuf(iPoint, iDim, nodes->GetLangevinSourceTermsOld(iPoint, iDim));
+        nodes->SetSBSPeriodicBuf(iPoint, 3+iDim, nodes->GetLangevinSourceTerms(iPoint, iDim));
+      }
+    }
+    END_SU2_OMP_FOR
+
+    SBSPeriodicComm(geometry, config, PERIODIC_SBS_COPY);
+
+    SU2_OMP_FOR_STAT(omp_chunk_size)
+    for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+      for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+        nodes->SetLangevinSourceTermsOld(iPoint, iDim, nodes->GetSBSPeriodicBuf(iPoint, iDim));
+        nodes->SetLangevinSourceTerms(iPoint, iDim, nodes->GetSBSPeriodicBuf(iPoint, 3+iDim));
+      }
+    }
+    END_SU2_OMP_FOR
+  }
 }
 
 void CTurbSSTSolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeometry *geometry) {
@@ -1069,6 +1112,25 @@ void CTurbSSTSolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeome
     }
   }
   END_SU2_OMP_FOR
+
+  /*--- Keep both copies of a periodic point identical (the time scale depends on local quantities,
+        e.g. the filter width, which can differ slightly on the two sides). ---*/
+
+  if (config->GetnMarker_Periodic() > 0) {
+    SU2_OMP_FOR_STAT(omp_chunk_size)
+    for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++)
+      for (unsigned short iDim = 0; iDim < nDim; iDim++)
+        nodes->SetSBSPeriodicBuf(iPoint, iDim, nodes->GetOU_Process(iPoint, iDim));
+    END_SU2_OMP_FOR
+
+    SBSPeriodicComm(geometry, config, PERIODIC_SBS_COPY);
+
+    SU2_OMP_FOR_STAT(omp_chunk_size)
+    for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++)
+      for (unsigned short iDim = 0; iDim < nDim; iDim++)
+        nodes->SetOU_Process(iPoint, iDim, nodes->GetSBSPeriodicBuf(iPoint, iDim));
+    END_SU2_OMP_FOR
+  }
 
   InitiateComms(geometry, config, MPI_QUANTITIES::OU_PROCESS);
   CompleteComms(geometry, config, MPI_QUANTITIES::OU_PROCESS);
@@ -1107,7 +1169,11 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
   /*--- Assemble system matrix: the orthogonal (implicit) coefficient a_ij and the diagonal
         diag_i = 1 + sum(a_ij), both purely geometric (independent of iDim), plus the
         non-orthogonal correction vector betaVec used to reconstruct the full gradient-based
-        diffusive flux across each face (deferred correction, folded into the RHS, see below). */
+        diffusive flux across each face (deferred correction, folded into the RHS, see below).
+        All edge-based sums (diagonal, matrix-vector products, gradient, non-orthogonal RHS) are
+        partial at periodic points, since each copy of the point only sees the edges on its own
+        side: they are completed with the contribution of the matching point (PERIODIC_SBS_SUM)
+        before being used, so that both copies hold the same (complete) values. */
 
   if (timeIter == restartIter) {
     BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
@@ -1127,7 +1193,8 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
                        "in CTurbSSTVariable.hpp and recompile.", CURRENT_FUNCTION);
       }
 
-      su2double diag = 1.0;
+      su2double sumA = 0.0;
+      su2double betaTensor[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}; // xx, yy, zz, xy, yz, xz
       for (unsigned short iNode = 0; iNode < nNeighbors; iNode++) {
         auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
         auto coord_j = geometry->nodes->GetCoord(jPoint);
@@ -1146,7 +1213,20 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
         su2double d_normal = sign * dot_nd / max(area*distance, 1e-10);
         su2double a_ij = area/volume_iPoint * fabs(d_normal) * b2/max(distance, 1e-10);
         nodes->SetSmoothingMatrixCoeff(iPoint, iNode, a_ij);
-        diag += a_ij;
+        sumA += a_ij;
+
+        /*--- Directional decomposition of the operator, 0.5*sum_j(a_ij * e_ij e_ij^T) with e_ij the
+              unit edge vector: on a Cartesian grid its eigenvalues are exactly the coefficients
+              beta_x, beta_y, beta_z of the equivalent lattice operator assumed by the Bessel
+              scaling (diag = 1 + 2*(beta_x+beta_y+beta_z)), consistently with a_ij by construction. ---*/
+
+        const su2double halfA = 0.5 * a_ij / dist_ij_2;
+        betaTensor[0] += halfA * dx_ij_vec[0] * dx_ij_vec[0];
+        betaTensor[1] += halfA * dx_ij_vec[1] * dx_ij_vec[1];
+        betaTensor[2] += halfA * dx_ij_vec[2] * dx_ij_vec[2];
+        betaTensor[3] += halfA * dx_ij_vec[0] * dx_ij_vec[1];
+        betaTensor[4] += halfA * dx_ij_vec[1] * dx_ij_vec[2];
+        betaTensor[5] += halfA * dx_ij_vec[0] * dx_ij_vec[2];
 
         /*--- betaVec = (b2/V_i) * sign * (normal - (dot_nd/dist_ij_2)*edge_vector), the coefficient
               such that mean_grad_face . betaVec gives the non-orthogonal (tangential) part of the
@@ -1157,9 +1237,63 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
           nodes->SetSmoothingBetaVec(iPoint, iNode, index, betaVec);
         }
       }
-      nodes->SetSmoothingDiag(iPoint, diag);
+      nodes->SetSBSPeriodicBuf(iPoint, 0, sumA);
+      for (unsigned short iComp = 0; iComp < 6; iComp++)
+        nodes->SetSBSPeriodicBuf(iPoint, 1+iComp, betaTensor[iComp]);
     }
     END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+    SBSPeriodicComm(geometry, config, PERIODIC_SBS_SUM);
+
+    /*--- Diagonal coefficient and, if requested, the Bessel integral used to rescale the smoothed
+          field to unit variance. The latter is purely geometric too, so it is computed once here
+          (not once per component and per time step). ---*/
+
+    SU2_OMP_FOR_DYN(omp_chunk_size)
+    for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+      nodes->SetSmoothingDiag(iPoint, 1.0 + nodes->GetSBSPeriodicBuf(iPoint, 0));
+
+      if (!config->GetSBSParam().besselScaleFactor) continue;
+
+      /*--- Eigenvalues (beta_I, beta_J, beta_K) of the symmetric 3x3 tensor betaTensor. ---*/
+
+      su2double M[3][3];
+      M[0][0] = nodes->GetSBSPeriodicBuf(iPoint, 1);
+      M[1][1] = nodes->GetSBSPeriodicBuf(iPoint, 2);
+      M[2][2] = nodes->GetSBSPeriodicBuf(iPoint, 3);
+      M[0][1] = M[1][0] = nodes->GetSBSPeriodicBuf(iPoint, 4);
+      M[1][2] = M[2][1] = nodes->GetSBSPeriodicBuf(iPoint, 5);
+      M[0][2] = M[2][0] = nodes->GetSBSPeriodicBuf(iPoint, 6);
+
+      su2double lambda[3] = {0.0};
+      const su2double p1 = M[0][1]*M[0][1] + M[1][2]*M[1][2] + M[0][2]*M[0][2];
+      if (p1 < 1e-20) {
+        lambda[0] = M[0][0];
+        lambda[1] = M[1][1];
+        lambda[2] = M[2][2];
+      } else {
+        const su2double trace = (M[0][0] + M[1][1] + M[2][2]) / 3.0;
+        const su2double p2 = pow(M[0][0]-trace, 2) + pow(M[1][1]-trace, 2) + pow(M[2][2]-trace, 2) + 2.0 * p1;
+        const su2double p = sqrt(p2 / 6.0);
+        su2double B[3][3];
+        for (unsigned short ind1 = 0; ind1 < 3; ind1++)
+          for (unsigned short ind2 = 0; ind2 < 3; ind2++)
+            B[ind1][ind2] = (M[ind1][ind2] - ((ind1 == ind2) ? trace : 0.0)) / p;
+        const su2double detB =
+            B[0][0]*(B[1][1]*B[2][2] - B[1][2]*B[2][1]) -
+            B[0][1]*(B[1][0]*B[2][2] - B[1][2]*B[2][0]) +
+            B[0][2]*(B[1][0]*B[2][1] - B[1][1]*B[2][0]);
+        const su2double r = max(min(0.5 * detB, 1.0), -1.0);
+        const su2double phi = acos(r) / 3.0;
+        lambda[0] = trace + 2.0*p*cos(phi);
+        lambda[1] = trace + 2.0*p*cos(phi + 2.0*PI_NUMBER/3.0);
+        lambda[2] = trace + 2.0*p*cos(phi + 4.0*PI_NUMBER/3.0);
+      }
+      for (unsigned short iComp = 0; iComp < 3; iComp++) lambda[iComp] = max(lambda[iComp], 0.0);
+
+      nodes->SetBesselIntegral(iPoint, RandomToolbox::GetBesselIntegral(lambda[0], lambda[1], lambda[2]));
+    }
+    END_SU2_OMP_FOR
   }
 
   /*--- Matrix-free operator A(x)_i = diag_i*x_i - sum_j(a_ij*x_j), the only part of the discrete
@@ -1174,14 +1308,22 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
     BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
     for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
       if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
-      su2double diag = nodes->GetSmoothingDiag(iPoint);
       su2double sum = 0.0;
       for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
         auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
         su2double a_ij = nodes->GetSmoothingMatrixCoeff(iPoint, iNode);
         sum += a_ij * GetInput(jPoint);
       }
-      out[iPoint] = diag*GetInput(iPoint) - sum;
+      nodes->SetSBSPeriodicBuf(iPoint, 0, sum);
+    }
+    END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+    SBSPeriodicComm(geometry, config, PERIODIC_SBS_SUM);
+
+    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+    for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+      if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
+      out[iPoint] = nodes->GetSmoothingDiag(iPoint)*GetInput(iPoint) - nodes->GetSBSPeriodicBuf(iPoint, 0);
     }
     END_SU2_OMP_SAFE_GLOBAL_ACCESS
   };
@@ -1246,7 +1388,6 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
       BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
       for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
         su2double source_i = nodes->GetLangevinSourceTerms(iPoint, iDim);
-        su2double volume_iPoint = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
         su2double grad_i[3] = {0.0, 0.0, 0.0};
         for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
           auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
@@ -1259,7 +1400,21 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
             grad_i[index] += sign * phi_face * normal[index];
         }
         for (unsigned short index = 0; index < nDim; index++)
-          nodes->SetLangevinSourceGrad(iPoint, index, grad_i[index] / max(volume_iPoint, 1e-10));
+          nodes->SetSBSPeriodicBuf(iPoint, index, grad_i[index]);
+      }
+      END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+      /*--- At periodic points the edge-based surface integral is completed with the edges of the
+            matching point; the (equal and opposite) periodic boundary faces of the two copies,
+            omitted on both sides, cancel out exactly. ---*/
+
+      SBSPeriodicComm(geometry, config, PERIODIC_SBS_SUM);
+
+      BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+      for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+        su2double volume_iPoint = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
+        for (unsigned short index = 0; index < nDim; index++)
+          nodes->SetLangevinSourceGrad(iPoint, index, nodes->GetSBSPeriodicBuf(iPoint, index) / max(volume_iPoint, 1e-10));
       }
       END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
@@ -1271,7 +1426,14 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
       BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
       for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
         su2double source_i_old = nodes->GetLangevinSourceTermsOld(iPoint, iDim);
-        if (source_i_old > 3.0*sourceLim) continue;
+        if (source_i_old > 3.0*sourceLim) {
+          /*--- Inactive points are frozen at 0 (homogeneous Dirichlet) and must enter the matrix-free
+                operator as zeros: clear any phat/shat left over from a previous time step in which
+                the point was active, since ComputeMatVec reads these values for all neighbors. ---*/
+          nodes->SetSmoothPhat(iPoint, iDim, 0.0);
+          nodes->SetSmoothShat(iPoint, iDim, 0.0);
+          continue;
+        }
         local_nPointLES += 1;
 
         su2double tangential_i = 0.0;
@@ -1284,7 +1446,17 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
           }
           tangential_i += tangential_ij;
         }
-        bRhs[iPoint] = source_i_old + tangential_i;
+        nodes->SetSBSPeriodicBuf(iPoint, 0, tangential_i);
+      }
+      END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+      SBSPeriodicComm(geometry, config, PERIODIC_SBS_SUM);
+
+      BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+      for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+        su2double source_i_old = nodes->GetLangevinSourceTermsOld(iPoint, iDim);
+        if (source_i_old > 3.0*sourceLim) continue;
+        bRhs[iPoint] = source_i_old + nodes->GetSBSPeriodicBuf(iPoint, 0);
       }
       END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
@@ -1437,72 +1609,8 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
         if (config->GetSBSParam().besselScaleFactor) {
           SU2_OMP_FOR_(schedule(static, omp_chunk_size) SU2_NOWAIT)
           for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-            su2double integral = 0.0;
-            if (timeIter==restartIter) {
-              su2double maxDelta = nodes->GetDES_FilterWidth(iPoint);
-              su2double b2 = cDelta * maxDelta * maxDelta;
-              su2double M[3][3] = {{0.0}};
-              for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
-                auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
-                auto iEdge = geometry->nodes->GetEdge(iPoint, iNode);
-                auto* normal = geometry->edges->GetNormal(iEdge);
-                for (unsigned short ind1 = 0; ind1 < nDim; ind1++) {
-                  for (unsigned short ind2 = 0; ind2 < nDim; ind2++) {
-                    M[ind1][ind2] += normal[ind1]*normal[ind2];
-                  }
-                }
-              }
-              su2double a = M[0][0], b = M[1][1], c = M[2][2];
-              su2double d = M[0][1], e = M[1][2], f = M[0][2];
-              su2double lambda[3] = {0.0};
-              su2double p1 = d*d + e*e + f*f;
-              if (p1 < 1e-20) {
-                lambda[0] = a;
-                lambda[1] = b;
-                lambda[2] = (nDim==3 ? c : b);
-              } else {
-                su2double trace = (a + b + c) / 3.0;
-                su2double p2 = (a-trace)*(a-trace) +
-                               (b-trace)*(b-trace) +
-                               (c-trace)*(c-trace) +
-                               2.0 * p1;
-                su2double p = sqrt(p2 / 6.0);
-                su2double B[3][3];
-                for (unsigned short ind1 = 0; ind1 < nDim; ind1++)
-                  for (unsigned short ind2 = 0; ind2 < nDim; ind2++)
-                    B[ind1][ind2] = M[ind1][ind2];
-                B[0][0] -= trace;
-                B[1][1] -= trace;
-                B[2][2] -= trace;
-                for (unsigned short ind1 = 0; ind1 < nDim; ind1++)
-                  for (unsigned short ind2 = 0; ind2 < nDim; ind2++)
-                    B[ind1][ind2] /= p;
-                su2double detB =
-                    B[0][0]*(B[1][1]*B[2][2] - B[1][2]*B[2][1]) -
-                    B[0][1]*(B[1][0]*B[2][2] - B[1][2]*B[2][0]) +
-                    B[0][2]*(B[1][0]*B[2][1] - B[1][1]*B[2][0]);
-                su2double r = detB * 0.5;
-                r = max(min(r, 1.0), -1.0);
-                su2double phi = acos(r) / 3.0;
-                lambda[0] = max(trace + 2.0*p*cos(phi), 1e-10);
-                lambda[1] = max(trace + 2.0*p*cos(phi + 2.0*M_PI/3.0), 1e-10);
-                lambda[2] = max(trace + 2.0*p*cos(phi + 4.0*M_PI/3.0), 1e-10);
-              }
-              su2double V = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
-              su2double dI = V / sqrt(lambda[0]);
-              su2double dJ = V / sqrt(lambda[1]);
-              su2double dK = V / sqrt(lambda[2]);
-              su2double dI2 = dI * dI;
-              su2double dJ2 = dJ * dJ;
-              su2double dK2 = dK * dK;
-              su2double bI = b2 / dI2;
-              su2double bJ = b2 / dJ2;
-              su2double bK = b2 / dK2;
-              integral = RandomToolbox::GetBesselIntegral(bI, bJ, bK);
-              nodes->SetBesselIntegral(iPoint, integral);
-            } else {
-              integral = nodes->GetBesselIntegral(iPoint);
-            }
+            /*--- Computed once during the matrix assembly, see above. ---*/
+            const su2double integral = nodes->GetBesselIntegral(iPoint);
             su2double scaleFactor = 1.0 / sqrt(max(integral, 1e-10));
             su2double source = nodes->GetLangevinSourceTerms(iPoint, iDim);
             source *= scaleFactor;

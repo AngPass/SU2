@@ -4185,6 +4185,63 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
       RestartAvgFields[iField] = defaultRestartAvgFields[iField];
   }
 
+  /*--- Consistency checks for the Stochastic Backscatter Model (SBS) and the related Hybrid RANS/LES
+        options. Done here, on every rank and independently of the verbosity, rather than in SetOutput
+        (which only runs on the master node when printing is enabled). The 3D requirement is checked
+        by the turbulence solvers, which know the dimension of the mesh. ---*/
+
+  if (SBSParam.StochasticBackscatter) {
+    if (Kind_HybridRANSLES == NO_HYBRIDRANSLES)
+      SU2_MPI::Error("Stochastic Backscatter can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);
+
+    /*--- The system matrix of the Laplacian smoothing (and the Bessel scaling) is built once from the
+          LES filter width, which therefore must not depend on the flow solution: this rules out the
+          vorticity-based (ZDES), shear-layer-adapted (EDDES) and IDDES filter widths. ---*/
+    if (Kind_HybridRANSLES != SA_DES && Kind_HybridRANSLES != SA_DDES &&
+        Kind_HybridRANSLES != SST_DES && Kind_HybridRANSLES != SST_DDES)
+      SU2_MPI::Error("Stochastic Backscatter is only available with HYBRID_RANSLES= SA_DES, SA_DDES, SST_DES or SST_DDES.",
+                     CURRENT_FUNCTION);
+
+    if (!Time_Domain)
+      SU2_MPI::Error("Stochastic Backscatter requires an unsteady simulation (TIME_DOMAIN= YES).", CURRENT_FUNCTION);
+
+    if (DiscreteAdjoint || ContinuousAdjoint)
+      SU2_MPI::Error("Stochastic Backscatter is not available for adjoint problems.", CURRENT_FUNCTION);
+
+    if (SBSParam.SBS_Cmag < 0.0)
+      SU2_MPI::Error("Backscatter intensity coefficient (SBS_INTENSITY_COEFF) must be non-negative.", CURRENT_FUNCTION);
+
+    if (SBSParam.SBS_Ctau <= 0.0)
+      SU2_MPI::Error("Backscatter timescale coefficient (SBS_TIMESCALE_COEFF) must be positive.", CURRENT_FUNCTION);
+
+    if (SBSParam.SBS_maxIterSmooth > 0 && SBSParam.SBS_Cdelta < 0.0)
+      SU2_MPI::Error("Backscatter lengthscale coefficient (SBS_LENGTHSCALE_COEFF) must be non-negative.", CURRENT_FUNCTION);
+
+    if (SBSParam.stochFdThreshold < 0.0 || SBSParam.stochFdThreshold >= 1.0)
+      SU2_MPI::Error("SBS_FD_LOWER_THRESHOLD must be in [0, 1).", CURRENT_FUNCTION);
+
+    if (SBSParam.StochBackscatterInBox) {
+      if (!OptionIsSet("SBS_BOX_BOUNDS"))
+        SU2_MPI::Error("SBS_IN_BOX= YES requires SBS_BOX_BOUNDS= (xmin, xmax, ymin, ymax, zmin, zmax).", CURRENT_FUNCTION);
+      for (unsigned short iDim = 0; iDim < 3; iDim++) {
+        if (SBSParam.StochBackscatterBoxBounds[2*iDim] >= SBSParam.StochBackscatterBoxBounds[2*iDim+1])
+          SU2_MPI::Error("SBS_BOX_BOUNDS: each lower bound must be smaller than the corresponding upper bound.",
+                         CURRENT_FUNCTION);
+      }
+    }
+  }
+
+  if ((SBSParam.dampTimeFiltering || SBSParam.dampStochTerm) &&
+      !(SBSParam.StochasticBackscatter && IsHybridRANSLES_SST(Kind_HybridRANSLES)))
+    SU2_MPI::Error("DAMP_TIME_FILTERING and SBS_DAMP_SOURCE require the SST-based Stochastic Backscatter Model "
+                   "(the modeled fraction of turbulent kinetic energy is not computed otherwise).", CURRENT_FUNCTION);
+
+  if (SBSParam.sbsRansConstraint && !IsHybridRANSLES_SST(Kind_HybridRANSLES))
+    SU2_MPI::Error("SBS_RANS_CONSTRAINT can only be activated with a SST-based Hybrid RANS/LES model.", CURRENT_FUNCTION);
+
+  if (enforceLES && Kind_HybridRANSLES == NO_HYBRIDRANSLES)
+    SU2_MPI::Error("ENFORCE_LES can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);
+
   if (Time_Domain && !GetWrt_Restart_Overwrite()){
     SU2_MPI::Error("Appending iterations to the filename (WRT_RESTART_OVERWRITE=NO) is incompatible with transient problems.", CURRENT_FUNCTION);
   }
@@ -6734,11 +6791,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
           cout << "Stochastic Backscatter: ";
           if (SBSParam.StochasticBackscatter) {
             cout << "ON" << endl;
-            if (GetnDim(GetMesh_FileName(), Mesh_FileFormat) < 3)
-              SU2_MPI::Error("Stochastic Backscatter Model available for 3D flow simulations only.", CURRENT_FUNCTION);
             cout << "| Backscatter intensity coefficient: " << SBSParam.SBS_Cmag << endl;
-            if (SBSParam.SBS_Cmag < 0.0)
-              SU2_MPI::Error("Backscatter intensity coefficient must be non-negative.", CURRENT_FUNCTION);
             cout << "| Backscatter timescale coefficient: " << SBSParam.SBS_Ctau << endl;
             if (SBSParam.stochSourceType == LANGEVIN) {
               cout << "| Langevin equations integrated using a central scheme with 4th-order JST-type artificial dissipation." << endl;
@@ -6756,8 +6809,6 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
               cout << "| Backscatter lengthscale coefficient: " << SBSParam.SBS_Cdelta << endl;
               if (SBSParam.besselScaleFactor)
                 cout << "| Spatially-correlated field scaled using Bessel integral to preserve unit variance." << endl;
-              if (SBSParam.SBS_Cdelta < 0.0)
-                SU2_MPI::Error("Backscatter lengthscale coefficient must be non-negative.", CURRENT_FUNCTION);
             } else {
               cout << "| No smoothing applied to stochastic source terms in Langevin equations." << endl;
             }
@@ -6781,16 +6832,8 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
             cout << "OFF" << endl;
           }
         }
-        if (Kind_HybridRANSLES == NO_HYBRIDRANSLES && SBSParam.StochasticBackscatter)
-          SU2_MPI::Error("Stochastic Backscatter can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);
-        if (SBSParam.sbsRansConstraint && !IsHybridRANSLES_SST(Kind_HybridRANSLES))
-          SU2_MPI::Error("SBS_RANS_CONSTRAINT can only be activated with a SST-based Hybrid RANS/LES model.", CURRENT_FUNCTION);
-        if (enforceLES) {
-          if (Kind_HybridRANSLES == NO_HYBRIDRANSLES)
-            SU2_MPI::Error("ENFORCE_LES can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);
-          else
-            cout << "LES enforced in the whole computational domain." << endl;
-        }
+        /*--- Consistency checks of the Hybrid RANS/LES and SBS options are done in SetPostprocessing. ---*/
+        if (enforceLES) cout << "LES enforced in the whole computational domain." << endl;
         break;
       case MAIN_SOLVER::NEMO_EULER:
         if (Kind_Regime == ENUM_REGIME::COMPRESSIBLE) cout << "Compressible two-temperature thermochemical non-equilibrium Euler equations." << endl;

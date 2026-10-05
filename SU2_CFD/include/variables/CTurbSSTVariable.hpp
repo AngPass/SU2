@@ -66,6 +66,7 @@ protected:
   VectorType smoothDiag;         /*!< \brief Diagonal coefficient of the system matrix for the Laplacian smoothing. */
   MatrixType smoothPhat;         /*!< \brief Jacobi-preconditioned BiCGSTAB search direction "p" for the Laplacian smoothing. */
   MatrixType smoothShat;         /*!< \brief Jacobi-preconditioned BiCGSTAB stabilizer direction "s" for the Laplacian smoothing. */
+  MatrixType sbsPeriodicBuf;     /*!< \brief Work buffer exchanged between matching periodic points (Stochastic Backscatter Model). */
 
 public:
   /*!< \brief Max number of point-to-point neighbors supported by the fixed-size smoothMatrix/
@@ -292,6 +293,13 @@ public:
    * \brief Set a component of the Jacobi-preconditioned BiCGSTAB stabilizer direction "s".
    */
   inline void SetSmoothShat(unsigned long iPoint, unsigned short iDim, su2double val_shat) override { smoothShat(iPoint, iDim) = val_shat; }
+
+  /*!
+   * \brief Get/set/add a value of the work buffer exchanged between matching periodic points.
+   */
+  inline su2double GetSBSPeriodicBuf(unsigned long iPoint, unsigned short iVar) const override { return sbsPeriodicBuf(iPoint, iVar); }
+  inline void SetSBSPeriodicBuf(unsigned long iPoint, unsigned short iVar, su2double val) override { sbsPeriodicBuf(iPoint, iVar) = val; }
+  inline void AddSBSPeriodicBuf(unsigned long iPoint, unsigned short iVar, su2double val) override { sbsPeriodicBuf(iPoint, iVar) += val; }
 
   /*!
    * \brief Get the value of the stochastic variable resulting from the Ornstein-Uhlenbeck process.

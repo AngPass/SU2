@@ -1650,6 +1650,44 @@ void COutput::PreprocessVolumeOutput(CConfig *config){
     }
   }
 
+  /*--- Some time-averaged fields are fed back into the solver (see CFlowOutput::LoadTimeAveragedData):
+        if they are not part of the volume output selection they are never computed and read as zero
+        (e.g. zero mean TKE, hence no stochastic forcing). Force-add the ones that are actually used. ---*/
+  if (config->GetTime_Domain() && config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) {
+    const auto& sbs = config->GetSBSParam();
+    const bool sst = (config->GetKind_Turb_Model() == TURB_MODEL::SST);
+    vector<string> requiredAvgFields;
+
+    if (sbs.StochasticBackscatter && sbs.useMeanTurb)
+      requiredAvgFields.emplace_back(sst ? "MEAN_TURB_KIN_ENERGY" : "MEAN_EDDY_VISCOSITY");
+
+    if (sbs.StochasticBackscatter && sst && (sbs.dampTimeFiltering || sbs.dampStochTerm)) {
+      requiredAvgFields.emplace_back("MEAN_TURB_KIN_ENERGY");
+      if (!sbs.sbsRansConstraint) {
+        for (const auto* name : {"MEAN_VELOCITY-X", "MEAN_VELOCITY-Y", "MEAN_VELOCITY-Z", "RMS_U", "RMS_V", "RMS_W",
+                                 "UUPRIME", "VVPRIME", "WWPRIME"})
+          requiredAvgFields.emplace_back(name);
+      }
+    }
+
+    if (sbs.filterStresses && config->GetWrt_Restart_Averages()) {
+      requiredAvgFields.emplace_back("MEAN_VELOCITY-X");
+      requiredAvgFields.emplace_back("MEAN_VELOCITY-Y");
+      if (nDim == 3) requiredAvgFields.emplace_back("MEAN_VELOCITY-Z");
+    }
+
+    /*--- All of these belong to the TIME_AVERAGE group: nothing to add if the whole group is requested. ---*/
+    const auto notFound = requestedVolumeFields.end();
+    if (std::find(requestedVolumeFields.begin(), notFound, "TIME_AVERAGE") == notFound) {
+      for (const auto& name : requiredAvgFields) {
+        if (std::find(requestedVolumeFields.begin(), requestedVolumeFields.end(), name) == requestedVolumeFields.end()) {
+          requestedVolumeFields.emplace_back(name);
+          nRequestedVolumeFields++;
+        }
+      }
+    }
+  }
+
   std::vector<bool> FoundField(nRequestedVolumeFields, false);
   vector<string> FieldsToRemove;
 

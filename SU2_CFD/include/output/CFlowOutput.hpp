@@ -388,6 +388,10 @@ protected:
 
   /*!
    * \brief Compute the power of the stochastic forcing (Backscatter Model).
+   * \details The stochastic stress tensor added to the momentum equations is R_ij = eps_ijk a_k, with the
+   *          vector potential a = C_B rho k xi, and enters the stress tensor with a minus sign (see
+   *          CAvgGrad_Base::SetStressTensor), so the stochastic force is f = -curl(a). This returns u . f,
+   *          i.e. the power transferred to the resolved motion (positive = backscatter).
    * \param iPoint - Index of the point.
    * \param config - Definition of the particular problem.
    * \param node_flow - Flow solver solution.
@@ -425,10 +429,10 @@ protected:
         stochVec_i[iDim] = node_turb->GetOU_Process(iPoint, iDim);
       else
         stochVec_i[iDim] = node_turb->GetLangevinSourceTerms(iPoint, iDim);
-      stochVec_i[iDim] *= tkeEstim_i * mag;
+      stochVec_i[iDim] *= tkeEstim_i * mag * node_flow->GetDensity(iPoint);
     }
 
-    /*--- Evaluate the curl of the stochastic vector ---*/
+    /*--- Evaluate the curl of the stochastic vector potential ---*/
 
     su2double curlStochVec[3] = {0.0};
 
@@ -462,7 +466,7 @@ protected:
           stochVec_j[iDim] = node_turb->GetOU_Process(jPoint, iDim);
         else
           stochVec_j[iDim] = node_turb->GetLangevinSourceTerms(jPoint, iDim);
-        stochVec_j[iDim] *= tkeEstim_j * mag;
+        stochVec_j[iDim] *= tkeEstim_j * mag * node_flow->GetDensity(jPoint);
       }
 
       /*--- Compute fluxes ---*/
@@ -477,11 +481,11 @@ protected:
       curlStochVec[2] += sign*(normal[0]*Mean_stochVec[1] - normal[1]*Mean_stochVec[0]);
     }
 
-    /*--- Compute the power of the stochastic forcing ---*/
+    /*--- Compute the power of the stochastic forcing, u . f with f = -curl(a). ---*/
 
     su2double forcingPower = 0.0;
     for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-      forcingPower += node_flow->GetVelocity(iPoint, iDim) * curlStochVec[iDim];
+      forcingPower -= node_flow->GetVelocity(iPoint, iDim) * curlStochVec[iDim];
     }
     forcingPower /= (geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint));
     
@@ -490,6 +494,10 @@ protected:
 
   /*!
    * \brief Compute the stochastic energy backscatter.
+   * \details Energy transferred from the modeled to the resolved motion, -a . omega with the vector
+   *          potential a = C_B rho k xi: the volume integral of the forcing power u . (-curl(a)), up to
+   *          boundary terms, and the opposite of the source added to the turbulence model equation
+   *          (positive = backscatter, see GetPowerStochForcing).
    * \param iPoint - Index of the point.
    * \param config - Definition of the particular problem.
    * \param node_flow - Flow solver solution.
@@ -535,8 +543,8 @@ protected:
     const auto vorticity = node_flow->GetVorticity(iPoint);
     su2double energyBackscatter = 0.0;
     for (unsigned short iDim = 0; iDim < nDim; iDim++)
-      energyBackscatter += stochVec_i[iDim]*vorticity[iDim];
+      energyBackscatter -= stochVec_i[iDim]*vorticity[iDim];
 
-    return energyBackscatter;
+    return energyBackscatter * node_flow->GetDensity(iPoint);
   }
 };

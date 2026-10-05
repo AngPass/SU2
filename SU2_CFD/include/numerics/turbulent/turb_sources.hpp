@@ -222,6 +222,14 @@ class CSourceBase_TurbSA : public CNumerics {
     AD::SetPreaccIn(ScalarVar_Grad_i, nVar, nDim);
     AD::SetPreaccIn(stochSource, 3);
 
+    /*--- Stochastic Backscatter Model inputs (only set, hence only registered, when it is active). ---*/
+    if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().StochasticBackscatter) {
+      AD::SetPreaccIn(lesMode_i);
+      AD::SetPreaccIn(maxDelta_i);
+      AD::SetPreaccIn(wallDist_i);
+      if (config->GetSBSParam().useMeanTurb) AD::SetPreaccIn(avg_eddy_visc_i);
+    }
+
     /*--- Common auxiliary variables and constants of the model. ---*/
     CSAVariables var;
 
@@ -238,7 +246,11 @@ class CSourceBase_TurbSA : public CNumerics {
       const su2double nu = laminar_viscosity / density;
       var.inv_k2_d2 = 1.0 / (var.k2 * var.dist_i_2);
 
+      /*--- Where the stochastic source enters the SA equation (LES region), the low-Reynolds damping
+            functions are switched off (fv1 = 1, fv2 = 0, fw = 1). The same override is applied to the
+            eddy viscosity in CTurbSASolver::Postprocessing, so that nu_t = nu_tilde consistently. ---*/
       const bool sbsLESOverride = config->GetSBSParam().StochasticBackscatter &&
+                                   config->GetSBSParam().stochSourceTurb &&
                                    lesMode_i > config->GetSBSParam().stochFdThreshold;
 
       /*--- Modified values for roughness, roughness_i = 0 for smooth walls and Ji remains the same.
@@ -845,7 +857,8 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
   /*!
    * \brief Include stochastic source term in the equation for the turbulent kinetic energy (Stochastic Backscatter Model).
    */
-  inline void AddStochSource(const CConfig* config, su2double& prodK, const su2double dissipK, su2double& prodOm, su2double prodFac) {
+  inline void AddStochSource(const CConfig* config, su2double& prodK, const su2double dissipK, su2double& prodOm, su2double prodFac,
+                             su2double& jacK_k, su2double& jacOm_k) {
 
     /*--- Scale the stochastic source term by the fraction of turbulent kinetic energy that is
           modeled rather than resolved (see CFlowOutput) only if explicitly requested via
@@ -868,19 +881,26 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
     prodK  -= stochProd;
     prodOm -= stochProd * prodFac;
 
-    if (isLangevin) {
-      if (!clipped) {
-        for (unsigned short iDim = 0; iDim < 3; iDim++) {
-          const su2double dProdK_dStochVar = Cmag * Density_i * tke * Vorticity_i[iDim];
-          Jacobian_i[0][2+iDim] = dProdK_dStochVar * Volume;
-          Jacobian_i[1][2+iDim] = dProdK_dStochVar * prodFac * Volume;
-        }
+    if (isLangevin && !clipped) {
+      for (unsigned short iDim = 0; iDim < 3; iDim++) {
+        const su2double dProdK_dStochVar = Cmag * Density_i * tke * Vorticity_i[iDim];
+        Jacobian_i[0][2+iDim] = dProdK_dStochVar * Volume;
+        Jacobian_i[1][2+iDim] = dProdK_dStochVar * prodFac * Volume;
       }
-      Jacobian_i[0][0] += Cmag * Density_i * (Vorticity_i[0]*ScalarVar_i[2] + Vorticity_i[1]*ScalarVar_i[3] + Vorticity_i[2]*ScalarVar_i[4]) * Volume;
-      Jacobian_i[1][0] += Cmag * Density_i * (Vorticity_i[0]*ScalarVar_i[2] + Vorticity_i[1]*ScalarVar_i[3] + Vorticity_i[2]*ScalarVar_i[4]) * prodFac * Volume;
-    } else {
-      Jacobian_i[0][0] += Cmag * Density_i * (Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2]) * Volume;
-      Jacobian_i[1][0] += Cmag * Density_i * (Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2]) * prodFac * Volume;
+    }
+
+    /*--- d(prodK)/dk and d(prodOm)/dk. Returned to the caller (rather than added to Jacobian_i here)
+          because the caller assigns the k/omega block of the Jacobian after this call. They vanish
+          when the forcing is clipped (it then depends on dissipK only) or when it is scaled by the
+          mean (time-averaged) TKE, which does not depend on the instantaneous k. ---*/
+    jacK_k = 0.0;
+    jacOm_k = 0.0;
+    if (!clipped && !config->GetSBSParam().useMeanTurb) {
+      const su2double stochDotVor = isLangevin
+          ? Vorticity_i[0]*ScalarVar_i[2] + Vorticity_i[1]*ScalarVar_i[3] + Vorticity_i[2]*ScalarVar_i[4]
+          : Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2];
+      jacK_k = Cmag * Density_i * stochDotVor * Volume;
+      jacOm_k = jacK_k * prodFac;
     }
   }
 
@@ -961,6 +981,20 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
     AD::SetPreaccIn(V_i[idx.Velocity() + 1]);
     AD::SetPreaccIn(V_i[idx.SoundSpeed()]);
     AD::SetPreaccIn(stochSource, 3);
+
+    /*--- Hybrid RANS/LES inputs, only set (hence only registered) when the corresponding option is
+          active, see CTurbSSTSolver::Source_Residual. ---*/
+    if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) {
+      const auto& sbs = config->GetSBSParam();
+      AD::SetPreaccIn(FDDES_i);
+      if (sbs.StochasticBackscatter || sbs.filterStresses) AD::SetPreaccIn(lesMode_i);
+      if (sbs.filterStresses) AD::SetPreaccIn(meanStrainRate_i, 6);
+      if (sbs.StochasticBackscatter) {
+        AD::SetPreaccIn(maxDelta_i);
+        if (sbs.useMeanTurb) AD::SetPreaccIn(avg_turb_ke_i);
+        if (sbs.dampTimeFiltering || sbs.dampStochTerm) AD::SetPreaccIn(modeledFraction_i);
+      }
+    }
 
     Density_i = V_i[idx.Density()];
     Laminar_Viscosity_i = V_i[idx.LaminarViscosity()];
@@ -1116,8 +1150,9 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
         dk = min(max(eff_intermittency, 0.1), 1.0) * dk;
       }
 
+      su2double jacStochK_k = 0.0, jacStochOm_k = 0.0;
       if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceTurb && lesMode_i>config->GetSBSParam().stochFdThreshold)
-        AddStochSource(config, pk, dk, pw, (pk > EPS) ? pw/pk : 0.0);
+        AddStochSource(config, pk, dk, pw, (pk > EPS) ? pw/pk : 0.0, jacStochK_k, jacStochOm_k);
 
       /*--- Add the production terms to the residuals. ---*/
 
@@ -1145,6 +1180,10 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
       }
       Jacobian_i[1][0] = 0.0;
       Jacobian_i[1][1] = -2.0 * beta_blended * ScalarVar_i[1] * Volume * (1.0 - 0.09/beta_blended * zetaFMt);
+
+      /*--- Stochastic Backscatter Model contribution to the k-column (see AddStochSource). ---*/
+      Jacobian_i[0][0] += jacStochK_k;
+      Jacobian_i[1][0] += jacStochOm_k;
 
       /*--- Compute residual for Langevin equations (Stochastic Backscatter Model). ---*/
 

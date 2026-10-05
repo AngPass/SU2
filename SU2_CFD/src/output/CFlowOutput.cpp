@@ -4339,8 +4339,8 @@ void CFlowOutput::SetTimeAveragedFields(const CConfig *config) {
     }
 
     if (config->GetSBSParam().StochasticBackscatter) {
-      AddVolumeOutput("MEAN_STOCHASTIC_POWER", "MeanStochasticPower", "BACKSCATTER", "Mean stochastic power");
-      AddVolumeOutput("MEAN_ENERGY_BACKSCATTER", "MeanEnergyBackscatter", "BACKSCATTER", "Mean energy backscatter");
+      AddVolumeOutput("MEAN_STOCHASTIC_POWER", "MeanStochasticPower", "BACKSCATTER", "Mean power of the stochastic force on the resolved motion, u.f (positive = backscatter)");
+      AddVolumeOutput("MEAN_ENERGY_BACKSCATTER", "MeanEnergyBackscatter", "BACKSCATTER", "Mean energy transfer from the modeled to the resolved motion (positive = backscatter)");
       AddVolumeOutput("MEAN_BACKSCATTER_INTENSITY-X", "MeanBackscatterIntensity_x", "BACKSCATTER", "Mean intensity of the stochastic source term in x-momentum equation");
       AddVolumeOutput("MEAN_BACKSCATTER_INTENSITY-Y", "MeanBackscatterIntensity_y", "BACKSCATTER", "Mean intensity of the stochastic source term in y-momentum equation");
       AddVolumeOutput("MEAN_BACKSCATTER_INTENSITY-Z", "MeanBackscatterIntensity_z", "BACKSCATTER", "Mean intensity of the stochastic source term in z-momentum equation");

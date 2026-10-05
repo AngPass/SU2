@@ -235,6 +235,26 @@ void CTurbSolver::LoadRestart(CGeometry** geometry, CSolver*** solver, CConfig* 
   END_SU2_OMP_SAFE_GLOBAL_ACCESS
 }
 
+void CTurbSolver::SBSPeriodicComm(CGeometry *geometry, const CConfig *config, unsigned short commType) {
+  for (unsigned short iPeriodic = 1; iPeriodic <= config->GetnMarker_Periodic()/2; iPeriodic++) {
+    InitiatePeriodicComms(geometry, config, iPeriodic, commType);
+    CompletePeriodicComms(geometry, config, iPeriodic, commType);
+  }
+}
+
+void CTurbSolver::CheckSBSSetup(const CConfig *config) const {
+  if (!config->GetSBSParam().StochasticBackscatter) return;
+  if (nDim < 3)
+    SU2_MPI::Error("The Stochastic Backscatter Model is available for 3D flow simulations only.", CURRENT_FUNCTION);
+  for (unsigned short iMarker = 0; iMarker < config->GetnMarker_All(); iMarker++) {
+    if (config->GetMarker_All_KindBC(iMarker) != PERIODIC_BOUNDARY) continue;
+    const auto angles = config->GetPeriodicRotAngles(config->GetMarker_All_TagBound(iMarker));
+    if (fabs(angles[0]) > EPS || fabs(angles[1]) > EPS || fabs(angles[2]) > EPS) {
+      SU2_MPI::Error("The Stochastic Backscatter Model supports only translational periodicity.", CURRENT_FUNCTION);
+    }
+  }
+}
+
 void CTurbSolver::Impose_Fixed_Values(const CGeometry *geometry, const CConfig *config){
   SU2_ZONE_SCOPED
   const bool implicit = (config->GetKind_TimeIntScheme() == EULER_IMPLICIT);
@@ -267,6 +287,37 @@ void CTurbSolver::Impose_Fixed_Values(const CGeometry *geometry, const CConfig *
       }
     }
     END_SU2_OMP_FOR
+  }
+
+  /*--- Stochastic Backscatter Model (Langevin): homogeneous Dirichlet condition xi = 0 on every physical
+        boundary. The stochastic stress R_ij = eps_ijk a_k (a = C_B rho k xi) is only evaluated on interior
+        edges (the boundary numerics never receive it), so its discrete curl, i.e. the stochastic force
+        -curl(a), only closes at boundary nodes if a vanishes there; a = 0 on the boundary also removes the
+        boundary term from the energy exchange between resolved and modeled motion. The WHITE_NOISE and
+        ORNSTEIN_UHLENBECK variants already have xi = 0 there (zero source on boundary markers). ---*/
+
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
+    const unsigned short firstStochVar = nVar - 3;
+
+    for (unsigned short iMarker = 0; iMarker < config->GetnMarker_All(); iMarker++) {
+      const auto kindBC = config->GetMarker_All_KindBC(iMarker);
+      if (kindBC == SEND_RECEIVE || kindBC == PERIODIC_BOUNDARY || kindBC == INTERNAL_BOUNDARY ||
+          kindBC == NEARFIELD_BOUNDARY || kindBC == FLUID_INTERFACE) continue;
+
+      SU2_OMP_FOR_STAT(OMP_MIN_SIZE)
+      for (unsigned long iVertex = 0; iVertex < geometry->nVertex[iMarker]; iVertex++) {
+        const auto iPoint = geometry->vertex[iMarker][iVertex]->GetNode();
+        if (!geometry->nodes->GetDomain(iPoint)) continue;
+
+        for (unsigned short iVar = firstStochVar; iVar < nVar; iVar++) {
+          nodes->SetSolution_Old(iPoint, iVar, 0.0);
+          nodes->SetSolution(iPoint, iVar, 0.0);
+          LinSysRes(iPoint, iVar) = 0.0;
+          if (implicit) Jacobian.DeleteValsRowi(iPoint, iVar);
+        }
+      }
+      END_SU2_OMP_FOR
+    }
   }
 
 }

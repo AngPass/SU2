@@ -222,6 +222,43 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
   }
 }
 
+void CAvgGrad_Base::SetPreaccInHybridRANSLES(const CConfig* config) {
+  if (config->GetKind_HybridRANSLES() == NO_HYBRIDRANSLES) return;
+
+  const auto& sbs = config->GetSBSParam();
+  const bool sst = IsHybridRANSLES_SST(config->GetKind_HybridRANSLES());
+
+  if (sbs.StochasticBackscatter || sbs.filterStresses) {
+    AD::SetPreaccIn(lesMode_i);
+    AD::SetPreaccIn(lesMode_j);
+  }
+  if (sbs.filterStresses) {
+    AD::SetPreaccIn(meanStrainRate_i, 6);
+    AD::SetPreaccIn(meanStrainRate_j, 6);
+  }
+  if (!sbs.StochasticBackscatter) return;
+
+  AD::SetPreaccIn(stochVar_i, 3);
+  AD::SetPreaccIn(stochVar_j, 3);
+  if (!sst) {
+    AD::SetPreaccIn(maxDelta_i);
+    AD::SetPreaccIn(maxDelta_j);
+  }
+  if (sbs.useMeanTurb) {
+    if (sst) {
+      AD::SetPreaccIn(avg_turb_ke_i);
+      AD::SetPreaccIn(avg_turb_ke_j);
+    } else {
+      AD::SetPreaccIn(avg_eddy_visc_i);
+      AD::SetPreaccIn(avg_eddy_visc_j);
+    }
+  }
+  if (sst && (sbs.dampTimeFiltering || sbs.dampStochTerm)) {
+    AD::SetPreaccIn(modeledFraction_i);
+    AD::SetPreaccIn(modeledFraction_j);
+  }
+}
+
 void CAvgGrad_Base::SetHeatFluxVector(const su2double* const* val_gradprimvar, const su2double val_eddy_viscosity,
                                       const su2double val_thermal_conductivity, const su2double val_heat_capacity_cp) {
   const su2double heat_flux_factor =
@@ -457,6 +494,7 @@ CNumerics::ResidualType<> CAvgGrad_Flow::ComputeResidual(const CConfig* config) 
   AD::SetPreaccIn(turb_ke_i); AD::SetPreaccIn(turb_ke_j);
   AD::SetPreaccIn(TauWall_i); AD::SetPreaccIn(TauWall_j);
   AD::SetPreaccIn(Normal, nDim);
+  SetPreaccInHybridRANSLES(config);
 
   unsigned short iVar, jVar, iDim;
 
@@ -639,6 +677,7 @@ CNumerics::ResidualType<> CAvgGradInc_Flow::ComputeResidual(const CConfig* confi
   AD::SetPreaccIn(turb_ke_i); AD::SetPreaccIn(turb_ke_j);
   AD::SetPreaccIn(TauWall_i); AD::SetPreaccIn(TauWall_j);
   AD::SetPreaccIn(Normal, nDim);
+  SetPreaccInHybridRANSLES(config);
   if (energy_multicomponent) {
     AD::SetPreaccIn(HeatFluxDiffusion);
   }
@@ -961,6 +1000,7 @@ CNumerics::ResidualType<> CGeneralAvgGrad_Flow::ComputeResidual(const CConfig* c
   AD::SetPreaccIn(turb_ke_i); AD::SetPreaccIn(turb_ke_j);
   AD::SetPreaccIn(TauWall_i); AD::SetPreaccIn(TauWall_j);
   AD::SetPreaccIn(Normal, nDim);
+  SetPreaccInHybridRANSLES(config);
 
   unsigned short iVar, jVar, iDim;
 
