@@ -186,4 +186,21 @@ public:
    * \return One if the Stochastic Backscatter Model is active.
    */
   inline virtual su2double GetSBSInBox(unsigned long iPoint) const { return 0.0; }
+
+  /*!
+   * \brief Write the first blending function of the SST model, for a ghost row: SetBlendingFunc
+   *        derives F1 from the wall distance and viscous state, neither of which a ghost point
+   *        has, so its ghost row is written directly with the interior point's own F1 instead.
+   */
+  inline virtual void SetF1blending(unsigned long iPoint, su2double val) {}
+
+  /*!
+   * \brief Container backing GetF1blending/SetF1blending, for the edge-flux kernels to read
+   *        through gatherVariables the way they do GetSolution and GetGradient, rather than one
+   *        virtual call per point.
+   * \note Not an overload of the per-point CVariable::GetF1blending: brought back into scope so
+   *       that name is not hidden here.
+   */
+  using CVariable::GetF1blending;
+  inline virtual const VectorType& GetF1blending() const { return EmptyVector; }
 };

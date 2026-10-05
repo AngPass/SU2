@@ -130,6 +130,7 @@ COutput::COutput(const CConfig *config, unsigned short ndim, bool fem_output):
   cauchySerie = vector<vector<su2double>>(convFields.size(), vector<su2double>(nCauchy_Elems, 0.0));
   cauchyValue = 0.0;
   convergence = false;
+  convergenceInterrupted = false;
 
   /*--- Initialize time convergence monitoring structure ---*/
 
@@ -229,6 +230,10 @@ void COutput::SetHistoryOutput(CGeometry *geometry,
 
   PostprocessHistoryData(config);
 
+}
+
+void COutput::SetObjectiveFunctionValues(CGeometry *geometry, CSolver **solver_container, CConfig *config) {
+  LoadCustomAndComboObjectiveFunctions(config, geometry, solver_container);
 }
 
 void COutput::SetHistoryOutput(CGeometry ****geometry, CSolver *****solver, CConfig **config, std::shared_ptr<CTurbomachineryStagePerformance>(TurboStagePerf), su2vector<std::shared_ptr<CTurboOutput>> TurboBladePerfs, unsigned short val_iZone, unsigned long TimeIter, unsigned long OuterIter, unsigned long InnerIter, unsigned short val_iInst){
@@ -436,12 +441,15 @@ void COutput::WriteToFile(CConfig *config, CGeometry *geometry, OUTPUT_TYPE form
       if (!config->GetWrt_Restart_Overwrite())
         filename_iter = config->GetFilename_Iter(fileName, curInnerIter, curOuterIter);
 
-      /*--- If we have compact restarts, we use only the required fields. ---*/
-      if (config->GetWrt_Restart_Compact())
-        volumeDataSorter->SetRequiredFieldNames(requiredVolumeFieldNames);
-
       LogOutputFiles("SU2 ASCII restart");
-      fileWriter = new CSU2FileWriter(volumeDataSorter);
+
+      if (config->GetWrt_Restart_Compact()) {
+        /*--- If we have compact restarts, we use only the required fields. ---*/
+        volumeDataSorterCompact->SetRequiredFieldNames(requiredVolumeFieldNames);
+        fileWriter = new CSU2FileWriter(volumeDataSorterCompact);
+      } else {
+        fileWriter = new CSU2FileWriter(volumeDataSorter);
+      }
 
       break;
 
@@ -1049,15 +1057,24 @@ bool COutput::ConvergenceMonitoring(CConfig *config, unsigned long Iteration) {
 
   if (convFields.empty() || Iteration < config->GetStartConv_Iter()) convergence = false;
 
-  /*--- If a SIGTERM signal is sent to one of the processes, we set convergence to true. ---*/
-  if (STOP) convergence = true;
+  /*--- If a SIGTERM signal is sent to one of the processes, we set convergence to true so the
+   *    solver stops and saves the solution, but remember that the exit was forced by the signal
+   *    rather than by the convergence criteria so the exit message stays truthful. ---*/
+  if (STOP) {
+    if (!convergence) convergenceInterrupted = true;
+    convergence = true;
+  }
 
-  /*--- Apply the same convergence criteria to all processors. ---*/
+  /*--- Apply the same convergence criteria to all processors, and propagate an
+   *    interrupt received on any rank. ---*/
 
-  unsigned short local = convergence, global = 0;
+  unsigned short local[2] = {static_cast<unsigned short>(convergence),
+                             static_cast<unsigned short>(convergenceInterrupted)};
+  unsigned short global[2] = {0, 0};
 
-  SU2_MPI::Allreduce(&local, &global, 1, MPI_UNSIGNED_SHORT, MPI_MAX, SU2_MPI::GetComm());
-  convergence = global > 0;
+  SU2_MPI::Allreduce(local, global, 2, MPI_UNSIGNED_SHORT, MPI_MAX, SU2_MPI::GetComm());
+  convergence = global[0] > 0;
+  convergenceInterrupted = global[1] > 0;
 
   return convergence;
 }
@@ -1551,6 +1568,21 @@ void COutput::CheckHistoryOutput(unsigned short nZone) {
   FieldsToRemove.clear();
   for (unsigned short iField_Conv = 0; iField_Conv < convFields.size(); iField_Conv++){
     if (historyOutput_Map.count(convFields[iField_Conv]) == 0){
+      /*--- NEMO density residuals now identify each species explicitly. Do not
+       * discard an obsolete selector, which could weaken a mixed stopping criterion.
+       * Check the registered replacement so other solvers and zones are unaffected. ---*/
+      const auto& field = convFields[iField_Conv];
+      const auto zonePos = field.find('[');
+      const auto base = field.substr(0, zonePos);
+      if (base == "MAX_DENSITY" || base == "BGS_DENSITY" ||
+          base == "REL_MAX_DENSITY" || base == "REL_BGS_DENSITY") {
+        const auto replacement = base + "_0" + (zonePos == string::npos ? "" : field.substr(zonePos));
+        if (historyOutput_Map.count(replacement) != 0) {
+          SU2_MPI::Error("Obsolete NEMO CONV_FIELD '" + field + "': select explicit species density residuals, "
+                         "for example '" + replacement + "' for species 0. List every species that must meet "
+                         "CONV_RESIDUAL_MINVAL; the obsolete field cannot be ignored.", CURRENT_FUNCTION);
+        }
+      }
       if (!removedField) {
         if(rank == MASTER_NODE) cout << "Ignoring Convergence Field(s): ";
         removedField = true;
