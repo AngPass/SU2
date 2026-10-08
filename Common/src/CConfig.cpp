@@ -3124,6 +3124,10 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: SBS intensity coefficient */
   addDoubleOption("SBS_INTENSITY_COEFF", SBSParam.SBS_Cmag, 1.0);
 
+  /* DESCRIPTION: 4th order (JST-like) artificial dissipation coefficient of the centered flux of
+   *              the Langevin equations (SBS_SOURCE_TYPE= LANGEVIN), 0 for none. */
+  addDoubleOption("SBS_KAPPA_4TH", SBSParam.SBS_Kappa4, 0.0);
+
   /* DESCRIPTION: Specify Hybrid RANS/LES model */
   addEnumOption("HYBRID_RANSLES", Kind_HybridRANSLES, HybridRANSLES_Map, NO_HYBRIDRANSLES);
 
@@ -4272,6 +4276,9 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
 
     if (SBSParam.SBS_Ctau <= 0.0)
       SU2_MPI::Error("Backscatter timescale coefficient (SBS_TIMESCALE_COEFF) must be positive.", CURRENT_FUNCTION);
+
+    if (SBSParam.SBS_Kappa4 < 0.0)
+      SU2_MPI::Error("Langevin artificial dissipation coefficient (SBS_KAPPA_4TH) must be non-negative.", CURRENT_FUNCTION);
 
     if (SBSParam.SBS_maxIterSmooth > 0 && SBSParam.SBS_Cdelta < 0.0)
       SU2_MPI::Error("Backscatter lengthscale coefficient (SBS_LENGTHSCALE_COEFF) must be non-negative.", CURRENT_FUNCTION);
@@ -6909,7 +6916,11 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
             cout << "| Backscatter intensity coefficient: " << SBSParam.SBS_Cmag << endl;
             cout << "| Backscatter timescale coefficient: " << SBSParam.SBS_Ctau << endl;
             if (SBSParam.stochSourceType == LANGEVIN) {
-              cout << "| Langevin equations integrated using a central scheme with 4th-order JST-type artificial dissipation." << endl;
+              if (SBSParam.SBS_Kappa4 > 0.0)
+                cout << "| Langevin equations advected with a centered scheme, 4th order artificial dissipation coefficient: "
+                     << SBSParam.SBS_Kappa4 << endl;
+              else
+                cout << "| Langevin equations advected with a centered scheme (no artificial dissipation)." << endl;
               if (SBSParam.restartStochField)
                 cout << "| Stochastic field restarted from solution file (if present)." << endl;
               else

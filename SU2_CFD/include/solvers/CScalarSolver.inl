@@ -132,13 +132,6 @@ void CScalarSolver<VariableType>::CommonPreprocessing(CGeometry *geometry, const
     }
   }
 
-  /*--- Undivided Laplacian of the solution, used by the 4th-order JST-type dissipation added to
-        the (always centered) convective discretization of the Langevin equations. ---*/
-
-  if (!Output && config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
-    SetUndivided_Laplacian(geometry, config);
-  }
-
   /*--- Upwind second order reconstruction and gradients ---*/
 
   if (config->GetReconstructionGradientRequired()) {
@@ -196,7 +189,8 @@ void CScalarSolver<VariableType>::EdgeFluxResidual(const CGeometry* geometry, CS
 
   const EdgeSide<VariableType> side{*nodes, flowNodes, CMatrixView<const su2double>(geometry->nodes->GetCoord()),
                                     dynamic_grid ? CMatrixView<const su2double>(geometry->nodes->GetGridVel())
-                                                 : CMatrixView<const su2double>()};
+                                                 : CMatrixView<const su2double>(),
+                                    geometry->nodes};
 
   const auto updateType = ReducerStrategy ? UpdateType::REDUCTION : UpdateType::COLORING;
   auto& target = ReducerStrategy ? EdgeFluxes : LinSysRes;

@@ -30,6 +30,7 @@
 
 #include "../../../../Common/include/CConfig.hpp"
 #include "../../../../Common/include/containers/container_decorators.hpp"
+#include "../../../../Common/include/geometry/dual_grid/CPoint.hpp"
 #include "../util.hpp"
 #include "../../variables/CFlowVariable.hpp"
 
@@ -44,7 +45,23 @@ struct EdgeSide {
   const CFlowVariable* flowNodes;       /*!< \brief Flow variables, null for solid heat transfer. */
   CMatrixView<const su2double> coord;   /*!< \brief Point coordinates. */
   CMatrixView<const su2double> gridVel; /*!< \brief Empty when the grid is static. */
+  const CPoint* points = nullptr;       /*!< \brief Neighbor counts of the artificial dissipation, null on a ghost side. */
 };
+
+/*!
+ * \brief Number of neighbors of the points of an edge, for the scaling of the artificial
+ *        dissipation (see CJSTScheme), fetched one lane at a time since it is integer data.
+ */
+template <class Double, class T, size_t N>
+FORCEINLINE Double numNeighbor(const simd::Array<T, N>& idx, const CPoint& points) {
+  Double n;
+  for (size_t k = 0; k < N; ++k) n[k] = points.GetnNeighbor(idx[k]);
+  return n;
+}
+template <class Double>
+FORCEINLINE Double numNeighbor(unsigned long idx, const CPoint& points) {
+  return points.GetnNeighbor(idx);
+}
 
 /*!
  * \brief Loop invariant flags for a scalar edge flux, built once outside the edge loop so the
@@ -135,6 +152,46 @@ struct CScalarValues {
                                           applies; every call site here passes an explicit nVarGrad_ instead. */
   Vector<Double, Size> all;
 };
+
+/*!
+ * \brief 4th order artificial dissipation of the centered flux of the Langevin equations of
+ *        stochastic backscatter, variables [first, nVar), with the scaling of CJSTScheme.
+ * \param[in] kappa4 - Dissipation coefficient (SBS_KAPPA_4TH), the term is skipped when 0.
+ * \param[in] lambda - Spectral radius of the edge, the magnitude of the face normal volume flux.
+ * \param[in] weight - Weight of the transported variable in the flux, the density for a conservative model.
+ * \note Uses the undivided Laplacian of the solution, computed by the solver before the edge loop.
+ *       Interior edges only: a ghost side has neither the Laplacian nor the neighbor count.
+ *       The Jacobians are the usual approximation, the dependence on the neighbors of the
+ *       neighbors cannot be represented in the edge blocks.
+ */
+template <class Double, class Int, class VariableType, size_t nVar>
+FORCEINLINE void langevinDissipation(const ScalarFluxOptions& opt, su2double kappa4, size_t first, Int iPoint,
+                                     const EdgeSide<VariableType>& side_i, Int jPoint,
+                                     const EdgeSide<VariableType>& side_j, const Double& lambda, const Double& weight,
+                                     EdgeResidual<Double, nVar>& res) {
+  if (kappa4 <= 0.0 || opt.oneSided || res.nVar <= first) return;
+
+  const Double ni = numNeighbor<Double>(iPoint, *side_i.points);
+  const Double nj = numNeighbor<Double>(jPoint, *side_j.points);
+  const Double sc2 = 3 * (ni + nj) / (ni * nj);
+  const Double eps4 = kappa4 * 0.25 * sc2 * sc2 * lambda;
+
+  for (size_t iVar = first; iVar < res.nVar; ++iVar) {
+    const Double lapl_i = gatherVariables(iPoint, side_i.scalarNodes.GetUndivided_Laplacian(), iVar);
+    const Double lapl_j = gatherVariables(jPoint, side_j.scalarNodes.GetUndivided_Laplacian(), iVar);
+    const Double dissip = eps4 * weight * (lapl_j - lapl_i);
+
+    res.flux_i(iVar) += dissip;
+    res.flux_j(iVar) -= dissip;
+
+    if (opt.implicit) {
+      res.jac_ii(iVar, iVar) += eps4 * (ni + 1);
+      res.jac_ij(iVar, iVar) -= eps4 * (nj + 1);
+      res.jac_ji(iVar, iVar) -= eps4 * (ni + 1);
+      res.jac_jj(iVar, iVar) += eps4 * (nj + 1);
+    }
+  }
+}
 
 /*!
  * \brief Diffusion of a transported scalar, driven by model-supplied coefficients.
@@ -257,7 +314,8 @@ class CAvgGradScalarBase {
 /*!
  * \brief Convective flux shared by every model whose transport equation has the shape
  *        flux(iVar) = a0 * w_i * phi_i(iVar) + a1 * w_j * phi_j(iVar), which is every
- *        model except SA and stochastic backscatter (see CScalarFlux_SA).
+ *        model except SA and the stochastic backscatter equations of SA and SST (see
+ *        CScalarFlux_SA and CScalarFlux_SST).
  * \note The weight w is 1 for a non-conservative model, the density for a conservative one.
  */
 template <class Double, class Derived, class FlowIndices, int nDim, size_t nVar>
@@ -331,6 +389,14 @@ class CUpwScalarBase : public CUpwScalarFlux<Double_, Derived, FlowIndices, nDim
    *        Conservative already implies. A model that declares neither never gathers it.
    */
   static constexpr bool DiffusionReadsDensity = false;
+
+  /*!
+   * \brief Number of leading variables reconstructed by the convective scheme when opt.muscl is
+   *        set, all of them by default; a model with trailing variables that must keep their nodal
+   *        values (the Langevin equations of stochastic backscatter) redeclares it.
+   * \note Only honoured for a static equation count.
+   */
+  static constexpr size_t NVarReconstructed = nVar_;
 
  protected:
   using Base = CUpwScalarFlux<Double_, Derived, FlowIndices, nDim_, nVar_>;
@@ -465,8 +531,10 @@ class CUpwScalarBase : public CUpwScalarFlux<Double_, Derived, FlowIndices, nDim
 
       if (opt.muscl) {
         if constexpr (nVar != Dynamic) {
-          reconstruct<nVar>(iPoint, jPoint, vector_ij, side_i.scalarNodes.GetGradient_Reconstruction(),
-                            side_i.scalarNodes.GetLimiter(), limiterType, 0, phi, kappa, umusclRamp);
+          constexpr size_t nRecon = Derived::NVarReconstructed;
+          static_assert(nRecon >= 1 && nRecon <= nVar, "Invalid number of reconstructed variables.");
+          reconstruct<nRecon>(iPoint, jPoint, vector_ij, side_i.scalarNodes.GetGradient_Reconstruction(),
+                              side_i.scalarNodes.GetLimiter(), limiterType, 0, phi, kappa, umusclRamp);
         } else {
           /*--- A dynamic model's equation count is only known at runtime, so the reconstructed
            * width is passed as an argument instead of a template parameter. ---*/

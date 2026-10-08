@@ -85,9 +85,13 @@ public:
    * \param[in] nvar - Number of variables of the problem.
    * \param[in] constants - sst model constants
    * \param[in] config - Definition of the particular problem.
+   * \param[in] ghost - Whether these are the boundary ghost rows of the solver, which the edge kernels
+   *            only read the solution and the blending function of: the Stochastic Backscatter Model
+   *            work arrays are then not allocated.
    */
   CTurbSSTVariable(su2double kine, su2double omega, su2double mut, unsigned long npoint,
-                   unsigned long ndim, unsigned long nvar, const su2double* constants, CConfig *config);
+                   unsigned long ndim, unsigned long nvar, const su2double* constants, CConfig *config,
+                   bool ghost = false);
 
   /*!
    * \brief Destructor of the class.

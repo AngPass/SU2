@@ -29,7 +29,7 @@
 #include "../../include/variables/CTurbSSTVariable.hpp"
 
 
-CTurbSSTVariable::CTurbSSTVariable(su2double kine, su2double omega, su2double mut, unsigned long npoint, unsigned long ndim, unsigned long nvar, const su2double* constants, CConfig *config)
+CTurbSSTVariable::CTurbSSTVariable(su2double kine, su2double omega, su2double mut, unsigned long npoint, unsigned long ndim, unsigned long nvar, const su2double* constants, CConfig *config, bool ghost)
   : CTurbVariable(npoint, ndim, nvar, config) {
 
   sstParsedOptions = config->GetSSTParsedOptions();
@@ -62,21 +62,21 @@ CTurbSSTVariable::CTurbSSTVariable(su2double kine, su2double omega, su2double mu
     DES_LengthScale.resize(nPoint) = su2double(0.0);
     DES_FilterWidth.resize(nPoint) = su2double(0.0);
     F_DES.resize(nPoint) = su2double(1.0);
-    if (backscatter && (config->GetSBSParam().dampTimeFiltering || config->GetSBSParam().dampStochTerm)) {
-      ModeledFraction.resize(nPoint) = su2double(1.0);
-    }
-    MeanTurbKE.resize(nPoint) = su2double(0.0);
-    if (config->GetSBSParam().sbsRansConstraint) {
-      RANS_TKE.resize(nPoint) = su2double(0.0);
-    }
     lesMode.resize(nPoint) = su2double(0.0);
     Vortex_Tilting.resize(nPoint) = su2double(0.0);
-    if (backscatter) {
-      if (config->GetSBSParam().stochSourceType == LANGEVIN) {
-        /*--- Undivided Laplacian of the solution, used by the 4th-order JST-type dissipation
-              added to the (always centered) convective discretization of the Langevin equations. ---*/
-        Undivided_Laplacian.resize(nPoint, nVar) = su2double(0.0);
+
+    /*--- Mean fields and work arrays of the Stochastic Backscatter Model / FILTER_STRESSES, not
+          needed by the boundary ghost rows. ---*/
+    if (!ghost) {
+      if (backscatter && (config->GetSBSParam().dampTimeFiltering || config->GetSBSParam().dampStochTerm)) {
+        ModeledFraction.resize(nPoint) = su2double(1.0);
       }
+      MeanTurbKE.resize(nPoint) = su2double(0.0);
+      if (config->GetSBSParam().sbsRansConstraint) {
+        RANS_TKE.resize(nPoint) = su2double(0.0);
+      }
+    }
+    if (backscatter && !ghost) {
       stochSource.resize(nPoint, nDim) = su2double(0.0);
       stochSourceOld.resize(nPoint, nDim) = su2double(0.0);
       besselIntegral.resize(nPoint) = su2double(0.0);
@@ -89,6 +89,9 @@ CTurbSSTVariable::CTurbSSTVariable(su2double kine, su2double omega, su2double mu
       smoothPhat.resize(nPoint, 3) = su2double(0.0);
       smoothShat.resize(nPoint, 3) = su2double(0.0);
       sbsPeriodicBuf.resize(nPoint, SBS_PERIODIC_NBUF) = su2double(0.0);
+      /*--- Undivided Laplacian of the 4th order artificial dissipation of the Langevin equations. ---*/
+      if (config->GetSBSParam().stochSourceType == LANGEVIN && config->GetSBSParam().SBS_Kappa4 > 0.0)
+        Undivided_Laplacian.resize(nPoint, nVar) = su2double(0.0);
     }
   }
 }

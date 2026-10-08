@@ -47,13 +47,18 @@ class CScalarFlux_SA
   static constexpr bool DiagonalDiffusion = true;
   static constexpr bool DiffusionReadsDensity = true; /*!< \brief The kinematic viscosities below. */
 
+  /*!< \brief Only nu_tilde is MUSCL-reconstructed: the Langevin variables of stochastic backscatter
+   *          are advected with a centered flux of their nodal values. */
+  static constexpr size_t NVarReconstructed = 1;
+
   using Base = CUpwScalarBase<Double, CScalarFlux_SA, FlowIndices, nDim, nVar>;
   using Int = typename Base::Int;
 
   explicit CScalarFlux_SA(const CConfig& config)
       : Base(config),
         negativeSA(config.GetSAParsedOptions().version == SA_OPTIONS::NEG),
-        accurateJacobians(config.GetUse_Accurate_Turb_Jacobians()) {}
+        accurateJacobians(config.GetUse_Accurate_Turb_Jacobians()),
+        kappa4(config.GetSBSParam().SBS_Kappa4) {}
 
  private:
   static constexpr passivedouble sigma = 2.0 / 3.0; /*!< \brief Constant of the diffusion term. */
@@ -64,16 +69,17 @@ class CScalarFlux_SA
    *          diffusion coefficient below to keep the diffusion term from turning anti-diffusive. */
   const bool negativeSA;
   const bool accurateJacobians;
+  const su2double kappa4; /*!< \brief 4th order artificial dissipation of the Langevin equations. */
 
  public:
   /*!
    * \brief SA convection, plus the centered advection of the backscatter equations when nVar > 1.
    */
   template <class VariableType, size_t Size>
-  FORCEINLINE void finalizeFlux(const FlowIndices&, const ScalarFluxOptions& opt, Int, const EdgeSide<VariableType>&,
-                                Int, const EdgeSide<VariableType>&, const Double& a0, const Double& a1,
-                                const CPair<Double>&, const CPair<CScalarValues<Double, Size>>& phi,
-                                EdgeResidual<Double, nVar>& res) const {
+  FORCEINLINE void finalizeFlux(const FlowIndices&, const ScalarFluxOptions& opt, Int iPoint,
+                                const EdgeSide<VariableType>& side_i, Int jPoint, const EdgeSide<VariableType>& side_j,
+                                const Double& a0, const Double& a1, const CPair<Double>&,
+                                const CPair<CScalarValues<Double, Size>>& phi, EdgeResidual<Double, nVar>& res) const {
     const Double flux = a0 * phi.i.all(0) + a1 * phi.j.all(0);
 
     res.flux_i(0) += flux;
@@ -106,6 +112,10 @@ class CScalarFlux_SA
         }
       }
     }
+
+    /*--- Optional 4th order artificial dissipation of the centered flux, scaled by the
+     * magnitude of the face normal volume flux, |q_ij| = a0 - a1. ---*/
+    langevinDissipation(opt, kappa4, 1, iPoint, side_i, jPoint, side_j, Double(a0 - a1), Double(1.0), res);
   }
 
   /*!

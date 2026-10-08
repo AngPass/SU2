@@ -73,8 +73,12 @@ public:
    * \param[in] nvar - Number of variables of the problem.
    * \param[in] constants -
    * \param[in] config - Definition of the particular problem.
+   * \param[in] ghost - Whether these are the boundary ghost rows of the solver, which the edge kernels
+   *            only read the solution of: the Stochastic Backscatter Model work arrays are then not
+   *            allocated.
    */
-  CTurbSAVariable(su2double val_nu_tilde, su2double val_muT, unsigned long npoint, unsigned long ndim, unsigned long nvar, CConfig *config);
+  CTurbSAVariable(su2double val_nu_tilde, su2double val_muT, unsigned long npoint, unsigned long ndim, unsigned long nvar,
+                  CConfig *config, bool ghost = false);
 
   /*!
    * \brief Destructor of the class.

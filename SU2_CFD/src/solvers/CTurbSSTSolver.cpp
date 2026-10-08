@@ -68,8 +68,7 @@ CTurbSSTSolver::CTurbSSTSolver(CGeometry *geometry, CConfig *config, const CSolv
     nVarGrad = nPrimVar = nVar;
 
     /*--- Only kine and omega (indices 0,1) are MUSCL-reconstructed when MUSCL_TURB=YES; the 3 Langevin
-          components always keep their raw nodal values, see nVarConvRecon. ---*/
-    nVarConvRecon = 2;
+          components always keep their raw nodal values, see CScalarFlux_SST::NVarReconstructed. ---*/
   }
 
   /*--- Single grid simulation ---*/
@@ -176,7 +175,7 @@ CTurbSSTSolver::CTurbSSTSolver(CGeometry *geometry, CConfig *config, const CSolv
   for (unsigned long iMarker = 0; iMarker < nMarker; iMarker++)
     maxMarkerVertices = max(maxMarkerVertices, nVertex[iMarker]);
   ghostNodes = make_unique<CTurbSSTVariable>(kine_Inf, omega_Inf, muT_Inf, maxMarkerVertices, nDim, nVar, constants,
-                                             config);
+                                             config, true);
 
   /*--- MPI solution ---*/
 
@@ -268,7 +267,12 @@ void CTurbSSTSolver::Preprocessing(CGeometry *geometry, CSolver **solver_contain
 
   /*--- Upwind second order reconstruction and gradients ---*/
   CommonPreprocessing(geometry, config, Output);
-  
+
+  /*--- Undivided Laplacian of the 4th order artificial dissipation of the Langevin equations. ---*/
+  const auto& sbs = config->GetSBSParam();
+  if (!Output && sbs.StochasticBackscatter && sbs.stochSourceType == LANGEVIN && sbs.SBS_Kappa4 > 0.0)
+    SetUndivided_Laplacian(geometry, config);
+
   const auto kind_hybridRANSLES = config->GetKind_HybridRANSLES();
 
   if (kind_hybridRANSLES != NO_HYBRIDRANSLES) {
@@ -432,14 +436,15 @@ void CTurbSSTSolver::Upwind_Residual(CGeometry* geometry, CSolver** solver_conta
   const auto opt = ScalarFluxOptions::Interior(*config, config->GetBounded_Turb(),
                                                config->GetUse_Accurate_Turb_Jacobians());
 
-  DispatchScheme<CScalarFlux_SST, 2>(config, [&](auto tag) {
+  /*--- nVar is 2, or 5 with the three Langevin equations of stochastic backscatter. ---*/
+  DispatchScheme<CScalarFlux_SST, 2, 5>(config, [&](auto tag) {
     EdgeFluxResidual<typename decltype(tag)::type>(geometry, solver_container, config, opt);
   });
 }
 
 void CTurbSSTSolver::BoundaryFlux(CGeometry* geometry, CSolver** solver_container, CConfig* config,
                                   const ScalarFluxOptions& opt, unsigned short val_marker) {
-  DispatchScheme<CScalarFlux_SST, 2>(config, [&](auto tag) {
+  DispatchScheme<CScalarFlux_SST, 2, 5>(config, [&](auto tag) {
     BoundaryFluxResidual<typename decltype(tag)::type>(geometry, solver_container, config, opt, val_marker);
   });
 }
@@ -1706,7 +1711,8 @@ void CTurbSSTSolver::BC_Inlet(CGeometry *geometry, CSolver **solver_container, C
   for (auto iVertex = 0u; iVertex < geometry->nVertex[val_marker]; iVertex++) {
     const auto* V_inlet = flowSolver->GetCharacPrimVar(val_marker, iVertex);
 
-    su2double Inlet_Vars[MAXNVAR];
+    /*--- Zero-initialized: the Langevin variables of stochastic backscatter (if any) enter at zero. ---*/
+    su2double Inlet_Vars[MAXNVAR] = {0.0};
     if (config->GetInlet_Profile_From_File()) {
       /*--- Non-dimensionalize Inlet_TurbVars if Inlet-Files are used. ---*/
       Inlet_Vars[0] = Inlet_TurbVars[val_marker][iVertex][0] / pow(config->GetVelocity_Ref(), 2);
@@ -1885,7 +1891,10 @@ void CTurbSSTSolver::BC_Inlet_Turbo(CGeometry *geometry, CSolver **solver_contai
     su2double kine_b  = 3.0/2.0*(VelMag2*Intensity*Intensity);
     su2double omega_b = rho*kine/(muLam*viscRatio);
 
-    const su2double solution_j[] = {kine_b, omega_b};
+    /*--- Sized for all nVar: the Langevin variables of stochastic backscatter (if any) are zero. ---*/
+    su2double solution_j[MAXNVAR] = {0.0};
+    solution_j[0] = kine_b;
+    solution_j[1] = omega_b;
 
     SU2_OMP_FOR_STAT(OMP_MIN_SIZE)
     for (auto iVertex = 0u; iVertex < geometry->GetnVertexSpan(val_marker,iSpan); iVertex++) {
@@ -1932,7 +1941,7 @@ void CTurbSSTSolver::BC_Fluid_Interface(CGeometry *geometry, CSolver **solver_co
     ghostNodes->SetF1blending(iVertex, nodes->GetF1blending(iPoint));
   };
 
-  DispatchScheme<CScalarFlux_SST, 2>(config, [&](auto tag) {
+  DispatchScheme<CScalarFlux_SST, 2, 5>(config, [&](auto tag) {
     FluidInterfaceFluxResidual<typename decltype(tag)::type>(geometry, solver_container, config, optConv, optVisc,
                                                              fillGhostExtras);
   });

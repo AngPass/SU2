@@ -29,7 +29,7 @@
 #include "../../include/variables/CTurbSAVariable.hpp"
 
 CTurbSAVariable::CTurbSAVariable(su2double val_nu_tilde, su2double val_muT, unsigned long npoint,
-                                 unsigned long ndim, unsigned long nvar, CConfig *config) :
+                                 unsigned long ndim, unsigned long nvar, CConfig *config, bool ghost) :
                  CTurbVariable(npoint, ndim, nvar, config) {
 
   /*--- Initialize solution (check if the Stochastic Backscatter Model is active) ---*/
@@ -62,12 +62,8 @@ CTurbSAVariable::CTurbSAVariable(su2double val_nu_tilde, su2double val_muT, unsi
 
   if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) {
     lesMode.resize(nPoint) = su2double(0.0);
-    if (backscatter) {
-      if (config->GetSBSParam().stochSourceType == LANGEVIN) {
-        /*--- Undivided Laplacian of the solution, used by the 4th-order JST-type dissipation
-              added to the (always centered) convective discretization of the Langevin equations. ---*/
-        Undivided_Laplacian.resize(nPoint, nVar) = su2double(0.0);
-      }
+    /*--- Work arrays of the Stochastic Backscatter Model, not needed by the boundary ghost rows. ---*/
+    if (backscatter && !ghost) {
       stochSource.resize(nPoint, nDim) = su2double(0.0);
       stochSourceOld.resize(nPoint, nDim) = su2double(0.0);
       besselIntegral.resize(nPoint) = su2double(0.0);
@@ -81,6 +77,9 @@ CTurbSAVariable::CTurbSAVariable(su2double val_nu_tilde, su2double val_muT, unsi
       smoothShat.resize(nPoint, 3) = su2double(0.0);
       sbsPeriodicBuf.resize(nPoint, SBS_PERIODIC_NBUF) = su2double(0.0);
       MeanEddyViscosity.resize(nPoint) = su2double(0.0);
+      /*--- Undivided Laplacian of the 4th order artificial dissipation of the Langevin equations. ---*/
+      if (config->GetSBSParam().stochSourceType == LANGEVIN && config->GetSBSParam().SBS_Kappa4 > 0.0)
+        Undivided_Laplacian.resize(nPoint, nVar) = su2double(0.0);
     }
   }
 

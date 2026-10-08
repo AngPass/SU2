@@ -34,9 +34,9 @@
  * \ingroup ViscDiscr
  * \brief Convection and diffusion of the Menter SST model, conservative with a coupled (but
  *        neither symmetric nor diagonal) 2x2 diffusion matrix.
- * \note SST writes no finalizeFlux of its own: the inherited CUpwScalarFlux one is exactly
- *       flux(iVar) = a0*rho_i*phi_i(iVar) + a1*rho_j*phi_j(iVar), Conservative weighting by
- *       density, which is the model's whole convective term.
+ * \note SST writes its own convective term: k and omega are upwinded as in CUpwScalarFlux,
+ *       flux(iVar) = a0*rho_i*phi_i(iVar) + a1*rho_j*phi_j(iVar), while with stochastic backscatter
+ *       active (nVar 5) the three Langevin equations are advected with a centered flux, as in SA.
  */
 template <class Double, class FlowIndices, int nDim, size_t nVar = 2>
 class CScalarFlux_SST
@@ -45,11 +45,56 @@ class CScalarFlux_SST
   static constexpr bool Conservative = true;
   static constexpr bool DiagonalDiffusion = false;
 
+  /*!< \brief Only k and omega are MUSCL-reconstructed: the Langevin variables of stochastic
+   *          backscatter are advected with a centered flux of their nodal values. */
+  static constexpr size_t NVarReconstructed = 2;
+
   using Base = CUpwScalarBase<Double, CScalarFlux_SST, FlowIndices, nDim, nVar>;
   using Int = typename Base::Int;
-  using Base::Base;
+
+  explicit CScalarFlux_SST(const CConfig& config) : Base(config), kappa4(config.GetSBSParam().SBS_Kappa4) {}
+
+  /*!
+   * \brief SST convection, upwind and density-weighted, plus the centered (density-weighted)
+   *        advection of the backscatter equations when nVar > 2.
+   * \note The Jacobians are w.r.t. the conserved variables, the density weights the flux only.
+   */
+  template <class VariableType, size_t Size>
+  FORCEINLINE void finalizeFlux(const FlowIndices&, const ScalarFluxOptions& opt, Int iPoint,
+                                const EdgeSide<VariableType>& side_i, Int jPoint, const EdgeSide<VariableType>& side_j,
+                                const Double& a0, const Double& a1, const CPair<Double>& rho,
+                                const CPair<CScalarValues<Double, Size>>& phi, EdgeResidual<Double, nVar>& res) const {
+    const Double avg = 0.5 * (a0 + a1);
+
+    for (size_t iVar = 0; iVar < res.nVar; ++iVar) {
+      /*--- Upwind weights for k and omega, centered ones for the Langevin variables. ---*/
+      const Double w0 = (iVar < 2) ? a0 : avg;
+      const Double w1 = (iVar < 2) ? a1 : avg;
+
+      const Double flux = w0 * rho.i * phi.i.all(iVar) + w1 * rho.j * phi.j.all(iVar);
+
+      res.flux_i(iVar) += flux;
+      if (!opt.oneSided) res.flux_j(iVar) -= flux;
+
+      if (opt.implicit) {
+        res.jac_ii(iVar, iVar) += w0;
+        if (!opt.oneSided) {
+          res.jac_ij(iVar, iVar) += w1;
+          res.jac_ji(iVar, iVar) -= w0;
+          res.jac_jj(iVar, iVar) -= w1;
+        }
+      }
+    }
+
+    /*--- Optional 4th order artificial dissipation of the centered flux, density-weighted like
+     * the flux itself, scaled by the magnitude of the face normal volume flux, |q_ij| = a0 - a1. ---*/
+    langevinDissipation(opt, kappa4, 2, iPoint, side_i, jPoint, side_j, Double(a0 - a1), Double(0.5 * (rho.i + rho.j)),
+                        res);
+  }
 
  private:
+  const su2double kappa4; /*!< \brief 4th order artificial dissipation of the Langevin equations. */
+
   /*--- Fixed regardless of SST_OPTIONS::version: only the production-limiter and source-term
    * constants (alfa/gamma) differ by version, not these. ---*/
   static constexpr passivedouble sigma_k1 = 0.85;

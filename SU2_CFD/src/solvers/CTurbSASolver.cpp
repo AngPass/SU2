@@ -62,8 +62,7 @@ CTurbSASolver::CTurbSASolver(CGeometry *geometry, CConfig *config, const CSolver
     nVarGrad = nPrimVar = nVar;
 
     /*--- Only nu_tilde (index 0) is MUSCL-reconstructed when MUSCL_TURB=YES; the 3 Langevin
-          components always keep their raw nodal values, see nVarConvRecon. ---*/
-    nVarConvRecon = 1;
+          components always keep their raw nodal values, see CScalarFlux_SA::NVarReconstructed. ---*/
   }
 
   /*--- Single grid simulation ---*/
@@ -159,7 +158,7 @@ CTurbSASolver::CTurbSASolver(CGeometry *geometry, CConfig *config, const CSolver
   unsigned long maxMarkerVertices = 0;
   for (unsigned long iMarker = 0; iMarker < nMarker; iMarker++)
     maxMarkerVertices = max(maxMarkerVertices, nVertex[iMarker]);
-  ghostNodes = make_unique<CTurbSAVariable>(nu_tilde_Inf, muT_Inf, maxMarkerVertices, nDim, nVar, config);
+  ghostNodes = make_unique<CTurbSAVariable>(nu_tilde_Inf, muT_Inf, maxMarkerVertices, nDim, nVar, config, true);
 
   /*--- MPI solution ---*/
 
@@ -219,6 +218,11 @@ void CTurbSASolver::Preprocessing(CGeometry *geometry, CSolver **solver_containe
 
   /*--- Clear Residual and Jacobian. Upwind second order reconstruction and gradients ---*/
   CommonPreprocessing(geometry, config, Output);
+
+  /*--- Undivided Laplacian of the 4th order artificial dissipation of the Langevin equations. ---*/
+  const auto& sbs = config->GetSBSParam();
+  if (!Output && sbs.StochasticBackscatter && sbs.stochSourceType == LANGEVIN && sbs.SBS_Kappa4 > 0.0)
+    SetUndivided_Laplacian(geometry, config);
 
   if (kind_hybridRANSLES != NO_HYBRIDRANSLES) {
 
@@ -691,6 +695,10 @@ void CTurbSASolver::BC_Inlet(CGeometry *geometry, CSolver **solver_container, CN
       if (config->GetSAParsedOptions().bc) nuTilde *= 0.005;
     }
     ghostNodes->SetSolution(iVertex, 0, nuTilde);
+
+    /*--- The ghost rows are shared by all markers: the Langevin variables of stochastic backscatter
+          (if any) must be set explicitly, they enter at zero. ---*/
+    for (auto iVar = 1u; iVar < nVar; iVar++) ghostNodes->SetSolution(iVertex, iVar, 0.0);
 
     SetGhostPrimitives(iVertex, V_inlet);
 
