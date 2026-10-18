@@ -97,9 +97,10 @@ Output filename
 ----------------
 SU2 looks for <SOLUTION_FILENAME (no extension)>_average<suffix>.dat, where <suffix> is
 "_" + the iteration number zero-padded to 5 digits (e.g. "_00000") whenever TIME_DOMAIN=YES, which it
-always is for this feature. The iteration used is RESTART_ITER_AVERAGE if set, otherwise RESTART_ITER.
-For a fresh unsteady run seeded from a steady solution, RESTART_ITER is typically 0, so the target is
-usually <SOLUTION_FILENAME>_average_00000.dat. Point this script's --output at that exact path.
+always is for this feature. The iteration used is RESTART_ITER_AVERAGE if set, otherwise RESTART_ITER-1
+(the most recent solution file read on an unsteady restart), or 0 when RESTART_SOL=NO. For a fresh
+unsteady run seeded from a steady solution the target is therefore usually
+<SOLUTION_FILENAME>_average_00000.dat. Point this script's --output at that exact path.
 
 Choosing --samples
 -------------------

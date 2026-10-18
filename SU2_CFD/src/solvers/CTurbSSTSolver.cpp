@@ -298,7 +298,6 @@ void CTurbSSTSolver::Preprocessing(CGeometry *geometry, CSolver **solver_contain
 
     bool backscatter = config->GetSBSParam().StochasticBackscatter;
     bool backscatterInBox = config->GetSBSParam().StochBackscatterInBox;
-    if (backscatter && backscatterInBox) SetBackscatterInBox(config, geometry);
 
     /*--- maxDelta must reach halo points for SetStochSourceMom, else it defaults to 0 there and divides by zero. ---*/
     if (backscatter) {
@@ -316,6 +315,10 @@ void CTurbSSTSolver::Preprocessing(CGeometry *geometry, CSolver **solver_contain
 
     unsigned long innerIter = config->GetInnerIter();
     if (backscatter && innerIter==0) {
+      /*--- Only read by SetLangevinSourceTerms, once per physical time step (kept here rather than
+            in the constructor so that it follows the grid if it moves). ---*/
+      if (backscatterInBox) SetBackscatterInBox(config, geometry);
+
       InitiateComms(geometry, config, MPI_QUANTITIES::MEAN_TKE);
       CompleteComms(geometry, config, MPI_QUANTITIES::MEAN_TKE);
 
@@ -337,6 +340,10 @@ void CTurbSSTSolver::Preprocessing(CGeometry *geometry, CSolver **solver_contain
 
       if (config->GetSBSParam().stochSourceType == ORNSTEIN_UHLENBECK) ComputeOU_Process(solver_container, config, geometry);
     }
+
+    /*--- Limiting factor of the stochastic forcing, at every inner iteration since it depends on the
+          current turbulence and stochastic variables. ---*/
+    if (backscatter) SetBackscatterLimiter(solver_container, geometry, config);
 
   }
 
@@ -360,8 +367,6 @@ void CTurbSSTSolver::Postprocessing(CGeometry *geometry, CSolver **solver_contai
   AD::StartNoSharedReading();
 
   auto* flowNodes = su2staticcast_p<CFlowVariable*>(solver_container[FLOW_SOL]->GetNodes());
-
-  const su2double cYosh = 0.08;
 
   SU2_OMP_FOR_STAT(omp_chunk_size)
   for (unsigned long iPoint = 0; iPoint < nPoint; iPoint++) {
@@ -557,6 +562,7 @@ void CTurbSSTSolver::Source_Residual(CGeometry *geometry, CSolver **solver_conta
         }
         numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), 0.0);
         numerics->SetMaxDelta(nodes->GetDES_FilterWidth(iPoint), 0.0);
+        numerics->SetSBSLimiter(nodes->GetSBSLimiter(iPoint), 1.0);
         if (config->GetSBSParam().useMeanTurb) numerics->SetAvgTurbKineticEnergy(nodes->GetMeanTurbKinEnergy(iPoint), 0.0);
       }
     }
@@ -852,7 +858,9 @@ void CTurbSSTSolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, C
         const su2double f_d = 1.0-tanh(pow(20.0*r_d,3.0));
 
         const su2double distDES = constDES * desFilterWidth;
-        lengthScale = distRANS-f_d*max(0.0,(distRANS-distDES));
+        /*--- Same as distRANS-f_d*max(0,distRANS-distDES), without the cancellation of that
+              difference when distRANS >> distDES. ---*/
+        lengthScale = (distRANS<=distDES) ? su2double(distRANS) : su2double((1.0-f_d)*distRANS + f_d*distDES);
         lesSensor = (distRANS<=distDES) ? 0.0 : f_d;
 
         if (config->GetEnforceLES()) {
@@ -879,9 +887,10 @@ void CTurbSSTSolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, C
         }
 
         const su2double omegaNorm = GeometryToolbox::Norm(3, vorticity);
+        const bool zeroVorticity = (omegaNorm <= EPS);
 
         for (auto iDim = 0u; iDim < 3; iDim++){
-          ratioOmega[iDim] = vorticity[iDim]/omegaNorm;
+          ratioOmega[iDim] = zeroVorticity ? su2double(0.0) : su2double(vorticity[iDim]/omegaNorm);
         }
 
         desFilterWidth = sqrt(pow(ratioOmega[0], 2)*delta[1]*delta[2] +
@@ -891,7 +900,8 @@ void CTurbSSTSolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, C
         const su2double r_d = (kinematicViscosityTurb+kinematicViscosity)/(uijuij*k2*pow(wallDistance, 2.0));
         const su2double f_d = 1.0-tanh(pow(20.0*r_d,3.0));
 
-        if (f_d < 0.99){
+        /*--- The vorticity-based filter width is undefined without vorticity. ---*/
+        if (f_d < 0.99 || zeroVorticity){
           desFilterWidth = deltaDDES;
         }
 
@@ -899,7 +909,9 @@ void CTurbSSTSolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, C
           desFilterWidth = LES_FilterWidth;
         }
         const su2double distDES = constDES * desFilterWidth;
-        lengthScale = distRANS-f_d*max(0.0,(distRANS-distDES));
+        /*--- Same as distRANS-f_d*max(0,distRANS-distDES), without the cancellation of that
+              difference when distRANS >> distDES. ---*/
+        lengthScale = (distRANS<=distDES) ? su2double(distRANS) : su2double((1.0-f_d)*distRANS + f_d*distDES);
         lesSensor = (distRANS<=distDES) ? 0.0 : f_d;
 
         if (config->GetEnforceLES()) {
@@ -916,11 +928,12 @@ void CTurbSSTSolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, C
         su2double vortexTiltingMeasure = nodes->GetVortex_Tilting(iPoint);
 
         const su2double omegaNorm = GeometryToolbox::Norm(3, vorticity);
+        const bool zeroVorticity = (omegaNorm <= EPS);
 
         su2double ratioOmega[MAXNDIM] = {};
 
         for (auto iDim = 0; iDim < 3; iDim++){
-          ratioOmega[iDim] = vorticity[iDim]/omegaNorm;
+          ratioOmega[iDim] = zeroVorticity ? su2double(0.0) : su2double(vorticity[iDim]/omegaNorm);
         }
 
         const su2double deltaDDES = geometry->nodes->GetMaxLength(iPoint);
@@ -950,7 +963,8 @@ void CTurbSSTSolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, C
         const su2double f_d = 1.0-tanh(pow(20.0*r_d,3.0));
 
         desFilterWidth = (ln_max/sqrt(3.0)) * f_kh;
-        if (f_d < 0.999){
+        /*--- The shear-layer-adapted filter width is undefined without vorticity. ---*/
+        if (f_d < 0.999 || zeroVorticity){
           desFilterWidth = deltaDDES;
         }
 
@@ -958,7 +972,9 @@ void CTurbSSTSolver::SetDES_LengthScale(CSolver **solver, CGeometry *geometry, C
           desFilterWidth = LES_FilterWidth;
         }
         const su2double distDES = constDES * desFilterWidth;
-        lengthScale = distRANS-f_d*max(0.0,(distRANS-distDES));
+        /*--- Same as distRANS-f_d*max(0,distRANS-distDES), without the cancellation of that
+              difference when distRANS >> distDES. ---*/
+        lengthScale = (distRANS<=distDES) ? su2double(distRANS) : su2double((1.0-f_d)*distRANS + f_d*distDES);
         lesSensor = (distRANS<=distDES) ? 0.0 : f_d;
 
         if (config->GetEnforceLES()) {
@@ -1154,6 +1170,55 @@ void CTurbSSTSolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeome
 
   InitiateComms(geometry, config, MPI_QUANTITIES::OU_PROCESS);
   CompleteComms(geometry, config, MPI_QUANTITIES::OU_PROCESS);
+}
+
+void CTurbSSTSolver::SetBackscatterLimiter(CSolver **solver, CGeometry *geometry, CConfig *config) {
+  SU2_ZONE_SCOPED
+
+  /*--- Bound the stochastic source of the k equation by the (hybrid) dissipation,
+        |P_stoch| = C_B rho k_s |Omega.xi| <= beta* rho omega k F_DES, with k_s the (instantaneous or
+        time-averaged) TKE scaling the forcing and C_B including the modeled fraction if SBS_DAMP_SOURCE
+        (see CSourcePieceWise_TurbSST::AddStochSource). The resulting factor scales the forcing in the
+        turbulence equations, in the momentum equations and in the diagnostics alike, so the energy
+        exchange between modeled and resolved motion stays balanced (the same limiter as the SA-based
+        model, see CTurbSASolver::SetBackscatterLimiter). The density cancels out. ---*/
+
+  const auto& sbs = config->GetSBSParam();
+  const su2double beta_star = constants[6];
+  const bool isLangevin = (sbs.stochSourceType == LANGEVIN);
+  const bool isOU = (sbs.stochSourceType == ORNSTEIN_UHLENBECK);
+
+  auto* flowNodes = su2staticcast_p<CFlowVariable*>(solver[FLOW_SOL]->GetNodes());
+
+  SU2_OMP_FOR_STAT(omp_chunk_size)
+  for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+    su2double limiter = 1.0;
+
+    if (nodes->GetLES_Mode(iPoint) > sbs.stochFdThreshold) {
+      const auto vorticity = flowNodes->GetVorticity(iPoint);
+      su2double stochDotVor = 0.0;
+      for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+        const su2double xi = isLangevin ? nodes->GetSolution(iPoint, 2+iDim)
+                           : (isOU ? nodes->GetOU_Process(iPoint, iDim) : nodes->GetLangevinSourceTerms(iPoint, iDim));
+        stochDotVor += vorticity[iDim] * xi;
+      }
+
+      const su2double k = nodes->GetSolution(iPoint, 0);
+      const su2double omega = nodes->GetSolution(iPoint, 1);
+      const su2double kForcing = sbs.useMeanTurb ? nodes->GetMeanTurbKinEnergy(iPoint) : k;
+      const su2double modeledFraction = sbs.dampStochTerm ? nodes->GetModeledFraction(iPoint) : 1.0;
+
+      const su2double forcing = sbs.SBS_Cmag * modeledFraction * fabs(kForcing) * fabs(stochDotVor);
+      const su2double dissipation = beta_star * max(omega, 0.0) * max(k, 0.0) * nodes->GetF_DES(iPoint);
+      if (forcing > dissipation) limiter = dissipation / forcing;
+    }
+    nodes->SetSBSLimiter(iPoint, limiter);
+  }
+  END_SU2_OMP_FOR
+
+  /*--- Also read at halo points by the flow viscous residual. ---*/
+  InitiateComms(geometry, config, MPI_QUANTITIES::SBS_LIMITER);
+  CompleteComms(geometry, config, MPI_QUANTITIES::SBS_LIMITER);
 }
 
 void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geometry) {
@@ -1662,13 +1727,30 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
         var_check_old = globalChecks[1] * invDenom - pow(mean_check_old, 2);
 
         if (!config->GetSBSParam().besselScaleFactor) {
+          /*--- Standardize with the global statistics of the smoothed field (zero mean, unit variance
+                over the active points), with the same clipping as the Bessel scaling. Inactive points
+                stay at zero. ---*/
+          const su2double invStd = 1.0/sqrt(max(var_check_old, 1e-10));
           SU2_OMP_FOR_(schedule(static, omp_chunk_size) SU2_NOWAIT)
           for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-            su2double source = nodes->GetLangevinSourceTerms(iPoint, iDim);
-            source *= 1.0/sqrt(max(var_check_old, 1e-10));
+            if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
+            su2double source = (nodes->GetLangevinSourceTerms(iPoint, iDim) - mean_check_old) * invStd;
+            if (source < -sourceLim || source > sourceLim) source = 0.0;
+            mean_check_new += source;
+            var_check_new += pow(source, 2);
             nodes->SetLangevinSourceTerms(iPoint, iDim, source);
           }
           END_SU2_OMP_FOR
+
+          /*--- Statistics after scaling, for the diagnostics. ---*/
+          SU2_OMP_SAFE_GLOBAL_ACCESS(globalChecks[4] = 0.0; globalChecks[5] = 0.0;)
+          atomicAdd(mean_check_new, globalChecks[4]);
+          atomicAdd(var_check_new, globalChecks[5]);
+          BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS {
+            su2double tmp[2] = {globalChecks[4], globalChecks[5]};
+            SU2_MPI::Allreduce(tmp, &globalChecks[4], 2, MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
+          }
+          END_SU2_OMP_SAFE_GLOBAL_ACCESS
         }
 
         SU2_OMP_MASTER
@@ -1685,7 +1767,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
           cout << "\nVariance of stochastic source term in Langevin equations:";
           cout << "\n   Uncorrelated            --> " << var_check_notSmoothed;
           cout << "\n   Smoothed before scaling --> " << var_check_old;
-          cout << "\n   Smoothed after scaling  --> " << ((config->GetSBSParam().besselScaleFactor) ? var_check_new : 1.0) << '\n' << endl;
+          cout << "\n   Smoothed after scaling  --> " << var_check_new << '\n' << endl;
         }
         END_SU2_OMP_MASTER
     }

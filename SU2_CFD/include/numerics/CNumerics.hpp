@@ -124,6 +124,9 @@ protected:
   su2double
   modeledFraction_i = 1.0, /*!< \brief Fraction of turbulent kinetic energy that is modeled at point i, used to scale the Stochastic Backscatter Model source terms (SST turbulence model). */
   modeledFraction_j = 1.0; /*!< \brief Fraction of turbulent kinetic energy that is modeled at point j, used to scale the Stochastic Backscatter Model source terms (SST turbulence model). */
+  su2double
+  sbsLimiter_i = 1.0, /*!< \brief Limiting factor of the stochastic forcing at point i (Stochastic Backscatter Model). */
+  sbsLimiter_j = 1.0; /*!< \brief Limiting factor of the stochastic forcing at point j (Stochastic Backscatter Model). */
   const su2double
   *Und_Lapl_i = nullptr,  /*!< \brief Undivided laplacians at point i. */
   *Und_Lapl_j = nullptr;  /*!< \brief Undivided laplacians at point j. */
@@ -978,6 +981,17 @@ public:
   void SetModeledFraction(su2double val_modeledFraction_i, su2double val_modeledFraction_j) {
     modeledFraction_i = val_modeledFraction_i;
     modeledFraction_j = val_modeledFraction_j;
+  }
+
+  /*!
+   * \brief Set the limiting factor of the stochastic forcing (Stochastic Backscatter Model), see
+   *        CVariable::GetSBSLimiter.
+   * \param[in] val_limiter_i - Value of the limiting factor at point i.
+   * \param[in] val_limiter_j - Value of the limiting factor at point j.
+   */
+  void SetSBSLimiter(su2double val_limiter_i, su2double val_limiter_j) {
+    sbsLimiter_i = val_limiter_i;
+    sbsLimiter_j = val_limiter_j;
   }
 
   /*!

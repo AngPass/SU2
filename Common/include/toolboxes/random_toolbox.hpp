@@ -157,9 +157,11 @@ inline T GetBesselIntegral(const T& beta_x, const T& beta_y, const T& beta_z) {
   T sum = T(0.0);
   const T tol = 1e-5;
   const int i_min = 500;
-  const int window = 100;
-  std::vector<T> buffer;
-  buffer.reserve(window);
+  constexpr int window = 100;
+
+  /*--- Circular buffer of the last "window" partial sums: history[i % window] holds the partial sum
+        of step i, so before it is overwritten at step i it still holds the one of step i-window. ---*/
+  T history[window];
 
   for (int i = 1; i <= N_max; i++) {
     T t = i * dt;
@@ -170,18 +172,19 @@ inline T GetBesselIntegral(const T& beta_x, const T& beta_y, const T& beta_z) {
 
     sum += integrand;
 
-    buffer.push_back(sum);
-    if (buffer.size() > window)
-      buffer.erase(buffer.begin());
-
-    if (i >= i_min && buffer.size() == window) {
-      T sum_old = buffer.front();
+    T& slot = history[i % window];
+    if (i >= i_min && i > window) {
+      const T sum_old = slot;
       T variation = abs(sum - sum_old) / max(sum, T(1e-10));
       if (variation < tol) {
         sum -= 0.5 * integrand;
         break;
       }
     }
+    slot = sum;
+
+    /*--- Trapezoidal end-point correction if the integration range is exhausted. ---*/
+    if (i == N_max) sum -= 0.5 * integrand;
   }
 
   return sum * dt;

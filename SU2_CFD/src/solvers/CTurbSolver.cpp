@@ -25,6 +25,8 @@
  * License along with SU2. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <algorithm>
+
 #include "../../include/solvers/CTurbSolver.hpp"
 #include "../../../Common/include/parallelization/omp_structure.hpp"
 #include "../../../Common/include/toolboxes/geometry_toolbox.hpp"
@@ -134,6 +136,30 @@ void CTurbSolver::LoadRestart(CGeometry** geometry, CSolver*** solver, CConfig* 
       nVarInRestart = min(nVarInRestart, minVar);
     }
 
+    /*--- Stochastic Backscatter Model, ORNSTEIN_UHLENBECK: the process is not a solution variable but it
+          is written to the restart file as StochVar_x/y/z (see CFlowOutput), hence it is located by name.
+          Restored with SBS_RESTART, like the Langevin variables. ---*/
+
+    long ouField = -1;
+    if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().restartStochField &&
+        config->GetSBSParam().stochSourceType == ORNSTEIN_UHLENBECK) {
+      /*--- Compare the names regardless of the enclosing quotes. ---*/
+      auto sameName = [](string name, const string& ref) {
+        if (name.size() >= 2 && name.front() == '"' && name.back() == '"') name = name.substr(1, name.size() - 2);
+        return name == ref;
+      };
+      const auto fieldIt = std::find_if(fields.begin(), fields.end(),
+                                        [&](const string& name) { return sameName(name, "StochVar_x"); });
+      if (fieldIt != fields.end() && fieldIt + 2 < fields.end() &&
+          sameName(*(fieldIt + 1), "StochVar_y") && sameName(*(fieldIt + 2), "StochVar_z")) {
+        /*--- "fields" includes the point ID, which is not part of Restart_Data. ---*/
+        ouField = static_cast<long>(fieldIt - fields.begin()) - 1;
+      } else if (rank == MASTER_NODE) {
+        cout << "Warning: SBS_RESTART= YES but StochVar_x/y/z not found in " << restart_filename
+             << ": the Ornstein-Uhlenbeck process is initialized to zero." << endl;
+      }
+    }
+
     /*--- Load data from the restart into correct containers. ---*/
 
     unsigned long counter = 0;
@@ -150,6 +176,11 @@ void CTurbSolver::LoadRestart(CGeometry** geometry, CSolver*** solver, CConfig* 
         const auto index = counter * Restart_Vars[1] + skipVars;
         for (auto iVar = 0u; iVar < nVarInRestart; iVar++) nodes->SetSolution(iPoint_Local, iVar, Restart_Data[index + iVar]);
         for (auto iVar = nVarInRestart; iVar < nVar; iVar++) nodes->SetSolution(iPoint_Local, iVar, 0.0);
+
+        if (ouField >= 0) {
+          const auto indexOU = counter * Restart_Vars[1] + ouField;
+          for (auto iDim = 0u; iDim < 3; iDim++) nodes->SetOU_Process(iPoint_Local, iDim, Restart_Data[indexOU + iDim]);
+        }
 
         /*--- Increment the overall counter for how many points have been loaded. ---*/
         counter++;
@@ -171,6 +202,12 @@ void CTurbSolver::LoadRestart(CGeometry** geometry, CSolver*** solver, CConfig* 
 
   solver[MESH_0][TURB_SOL]->InitiateComms(geometry[MESH_0], config, MPI_QUANTITIES::SOLUTION);
   solver[MESH_0][TURB_SOL]->CompleteComms(geometry[MESH_0], config, MPI_QUANTITIES::SOLUTION);
+
+  if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().restartStochField &&
+      config->GetSBSParam().stochSourceType == ORNSTEIN_UHLENBECK) {
+    solver[MESH_0][TURB_SOL]->InitiateComms(geometry[MESH_0], config, MPI_QUANTITIES::OU_PROCESS);
+    solver[MESH_0][TURB_SOL]->CompleteComms(geometry[MESH_0], config, MPI_QUANTITIES::OU_PROCESS);
+  }
 
   /*--- For turbulent+species simulations the solver Pre-/Postprocessing is done by the species solver. ---*/
   if (config->GetKind_Species_Model() == SPECIES_MODEL::NONE && config->GetKind_Trans_Model() == TURB_TRANS_MODEL::NONE) {

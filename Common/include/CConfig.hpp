@@ -9945,7 +9945,7 @@ public:
 
   /*!
    * \brief Get the iteration from which the WRT_RESTART_AVERAGES companion file is restored.
-   * \return Iteration used to build the solution_average filename (defaults to RESTART_ITER).
+   * \return Iteration used to build the solution_average filename (defaults to RESTART_ITER-1).
    */
   unsigned long GetRestart_Iter_Average(void) const { return Restart_Iter_Average; }
 

@@ -2935,6 +2935,7 @@ enum class MPI_QUANTITIES {
   MEAN_TKE             ,  /*!< \brief Mean turbulent kinetic energy communication. */
   MEAN_EDDY_VISC       ,  /*!< \brief Mean eddy viscosity communication. */
   MODELED_FRACTION     ,  /*!< \brief Modeled fraction of the turbulent kinetic energy communication (Stochastic Backscatter Model). */
+  SBS_LIMITER          ,  /*!< \brief Limiting factor of the stochastic forcing communication (Stochastic Backscatter Model). */
   MEAN_VELOCITY        ,  /*!< \brief Time-averaged velocity communication (halo values, before its gradient is computed). */
   MEAN_VELOCITY_GRADIENT, /*!< \brief Gradient of the time-averaged velocity communication. */
   STOCH_SOURCE_LANG    ,  /*!< \brief Stochastic source term for Langevin equations communication. */

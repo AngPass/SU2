@@ -451,6 +451,23 @@ public:
   inline virtual void SetModeledFraction(unsigned long iPoint, su2double val_modeled_fraction) {}
 
   /*!
+   * \brief A virtual member: get the limiting factor (in [0,1]) of the stochastic forcing (Stochastic
+   *        Backscatter Model), which bounds the stochastic source of the turbulence model equation by
+   *        the (LES-mode) dissipation/destruction term. It scales the forcing everywhere it acts
+   *        (turbulence and momentum equations, diagnostics), so that the energy exchange between
+   *        modeled and resolved motion stays balanced. Defaults to 1 (no limiting).
+   * \param[in] iPoint - Point index.
+   */
+  inline virtual su2double GetSBSLimiter(unsigned long iPoint) const { return 1.0; }
+
+  /*!
+   * \brief A virtual member.
+   * \param[in] iPoint - Point index.
+   * \param[in] val_limiter - Limiting factor of the stochastic forcing.
+   */
+  inline virtual void SetSBSLimiter(unsigned long iPoint, su2double val_limiter) {}
+
+  /*!
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
    */

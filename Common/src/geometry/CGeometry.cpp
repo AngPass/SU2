@@ -4579,11 +4579,15 @@ void CGeometry::ComputeWallDistance(const CConfig* const* config_container, CGeo
       }
     }
 
-    /*--- If there are no viscous walls in the entire domain, set distances to the numerical limit ---*/
+    /*--- If there are no viscous walls in the entire domain, set distances to zero, except for Hybrid
+     * RANS/LES, where the wall distance bounds the RANS length scale and a zero value would switch the
+     * model off: there it is set to a large but finite value (squares and products of it must not
+     * overflow, unlike with numeric_limits<su2double>::max()). ---*/
     if (allEmpty) {
       for (int iZone = 0; iZone < nZone; iZone++) {
         CGeometry* geometry = geometry_container[iZone][iInst][MESH_0];
-        geometry->SetWallDistance(numeric_limits<su2double>::max());
+        const bool hybrid = config_container[iZone]->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES;
+        geometry->SetWallDistance(hybrid ? su2double(1e15) : su2double(0.0));
       }
       continue;
     }

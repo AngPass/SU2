@@ -116,8 +116,7 @@ class CSourceBase_TurbSA : public CNumerics {
    * \brief Include source-term residuals for Langevin equations (Stochastic Backscatter Model) 
    */
   inline void ResidualStochEquations(bool meanTurb, su2double timeStep, const su2double ct, su2double delta,
-                                     su2double wallDist, const CSAVariables& var, TIME_MARCHING time_marching,
-                                     su2double threshold) {
+                                     su2double wallDist, const CSAVariables& var, TIME_MARCHING time_marching) {
 
     const su2double& nue = ScalarVar_i[0];
     const su2double nut = (meanTurb) ? max(avg_eddy_visc_i, 1e-10) : max(nue*var.fv1, 1e-10);
@@ -151,7 +150,10 @@ class CSourceBase_TurbSA : public CNumerics {
    */
   inline void AddStochSource(const CConfig* config, CSAVariables& var, su2double& prod) {
 
-    su2double Cmag = config->GetSBSParam().SBS_Cmag;
+    /*--- The forcing is bounded by the destruction term through the limiting factor sbsLimiter_i,
+          computed by the solver (CTurbSASolver::SetBackscatterLimiter) and applied identically to the
+          momentum forcing, so that the energy exchange stays balanced. It is frozen in the Jacobian. ---*/
+    su2double Cmag = config->GetSBSParam().SBS_Cmag * sbsLimiter_i;
 
     /*--- Use the mean (time-averaged) eddy viscosity to scale the stochastic forcing when requested. ---*/
     su2double nut = config->GetSBSParam().useMeanTurb ? max(avg_eddy_visc_i, 1e-10)
@@ -228,6 +230,7 @@ class CSourceBase_TurbSA : public CNumerics {
       AD::SetPreaccIn(maxDelta_i);
       AD::SetPreaccIn(wallDist_i);
       if (config->GetSBSParam().useMeanTurb) AD::SetPreaccIn(avg_eddy_visc_i);
+      AD::SetPreaccIn(sbsLimiter_i);
     }
 
     /*--- Common auxiliary variables and constants of the model. ---*/
@@ -370,7 +373,7 @@ class CSourceBase_TurbSA : public CNumerics {
 
       if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
         ResidualStochEquations(config->GetSBSParam().useMeanTurb, config->GetDelta_UnstTimeND(), config->GetSBSParam().SBS_Ctau, maxDelta_i, wallDist_i,
-                               var, config->GetTime_Marching(), config->GetSBSParam().stochFdThreshold);
+                               var, config->GetTime_Marching());
       }
     }
 
@@ -825,7 +828,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
    * \brief Include source-term residuals for Langevin equations (Stochastic Backscatter Model) 
    */
   inline void ResidualStochEquations(bool meanTke, su2double timeStep, const su2double ct, su2double delta,
-                                     TIME_MARCHING time_marching, su2double threshold) {
+                                     TIME_MARCHING time_marching) {
 
     su2double k = (meanTke) ? max(avg_turb_ke_i, 1e-10) : max(ScalarVar_i[0], 1e-10);
     const su2double omega = max(ScalarVar_i[1], 1e-10);
@@ -857,14 +860,17 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
   /*!
    * \brief Include stochastic source term in the equation for the turbulent kinetic energy (Stochastic Backscatter Model).
    */
-  inline void AddStochSource(const CConfig* config, su2double& prodK, const su2double dissipK, su2double& prodOm, su2double prodFac,
+  inline void AddStochSource(const CConfig* config, su2double& prodK, su2double& prodOm, su2double prodFac,
                              su2double& jacK_k, su2double& jacOm_k) {
 
     /*--- Scale the stochastic source term by the fraction of turbulent kinetic energy that is
           modeled rather than resolved (see CFlowOutput) only if explicitly requested via
-          SBS_DAMP_SOURCE; by default the modeled fraction is 1, i.e. no damping. ---*/
+          SBS_DAMP_SOURCE; by default the modeled fraction is 1, i.e. no damping. The forcing is
+          bounded by the dissipation through the limiting factor sbsLimiter_i, computed by the solver
+          (CTurbSSTSolver::SetBackscatterLimiter) and applied identically to the momentum forcing,
+          so that the energy exchange stays balanced. It is frozen in the Jacobian. ---*/
     const su2double modeledFraction = config->GetSBSParam().dampStochTerm ? modeledFraction_i : 1.0;
-    su2double Cmag = config->GetSBSParam().SBS_Cmag * modeledFraction;
+    su2double Cmag = config->GetSBSParam().SBS_Cmag * modeledFraction * sbsLimiter_i;
     su2double tke = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_i : ScalarVar_i[0];
     const bool isLangevin = (config->GetSBSParam().stochSourceType == LANGEVIN);
 
@@ -874,16 +880,14 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
     else
       stochProd = - Cmag * Density_i * tke * (Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2]);
 
-    const su2double limiter = 1.0;
-    const bool clipped = (stochProd < -limiter*dissipK) || (stochProd > limiter*dissipK);
-    stochProd = max(-limiter*dissipK, min(limiter*dissipK, stochProd));
-
     prodK  -= stochProd;
     prodOm -= stochProd * prodFac;
 
-    if (isLangevin && !clipped) {
+    /*--- The Jacobians are w.r.t. the conserved variables (rho*xi, rho*k), like the rest of the SST
+          Jacobian, hence the density of the forcing cancels out. ---*/
+    if (isLangevin) {
       for (unsigned short iDim = 0; iDim < 3; iDim++) {
-        const su2double dProdK_dStochVar = Cmag * Density_i * tke * Vorticity_i[iDim];
+        const su2double dProdK_dStochVar = Cmag * tke * Vorticity_i[iDim];
         Jacobian_i[0][2+iDim] = dProdK_dStochVar * Volume;
         Jacobian_i[1][2+iDim] = dProdK_dStochVar * prodFac * Volume;
       }
@@ -891,15 +895,15 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
 
     /*--- d(prodK)/dk and d(prodOm)/dk. Returned to the caller (rather than added to Jacobian_i here)
           because the caller assigns the k/omega block of the Jacobian after this call. They vanish
-          when the forcing is clipped (it then depends on dissipK only) or when it is scaled by the
-          mean (time-averaged) TKE, which does not depend on the instantaneous k. ---*/
+          when the forcing is scaled by the mean (time-averaged) TKE, which does not depend on the
+          instantaneous k. ---*/
     jacK_k = 0.0;
     jacOm_k = 0.0;
-    if (!clipped && !config->GetSBSParam().useMeanTurb) {
+    if (!config->GetSBSParam().useMeanTurb) {
       const su2double stochDotVor = isLangevin
           ? Vorticity_i[0]*ScalarVar_i[2] + Vorticity_i[1]*ScalarVar_i[3] + Vorticity_i[2]*ScalarVar_i[4]
           : Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2];
-      jacK_k = Cmag * Density_i * stochDotVor * Volume;
+      jacK_k = Cmag * stochDotVor * Volume;
       jacOm_k = jacK_k * prodFac;
     }
   }
@@ -993,6 +997,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
         AD::SetPreaccIn(maxDelta_i);
         if (sbs.useMeanTurb) AD::SetPreaccIn(avg_turb_ke_i);
         if (sbs.dampTimeFiltering || sbs.dampStochTerm) AD::SetPreaccIn(modeledFraction_i);
+        AD::SetPreaccIn(sbsLimiter_i);
       }
     }
 
@@ -1152,7 +1157,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
 
       su2double jacStochK_k = 0.0, jacStochOm_k = 0.0;
       if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceTurb && lesMode_i>config->GetSBSParam().stochFdThreshold)
-        AddStochSource(config, pk, dk, pw, (pk > EPS) ? pw/pk : 0.0, jacStochK_k, jacStochOm_k);
+        AddStochSource(config, pk, pw, (pk > EPS) ? pw/pk : 0.0, jacStochK_k, jacStochOm_k);
 
       /*--- Add the production terms to the residuals. ---*/
 
@@ -1189,7 +1194,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
 
       if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
         ResidualStochEquations(config->GetSBSParam().useMeanTurb, config->GetDelta_UnstTimeND(), config->GetSBSParam().SBS_Ctau, maxDelta_i,
-                               config->GetTime_Marching(), config->GetSBSParam().stochFdThreshold);
+                               config->GetTime_Marching());
       }
     }
 

@@ -47,6 +47,7 @@ private:
   MatrixType stochSourceOld;
   MatrixType OU_Process;
   VectorType sbsInBox;
+  VectorType sbsLimiter;         /*!< \brief Limiting factor of the stochastic forcing (Stochastic Backscatter Model). */
   VectorType Vortex_Tilting;
   VectorType besselIntegral;
   MatrixType smoothMatrix;
@@ -291,6 +292,18 @@ public:
    * \return One if the Stochastic Backscatter Model is active.
    */
   inline su2double GetSBSInBox(unsigned long iPoint) const override { return sbsInBox(iPoint); }
+
+  /*!
+   * \brief Get the limiting factor of the stochastic forcing (Stochastic Backscatter Model).
+   * \param[in] iPoint - Point index.
+   */
+  inline su2double GetSBSLimiter(unsigned long iPoint) const override { return sbsLimiter(iPoint); }
+
+  /*!
+   * \brief Set the limiting factor of the stochastic forcing (Stochastic Backscatter Model).
+   * \param[in] iPoint - Point index.
+   */
+  inline void SetSBSLimiter(unsigned long iPoint, su2double val_limiter) override { sbsLimiter(iPoint) = val_limiter; }
 
   /*!
    * \brief Set the vortex tilting measure for computation of the EDDES length scale

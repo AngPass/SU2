@@ -2810,7 +2810,7 @@ void CConfig::SetConfig_Options() {
   addUnsignedLongOption("ITER", nIter, 1000);
   /* DESCRIPTION: Restart iteration in the multizone problem. */
   addUnsignedLongOption("RESTART_ITER", Restart_Iter, 1);
-  /* DESCRIPTION: Iteration from which the WRT_RESTART_AVERAGES companion file is restored, defaults to RESTART_ITER. */
+  /* DESCRIPTION: Iteration from which the WRT_RESTART_AVERAGES companion file is restored, defaults to RESTART_ITER-1. */
   addUnsignedLongOption("RESTART_ITER_AVERAGE", Restart_Iter_Average, 1);
   /* DESCRIPTION: Minimum error threshold for the linear solver for the implicit formulation */
   addDoubleOption("TIME_STEP", Time_Step, 0.0);
@@ -3134,7 +3134,7 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Specify if the Stochastic Backscatter Model must be activated */
   addBoolOption("STOCHASTIC_BACKSCATTER", SBSParam.StochasticBackscatter, false);
 
-  /* DESCRIPTION: Specify Hybrid RANS/LES model */
+  /* DESCRIPTION: Kind of stochastic source term of the Stochastic Backscatter Model (WHITE_NOISE, ORNSTEIN_UHLENBECK, LANGEVIN) */
   addEnumOption("SBS_SOURCE_TYPE", SBSParam.stochSourceType, stochSource_Map, LANGEVIN);
 
   /* DESCRIPTION: Specify if the LES mode must be enforced */
@@ -3165,7 +3165,9 @@ void CConfig::SetConfig_Options() {
   addBoolOption("SBS_USE_MEAN_TURB", SBSParam.useMeanTurb, false);
 
   /* DESCRIPTION: High-pass filter the modeled (subgrid) stress tensor where the LES sensor is active
-   *              (any Hybrid RANS/LES method, independent of STOCHASTIC_BACKSCATTER). */
+   *              (any Hybrid RANS/LES method, independent of STOCHASTIC_BACKSCATTER). With the SST-based
+   *              models the k production is corrected consistently; with the SA-based models only the
+   *              momentum stresses are filtered, the one-equation model having no k budget to correct. */
   addBoolOption("FILTER_STRESSES", SBSParam.filterStresses, false);
 
   /* DESCRIPTION: Scale the high-pass stress filtering (FILTER_STRESSES) by the modeled turbulent
@@ -4220,10 +4222,12 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     Restart_Average = Restart;
   }
 
-  /*--- RESTART_ITER_AVERAGE defaults to RESTART_ITER, so the running averages restart from the
-        same iteration as the solution unless the user explicitly requests otherwise. ---*/
+  /*--- RESTART_ITER_AVERAGE defaults to the iteration of the most recent solution file read on an
+        unsteady restart, i.e. RESTART_ITER-1 (see CDriver::Restart), which is also the iteration the
+        companion file was written for (CFlowOutput::WriteAveragedFields uses the current time
+        iteration), unless the user explicitly requests otherwise. ---*/
   if (!OptionIsSet("RESTART_ITER_AVERAGE")) {
-    Restart_Iter_Average = Restart_Iter;
+    Restart_Iter_Average = (Restart_Iter > 0) ? Restart_Iter - 1 : 0;
   }
 
   /*--- If the user did not specify RESTART_AVG_FIELDS, default to persisting the mean turbulent
@@ -4252,6 +4256,16 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
         options. Done here, on every rank and independently of the verbosity, rather than in SetOutput
         (which only runs on the master node when printing is enabled). The 3D requirement is checked
         by the turbulence solvers, which know the dimension of the mesh. ---*/
+
+  /*--- The SA_* and SST_* Hybrid RANS/LES kinds are implemented by the corresponding turbulence
+        solver only (see CTurbSASolver/CTurbSSTSolver::SetDES_LengthScale). ---*/
+  if (Kind_HybridRANSLES != NO_HYBRIDRANSLES) {
+    const auto turbFamily = TurbModelFamily(Kind_Turb_Model);
+    if (IsHybridRANSLES_SST(Kind_HybridRANSLES) && turbFamily != TURB_FAMILY::KW)
+      SU2_MPI::Error("HYBRID_RANSLES= SST_* requires KIND_TURB_MODEL= SST.", CURRENT_FUNCTION);
+    if (!IsHybridRANSLES_SST(Kind_HybridRANSLES) && turbFamily != TURB_FAMILY::SA)
+      SU2_MPI::Error("HYBRID_RANSLES= SA_* requires KIND_TURB_MODEL= SA.", CURRENT_FUNCTION);
+  }
 
   if (SBSParam.StochasticBackscatter) {
     if (Kind_HybridRANSLES == NO_HYBRIDRANSLES)

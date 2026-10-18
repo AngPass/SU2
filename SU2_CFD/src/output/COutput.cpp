@@ -1702,7 +1702,9 @@ void COutput::PreprocessVolumeOutput(CConfig *config){
       }
     }
 
-    if (sbs.filterStresses && config->GetWrt_Restart_Averages()) {
+    /*--- Also in the "frozen" mode (RESTART_AVERAGE=YES, WRT_RESTART_AVERAGES=NO), so that the restored
+          mean velocity is part of the volume output like in the accumulated mode. ---*/
+    if (sbs.filterStresses && (config->GetWrt_Restart_Averages() || config->GetRestart_Average())) {
       requiredAvgFields.emplace_back("MEAN_VELOCITY-X");
       requiredAvgFields.emplace_back("MEAN_VELOCITY-Y");
       if (nDim == 3) requiredAvgFields.emplace_back("MEAN_VELOCITY-Z");

@@ -395,6 +395,20 @@ protected:
   void SetFixedCLScreenOutput(const CConfig *config);
 
   /*!
+   * \brief Scaling of the stochastic forcing intensity actually applied by the solver at a point: the
+   *        limiting factor (CVariable::GetSBSLimiter) and, with SBS_DAMP_SOURCE, the modeled fraction of
+   *        the turbulent kinetic energy (see CAvgGrad_Base::SetStochSourceMom).
+   * \param iPoint - Index of the point.
+   * \param config - Definition of the particular problem.
+   * \param node_turb - Turbulence-model solver solution.
+   * \return Scaling factor of the forcing intensity.
+   */
+  inline su2double GetStochForcingScaling(unsigned long iPoint, const CConfig *config, const CVariable *node_turb) const {
+    const su2double modeledFraction = config->GetSBSParam().dampStochTerm ? node_turb->GetModeledFraction(iPoint) : 1.0;
+    return node_turb->GetSBSLimiter(iPoint) * modeledFraction;
+  }
+
+  /*!
    * \brief Compute the power of the stochastic forcing (Backscatter Model).
    * \details The stochastic stress tensor added to the momentum equations is R_ij = eps_ijk a_k, with the
    *          vector potential a = C_B rho k xi, and enters the stress tensor with a minus sign (see
@@ -437,7 +451,7 @@ protected:
         stochVec_i[iDim] = node_turb->GetOU_Process(iPoint, iDim);
       else
         stochVec_i[iDim] = node_turb->GetLangevinSourceTerms(iPoint, iDim);
-      stochVec_i[iDim] *= tkeEstim_i * mag * node_flow->GetDensity(iPoint);
+      stochVec_i[iDim] *= tkeEstim_i * mag * GetStochForcingScaling(iPoint, config, node_turb) * node_flow->GetDensity(iPoint);
     }
 
     /*--- Evaluate the curl of the stochastic vector potential ---*/
@@ -474,7 +488,7 @@ protected:
           stochVec_j[iDim] = node_turb->GetOU_Process(jPoint, iDim);
         else
           stochVec_j[iDim] = node_turb->GetLangevinSourceTerms(jPoint, iDim);
-        stochVec_j[iDim] *= tkeEstim_j * mag * node_flow->GetDensity(jPoint);
+        stochVec_j[iDim] *= tkeEstim_j * mag * GetStochForcingScaling(jPoint, config, node_turb) * node_flow->GetDensity(jPoint);
       }
 
       /*--- Compute fluxes ---*/
@@ -543,7 +557,7 @@ protected:
         stochVec_i[iDim] = node_turb->GetOU_Process(iPoint, iDim);
       else
         stochVec_i[iDim] = node_turb->GetLangevinSourceTerms(iPoint, iDim);
-      stochVec_i[iDim] *= tkeEstim_i * mag;
+      stochVec_i[iDim] *= tkeEstim_i * mag * GetStochForcingScaling(iPoint, config, node_turb);
     }
 
     /*--- Evaluate the dot product of the stochastic vector and the vorticity vector ---*/

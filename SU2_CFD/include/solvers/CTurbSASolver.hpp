@@ -75,6 +75,15 @@ private:
   void ComputeOU_Process(CSolver** solver, CConfig* config, CGeometry* geometry);
 
   /*!
+   * \brief Compute the limiting factor of the stochastic forcing (Stochastic Backscatter Model), which
+   *        bounds the stochastic source of the SA equation by the destruction, see CVariable::GetSBSLimiter.
+   * \param[in] solver - Solver container.
+   * \param[in] geometry - Geometrical definition.
+   * \param[in] config - Definition of the particular problem.
+   */
+  void SetBackscatterLimiter(CSolver** solver, CGeometry* geometry, CConfig* config);
+
+  /*!
    * \brief Apply Laplacian smoothing to the source terms in Langevin equations (Stochastic Backscatter Model).
    * \param[in] config - Definition of the particular problem.
    * \param[in] geometry - Geometrical definition.

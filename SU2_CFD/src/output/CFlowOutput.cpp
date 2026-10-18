@@ -1399,7 +1399,8 @@ void CFlowOutput::SetVolumeOutputFieldsScalarSolution(const CConfig* config){
   switch (TurbModelFamily(config->GetKind_Turb_Model())) {
     case TURB_FAMILY::SA:
       AddVolumeOutput("NU_TILDE", "Nu_Tilde", "SOLUTION", "Spalart-Allmaras variable");
-      if (config->GetSBSParam().StochasticBackscatter) {
+      /*--- Not with WHITE_NOISE, which has no state (the source itself is in the BACKSCATTER group). ---*/
+      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType != WHITE_NOISE) {
         AddVolumeOutput("STOCHVAR_X", "StochVar_x", "SOLUTION", "x-component of the stochastic vector potential");
         AddVolumeOutput("STOCHVAR_Y", "StochVar_y", "SOLUTION", "y-component of the stochastic vector potential");
         AddVolumeOutput("STOCHVAR_Z", "StochVar_z", "SOLUTION", "z-component of the stochastic vector potential");
@@ -1409,7 +1410,8 @@ void CFlowOutput::SetVolumeOutputFieldsScalarSolution(const CConfig* config){
     case TURB_FAMILY::KW:
       AddVolumeOutput("TKE", "Turb_Kin_Energy", "SOLUTION", "Turbulent kinetic energy");
       AddVolumeOutput("DISSIPATION", "Omega", "SOLUTION", "Rate of dissipation");
-      if (config->GetSBSParam().StochasticBackscatter) {
+      /*--- Not with WHITE_NOISE, which has no state (the source itself is in the BACKSCATTER group). ---*/
+      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType != WHITE_NOISE) {
         AddVolumeOutput("STOCHVAR_X", "StochVar_x", "SOLUTION", "x-component of the stochastic vector potential");
         AddVolumeOutput("STOCHVAR_Y", "StochVar_y", "SOLUTION", "y-component of the stochastic vector potential");
         AddVolumeOutput("STOCHVAR_Z", "StochVar_z", "SOLUTION", "z-component of the stochastic vector potential");
@@ -1660,6 +1662,7 @@ void CFlowOutput::SetVolumeOutputFieldsScalarMisc(const CConfig* config) {
       AddVolumeOutput("STOCHSOURCE_X", "StochSource_x", "BACKSCATTER", "x-component of the stochastic source vector");
       AddVolumeOutput("STOCHSOURCE_Y", "StochSource_y", "BACKSCATTER", "y-component of the stochastic source vector");
       AddVolumeOutput("STOCHSOURCE_Z", "StochSource_z", "BACKSCATTER", "z-component of the stochastic source vector");
+      AddVolumeOutput("SBS_LIMITER", "SBS_Limiter", "BACKSCATTER", "Limiting factor of the stochastic forcing (1 = not limited)");
     }
     if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().StochasticBackscatter &&
         (config->GetSBSParam().dampTimeFiltering || config->GetSBSParam().dampStochTerm)) {
@@ -1783,6 +1786,7 @@ void CFlowOutput::LoadVolumeDataScalar(const CConfig* config, const CSolver* con
       SetVolumeOutputValue("STOCHSOURCE_X", iPoint, Node_Turb->GetLangevinSourceTerms(iPoint, 0));
       SetVolumeOutputValue("STOCHSOURCE_Y", iPoint, Node_Turb->GetLangevinSourceTerms(iPoint, 1));
       SetVolumeOutputValue("STOCHSOURCE_Z", iPoint, Node_Turb->GetLangevinSourceTerms(iPoint, 2));
+      SetVolumeOutputValue("SBS_LIMITER", iPoint, Node_Turb->GetSBSLimiter(iPoint));
     }
   }
 
@@ -2649,23 +2653,34 @@ void CFlowOutput::RestoreAveragedFields(CConfig *config, CGeometry *geometry, CS
         fields afterwards (the live feed in LoadTimeAveragedData is gated on WRT_RESTART_AVERAGES), so
         the mean velocity consumed by FILTER_STRESSES has to be seeded directly into the flow solver's
         node storage here, once, since this is the only place it will ever be set. ---*/
-  CVariable* const Node_Flow = (!config->GetWrt_Restart_Averages() && solver_container != nullptr) ?
+  /*--- The mean velocity node storage only exists with FILTER_STRESSES (see CNSVariable/CIncNSVariable). ---*/
+  const bool filterStresses = config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses;
+  CVariable* const Node_Flow = (!config->GetWrt_Restart_Averages() && filterStresses && solver_container != nullptr) ?
       solver_container[FLOW_SOL]->GetNodes() : nullptr;
 
   const bool found = SBSRestartToolbox::ReadMeanFields(filename, geometry, nSamples,
       [&](unsigned long iPoint, const string& fieldName, su2double value) {
-        const auto it = volumeOutput_Map.find(fieldName);
-        if (it == volumeOutput_Map.end() || it->second.offset == -1) return;
-        volumeDataSorter->SetUnsortedData(iPoint, static_cast<unsigned short>(it->second.offset), value);
-
+        /*--- Seed the solver first: it does not depend on the field being part of the volume output. ---*/
         if (Node_Flow != nullptr) {
           if (fieldName == "MEAN_VELOCITY-X") Node_Flow->SetMeanVelocity(iPoint, 0, value);
           else if (fieldName == "MEAN_VELOCITY-Y") Node_Flow->SetMeanVelocity(iPoint, 1, value);
-          else if (fieldName == "MEAN_VELOCITY-Z") Node_Flow->SetMeanVelocity(iPoint, 2, value);
+          else if (fieldName == "MEAN_VELOCITY-Z" && nDim == 3) Node_Flow->SetMeanVelocity(iPoint, 2, value);
         }
+
+        const auto it = volumeOutput_Map.find(fieldName);
+        if (it == volumeOutput_Map.end() || it->second.offset == -1) return;
+        volumeDataSorter->SetUnsortedData(iPoint, static_cast<unsigned short>(it->second.offset), value);
       }, &fileFieldNames);
 
-  if (!found) return;
+  if (!found) {
+    if (rank == MASTER_NODE) {
+      cout << "Warning: RESTART_AVERAGE= YES but the time-averaged fields file " << filename
+           << " was not found (check RESTART_ITER_AVERAGE): the running averages start from zero";
+      if (Node_Flow != nullptr) cout << " and the frozen mean velocity used by FILTER_STRESSES is zero";
+      cout << "." << endl;
+    }
+    return;
+  }
 
   priorAvgSamples = nSamples;
   if (rank == MASTER_NODE) {
@@ -4467,9 +4482,10 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
         if (config->GetSBSParam().dampTimeFiltering || config->GetSBSParam().dampStochTerm) {
           su2double modeledFraction;
           if (config->GetSBSParam().sbsRansConstraint) {
-            /*--- modeled_fraction = k_SST / k_RANS, clipped to 1: the instantaneous SST k against
-                  the reference RANS solution's k (SBS_RANS_CONSTRAINT), read once at startup into
-                  RANS_TKE (see CTurbSSTSolver). ---*/
+            /*--- modeled_fraction = k_mean / k_RANS, clipped to 1: the time-averaged SST k (as in the
+                  branch below) against the reference RANS solution's k (SBS_RANS_CONSTRAINT), taken
+                  as a measure of the total kinetic energy and read once at startup into RANS_TKE (see
+                  CTurbSSTSolver). ---*/
             const su2double kMean = GetVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint);
             const su2double kRANS = Node_Turb->GetRANS_TKE(iPoint);
             modeledFraction = min(1.0, kMean / max(kRANS, EPS));
@@ -4525,6 +4541,8 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
         csi_y = Node_Turb->GetLangevinSourceTerms(iPoint, 1);
         csi_z = Node_Turb->GetLangevinSourceTerms(iPoint, 2);
       }
+      /*--- Intensity actually applied by the solver (limiter and modeled fraction included). ---*/
+      tke_estim *= GetStochForcingScaling(iPoint, config, Node_Turb);
       su2double stochSource_x = mag * tke_estim * csi_x;
       su2double stochSource_y = mag * tke_estim * csi_y;
       su2double stochSource_z = mag * tke_estim * csi_z;

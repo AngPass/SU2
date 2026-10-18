@@ -1444,6 +1444,7 @@ void CSolver::GetCommCountAndType(const CConfig* config,
       break;
     case MPI_QUANTITIES::MEAN_TKE:
     case MPI_QUANTITIES::MODELED_FRACTION:
+    case MPI_QUANTITIES::SBS_LIMITER:
       COUNT_PER_POINT  = 1;
       MPI_TYPE         = COMM_TYPE::DOUBLE;
       break;
@@ -1637,6 +1638,9 @@ void CSolver::InitiateComms(CGeometry *geometry,
             break;
           case MPI_QUANTITIES::MODELED_FRACTION:
             bufDSend[buf_offset] = base_nodes->GetModeledFraction(iPoint);
+            break;
+          case MPI_QUANTITIES::SBS_LIMITER:
+            bufDSend[buf_offset] = base_nodes->GetSBSLimiter(iPoint);
             break;
           case MPI_QUANTITIES::MEAN_EDDY_VISC:
             bufDSend[buf_offset] = base_nodes->GetMeanEddyViscosity(iPoint);
@@ -1840,6 +1844,9 @@ void CSolver::CompleteComms(CGeometry *geometry,
             break;
           case MPI_QUANTITIES::MODELED_FRACTION:
             base_nodes->SetModeledFraction(iPoint, bufDRecv[buf_offset]);
+            break;
+          case MPI_QUANTITIES::SBS_LIMITER:
+            base_nodes->SetSBSLimiter(iPoint, bufDRecv[buf_offset]);
             break;
           case MPI_QUANTITIES::MEAN_EDDY_VISC:
             base_nodes->SetMeanEddyViscosity(iPoint, bufDRecv[buf_offset]);

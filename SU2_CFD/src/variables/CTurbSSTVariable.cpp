@@ -82,6 +82,7 @@ CTurbSSTVariable::CTurbSSTVariable(su2double kine, su2double omega, su2double mu
       besselIntegral.resize(nPoint) = su2double(0.0);
       OU_Process.resize(nPoint, nDim) = su2double(0.0);
       sbsInBox.resize(nPoint) = su2double(1.0);
+      sbsLimiter.resize(nPoint) = su2double(1.0);
       smoothMatrix.resize(nPoint, MAXNNEIGHBORS) = su2double(0.0);
       smoothBetaVec.resize(nPoint, MAXNNEIGHBORS*3) = su2double(0.0);
       langevinSourceGrad.resize(nPoint, 3) = su2double(0.0);
