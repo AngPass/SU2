@@ -3147,7 +3147,7 @@ void CConfig::SetConfig_Options() {
   addBoolOption("SBS_RESTART", SBSParam.restartStochField, true);
 
   /* DESCRIPTION: Specify if the spatially-correlated field must be scaled using Bessel integral. */
-  addBoolOption("SBS_BESSEL_SCALING", SBSParam.besselScaleFactor, false);
+  addBoolOption("SBS_BESSEL_SCALING", SBSParam.besselScaleFactor, true);
 
   /* DESCRIPTION: Enable diagnostics of the stochastic source term in Langevin equation. */
   addBoolOption("SBS_SOURCE_DIAGNOSTICS", SBSParam.stochSourceDiagnostics, false);
