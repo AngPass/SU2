@@ -27,6 +27,8 @@
 
 #include <iostream>
 #include <csignal>
+#include <cstdio>
+#include <fstream>
 
 #include "../../../Common/include/geometry/CGeometry.hpp"
 #include "../../include/solvers/CSolver.hpp"
@@ -58,7 +60,31 @@ void signalHandler(int signum) {
    std::cout << "Interrupt signal (" << signum << ") received, saving files and exiting.\n";
    STOP = 1;
 }
+
+/*--- Creating this file in the working directory stops the solver and saves the files. ---*/
+constexpr char STOP_FILE_NAME[] = "su2_stop";
+bool STOP_FILE_FOUND = false;
+
+/*--- Local (non-collective) check, only the master rank accesses the file system. ---*/
+bool LocalStopFileCheck() {
+  if (STOP_FILE_FOUND) return true;
+  if (SU2_MPI::GetRank() != MASTER_NODE) return false;
+  if (!std::ifstream(STOP_FILE_NAME).good()) return false;
+  std::remove(STOP_FILE_NAME);
+  std::cout << "Stop file \"" << STOP_FILE_NAME << "\" found, saving files and exiting.\n";
+  return true;
 }
+}
+
+bool COutput::CheckStopFile() {
+  const unsigned short local = LocalStopFileCheck();
+  unsigned short global = 0;
+  SU2_MPI::Allreduce(&local, &global, 1, MPI_UNSIGNED_SHORT, MPI_MAX, SU2_MPI::GetComm());
+  STOP_FILE_FOUND = global > 0;
+  return STOP_FILE_FOUND;
+}
+
+bool COutput::GetStopFileFound() { return STOP_FILE_FOUND; }
 
 COutput::COutput(const CConfig *config, unsigned short ndim, bool fem_output):
   rank(SU2_MPI::GetRank()),
@@ -1078,16 +1104,28 @@ bool COutput::ConvergenceMonitoring(CConfig *config, unsigned long Iteration) {
     convergence = true;
   }
 
+  /*--- For steady problems the stop file also interrupts the iterations. For time-domain problems
+   *    it is checked by the drivers at the end of each time step, so that the current one is completed. ---*/
+
+  const bool checkStopFile = !config->GetTime_Domain();
+
   /*--- Apply the same convergence criteria to all processors, and propagate an
    *    interrupt received on any rank. ---*/
 
-  unsigned short local[2] = {static_cast<unsigned short>(convergence),
-                             static_cast<unsigned short>(convergenceInterrupted)};
-  unsigned short global[2] = {0, 0};
+  unsigned short local[3] = {static_cast<unsigned short>(convergence),
+                             static_cast<unsigned short>(convergenceInterrupted),
+                             static_cast<unsigned short>(checkStopFile && LocalStopFileCheck())};
+  unsigned short global[3] = {0, 0, 0};
 
-  SU2_MPI::Allreduce(local, global, 2, MPI_UNSIGNED_SHORT, MPI_MAX, SU2_MPI::GetComm());
+  SU2_MPI::Allreduce(local, global, 3, MPI_UNSIGNED_SHORT, MPI_MAX, SU2_MPI::GetComm());
   convergence = global[0] > 0;
   convergenceInterrupted = global[1] > 0;
+
+  if (global[2] > 0) {
+    STOP_FILE_FOUND = true;
+    if (!convergence) convergenceInterrupted = true;
+    convergence = true;
+  }
 
   return convergence;
 }

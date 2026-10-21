@@ -619,6 +619,19 @@ public:
   bool GetConvergenceInterrupted() const {return convergenceInterrupted;}
 
   /*!
+   * \brief Check whether a stop file ("su2_stop") exists in the working directory. If found, the file
+   *        is removed and the request is remembered, i.e. subsequent calls also return true.
+   * \note Collective call, must be called by all ranks.
+   * \return Boolean indicating whether a stop was requested via the stop file.
+   */
+  static bool CheckStopFile();
+
+  /*!
+   * \brief Get whether a stop file was found by a previous check (no file system access, not collective).
+   */
+  static bool GetStopFileFound();
+
+  /*!
    * \brief Set the value of the convergence flag.
    * \param[in] conv - New value of the convergence flag.
    */

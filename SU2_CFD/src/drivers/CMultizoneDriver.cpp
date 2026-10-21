@@ -656,7 +656,8 @@ bool CMultizoneDriver::Monitor(unsigned long TimeIter) {
     if ((MaxIterationsReached || InnerConvergence) && (rank == MASTER_NODE)) {
       cout << "\n----------------------------- Solver Exit -------------------------------" << endl;
       if (driver_output->GetConvergenceInterrupted())
-        cout << "Interrupt signal received, exiting before the convergence criteria were satisfied." << endl;
+        cout << (COutput::GetStopFileFound() ? "Stop file found" : "Interrupt signal received")
+             << ", exiting before the convergence criteria were satisfied." << endl;
       else if (InnerConvergence) cout << "All convergence criteria satisfied." << endl;
       else cout << "\nMaximum number of iterations reached (OUTER_ITER = " << OuterIter+1 << ") before convergence." << endl;
       driver_output->PrintConvergenceSummary();
@@ -676,16 +677,18 @@ bool CMultizoneDriver::Monitor(unsigned long TimeIter) {
 
   const bool FinalTimeReached = (CurTime >= MaxTime);
   const bool MaxIterationsReached = (TimeIter+1 >= nTimeIter);
+  const bool StopFileFound = COutput::CheckStopFile();
 
-  if ((TimeConvergence || FinalTimeReached || MaxIterationsReached) && (rank == MASTER_NODE)){
+  if ((TimeConvergence || FinalTimeReached || MaxIterationsReached || StopFileFound) && (rank == MASTER_NODE)){
     cout << "\n----------------------------- Solver Exit -------------------------------";
     if (TimeConvergence)  cout << "\nAll windowed time-averaged convergence criteria are fullfilled." << endl;
     if (FinalTimeReached) cout << "\nMaximum time reached (MAX_TIME = " << MaxTime << "s)." << endl;
-    else cout << "\nMaximum number of time iterations reached (TIME_ITER = " << nTimeIter << ")." << endl;
+    else if (MaxIterationsReached) cout << "\nMaximum number of time iterations reached (TIME_ITER = " << nTimeIter << ")." << endl;
+    if (StopFileFound) cout << "\nStop file found, exiting after time iteration " << TimeIter << "." << endl;
     cout << "-------------------------------------------------------------------------" << endl;
   }
 
-  return (FinalTimeReached || MaxIterationsReached);
+  return (FinalTimeReached || MaxIterationsReached || StopFileFound);
 }
 
 bool CMultizoneDriver::GetTimeConvergence() const{

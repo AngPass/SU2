@@ -279,7 +279,8 @@ bool CSinglezoneDriver::Monitor(unsigned long TimeIter){
     if ((MaxIterationsReached || InnerConvergence) && (rank == MASTER_NODE)) {
       cout << "\n----------------------------- Solver Exit -------------------------------" << endl;
       if (output_container[ZONE_0]->GetConvergenceInterrupted())
-        cout << "Interrupt signal received, exiting before the convergence criteria were satisfied." << endl;
+        cout << (COutput::GetStopFileFound() ? "Stop file found" : "Interrupt signal received")
+             << ", exiting before the convergence criteria were satisfied." << endl;
       else if (InnerConvergence) cout << "All convergence criteria satisfied." << endl;
       else cout << "\nMaximum number of iterations reached (ITER = " << nInnerIter << ") before convergence." << endl;
       output_container[ZONE_0]->PrintConvergenceSummary();
@@ -297,15 +298,17 @@ bool CSinglezoneDriver::Monitor(unsigned long TimeIter){
 
     FinalTimeReached = CurTime >= MaxTime;
     MaxIterationsReached = TimeIter+1 >= nTimeIter;
+    const bool StopFileFound = COutput::CheckStopFile();
 
-    if ((FinalTimeReached || MaxIterationsReached || TimeConvergence) && (rank == MASTER_NODE)){
+    if ((FinalTimeReached || MaxIterationsReached || TimeConvergence || StopFileFound) && (rank == MASTER_NODE)){
       cout << "\n----------------------------- Solver Exit -------------------------------";
       if (TimeConvergence) cout << "\nAll windowed time-averaged convergence criteria are fullfilled." << endl;
       if (FinalTimeReached) cout << "\nMaximum time reached (MAX_TIME = " << MaxTime << "s)." << endl;
       if (MaxIterationsReached) cout << "\nMaximum number of time iterations reached (TIME_ITER = " << nTimeIter << ")." << endl;
+      if (StopFileFound) cout << "\nStop file found, exiting after time iteration " << TimeIter << "." << endl;
       cout << "-------------------------------------------------------------------------" << endl;
     }
-    StopCalc = FinalTimeReached || MaxIterationsReached || TimeConvergence;
+    StopCalc = FinalTimeReached || MaxIterationsReached || TimeConvergence || StopFileFound;
   }
 
   /*--- Reset the inner convergence --- */
