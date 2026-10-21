@@ -4229,6 +4229,14 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     Restart_Average = Restart;
   }
 
+  /*--- Restored running averages (RESTART_AVERAGE + WRT_RESTART_AVERAGES) continue from the restart
+        iteration: a later WINDOW_START_ITER would blend the samples before the window into the
+        restored mean, without resetting it when the window starts. ---*/
+  if (Time_Domain && Restart_Average && Wrt_Restart_Averages && StartWindowIteration > Restart_Iter) {
+    SU2_MPI::Error("WINDOW_START_ITER cannot be larger than RESTART_ITER when the running averages are "
+                   "restored (RESTART_AVERAGE= YES and WRT_RESTART_AVERAGES= YES).", CURRENT_FUNCTION);
+  }
+
   /*--- RESTART_ITER_AVERAGE defaults to the iteration of the most recent solution file read on an
         unsteady restart, i.e. RESTART_ITER-1 (see CDriver::Restart), which is also the iteration the
         companion file was written for (CFlowOutput::WriteAveragedFields uses the current time
