@@ -424,7 +424,7 @@ protected:
       const su2double rho_i = node_flow->GetDensity(iPoint);
       const su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(iPoint)
                                                                     : node_flow->GetEddyViscosity(iPoint) / rho_i;
-      const su2double lengthscale_i = config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint);
+      const su2double lengthscale_i = max(config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint), EPS);
       tkeEstim_i = lesSensor_i * pow(nuT_i/lengthscale_i, 2);
     }
 
@@ -462,7 +462,7 @@ protected:
         const su2double rho_j = node_flow->GetDensity(jPoint);
         const su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(jPoint)
                                                                       : node_flow->GetEddyViscosity(jPoint) / rho_j;
-        const su2double lengthscale_j = config->GetConst_DES() * node_turb->GetDES_FilterWidth(jPoint);
+        const su2double lengthscale_j = max(config->GetConst_DES() * node_turb->GetDES_FilterWidth(jPoint), EPS);
         tkeEstim_j = lesSensor_j * pow(nuT_j/lengthscale_j, 2);
       }
 
@@ -525,7 +525,7 @@ protected:
       const su2double rho_i = node_flow->GetDensity(iPoint);
       const su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(iPoint)
                                                                     : node_flow->GetEddyViscosity(iPoint) / rho_i;
-      const su2double lengthscale_i = config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint);
+      const su2double lengthscale_i = max(config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint), EPS);
       tkeEstim_i = lesSensor_i * pow(nuT_i/lengthscale_i, 2);
     }
 

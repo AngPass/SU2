@@ -186,8 +186,9 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
   } else {
     su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_i : Eddy_Viscosity_i / PrimVar_i[nDim+2];
     su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_j : Eddy_Viscosity_j / PrimVar_j[nDim+2];
-    su2double lengthscale_i = config->GetConst_DES() * maxDelta_i;
-    su2double lengthscale_j = config->GetConst_DES() * maxDelta_j;
+    /*--- Bounded: the filter width is still zero before the first turbulence preprocessing. ---*/
+    su2double lengthscale_i = max(config->GetConst_DES() * maxDelta_i, EPS);
+    su2double lengthscale_j = max(config->GetConst_DES() * maxDelta_j, EPS);
     tke_i = lesMode_i * pow(nuT_i/lengthscale_i, 2);
     tke_j = lesMode_j * pow(nuT_j/lengthscale_j, 2);
   }
