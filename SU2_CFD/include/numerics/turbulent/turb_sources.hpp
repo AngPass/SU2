@@ -205,6 +205,10 @@ class CSourceBase_TurbSA : public CNumerics {
     /*--- d(stochProdNut)/d(nu_tilde). ---*/
     Jacobian_i[0][0] += 0.5 * Cmag * stochDotVor * d_nutFac;
 
+    /*--- Mean nu_t: a sink is linearized as (sink/nu_tilde)*nu_tilde (Patankar), Jacobian only. ---*/
+    if (config->GetSBSParam().useMeanTurb && stochProdNut > 0.0 && ScalarVar_i[0] > 0.0)
+      Jacobian_i[0][0] -= stochProdNut / ScalarVar_i[0];
+
     /*--- d(stochProdNut)/d(stochVar). ---*/
     if (isLangevin) {
       const su2double dStochProdNut_dStochVar = 0.5 * Cmag * nutFac;
