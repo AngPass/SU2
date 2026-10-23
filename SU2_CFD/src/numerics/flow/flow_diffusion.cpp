@@ -145,7 +145,7 @@ void CAvgGrad_Base::SetStressTensor(const su2double *val_primvar,
   if (config->GetSBSParam().StochasticBackscatter) {
     for (unsigned short iDim = 0 ; iDim < nDim; iDim++)
       for (unsigned short jDim = 0 ; jDim < nDim; jDim++)
-        tau[iDim][jDim] -= stochStressTensor[iDim][jDim];
+        tau[iDim][jDim] += stochStressTensor[iDim][jDim];
   }
 
   if ((config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) && config->GetSBSParam().filterStresses) {
@@ -207,11 +207,6 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
   su2double intensityCoeff = config->GetSBSParam().SBS_Cmag * modeledFraction;
   su2double density = Mean_PrimVar[nDim+2];
 
-  /*--- Same limiting factor of the forcing as in the turbulence model equation (see
-        CVariable::GetSBSLimiter), applied pointwise to the forcing intensity. ---*/
-  tke_i *= sbsLimiter_i;
-  tke_j *= sbsLimiter_j;
-
   stochStressTensor[0][0] = stochStressTensor[1][1] = stochStressTensor[2][2] = 0.0;
   stochStressTensor[0][1] = intensityCoeff * 0.5 * (stochVar_i[2]+stochVar_j[2]);
   stochStressTensor[1][0] = - stochStressTensor[0][1];
@@ -245,8 +240,6 @@ void CAvgGrad_Base::SetPreaccInHybridRANSLES(const CConfig* config) {
 
   AD::SetPreaccIn(stochVar_i, 3);
   AD::SetPreaccIn(stochVar_j, 3);
-  AD::SetPreaccIn(sbsLimiter_i);
-  AD::SetPreaccIn(sbsLimiter_j);
   if (!sst) {
     AD::SetPreaccIn(maxDelta_i);
     AD::SetPreaccIn(maxDelta_j);

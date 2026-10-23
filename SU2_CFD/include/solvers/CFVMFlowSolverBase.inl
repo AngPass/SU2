@@ -522,9 +522,6 @@ CNumerics::ResidualType<> CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsign
         (config->GetSBSParam().dampTimeFiltering || config->GetSBSParam().dampStochTerm)) {
       numerics->SetModeledFraction(turbNodes->GetModeledFraction(iPoint), turbNodes->GetModeledFraction(jPoint));
     }
-
-    /*--- Limiting factor of the forcing, the same applied in the turbulence model equation. ---*/
-    numerics->SetSBSLimiter(turbNodes->GetSBSLimiter(iPoint), turbNodes->GetSBSLimiter(jPoint));
   }
 
   /*--- Mean strain-rate tensor (built from the time-averaged velocity gradient), used to high-pass

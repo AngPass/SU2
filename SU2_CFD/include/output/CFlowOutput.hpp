@@ -395,17 +395,16 @@ protected:
   void SetFixedCLScreenOutput(const CConfig *config);
 
   /*!
-   * \brief Scaling of the stochastic forcing intensity actually applied by the solver at a point: the
-   *        limiting factor (CVariable::GetSBSLimiter) and, with SBS_DAMP_SOURCE, the modeled fraction of
-   *        the turbulent kinetic energy (see CAvgGrad_Base::SetStochSourceMom).
+   * \brief Scaling of the stochastic forcing intensity actually applied by the solver at a point: with
+   *        SBS_DAMP_SOURCE, the modeled fraction of the turbulent kinetic energy (see
+   *        CAvgGrad_Base::SetStochSourceMom).
    * \param iPoint - Index of the point.
    * \param config - Definition of the particular problem.
    * \param node_turb - Turbulence-model solver solution.
    * \return Scaling factor of the forcing intensity.
    */
   inline su2double GetStochForcingScaling(unsigned long iPoint, const CConfig *config, const CVariable *node_turb) const {
-    const su2double modeledFraction = config->GetSBSParam().dampStochTerm ? node_turb->GetModeledFraction(iPoint) : 1.0;
-    return node_turb->GetSBSLimiter(iPoint) * modeledFraction;
+    return config->GetSBSParam().dampStochTerm ? node_turb->GetModeledFraction(iPoint) : 1.0;
   }
 
   /*!

@@ -341,10 +341,6 @@ void CTurbSSTSolver::Preprocessing(CGeometry *geometry, CSolver **solver_contain
       if (config->GetSBSParam().stochSourceType == ORNSTEIN_UHLENBECK) ComputeOU_Process(solver_container, config, geometry);
     }
 
-    /*--- Limiting factor of the stochastic forcing, at every inner iteration since it depends on the
-          current turbulence and stochastic variables. ---*/
-    if (backscatter) SetBackscatterLimiter(solver_container, geometry, config);
-
   }
 
 }
@@ -562,7 +558,6 @@ void CTurbSSTSolver::Source_Residual(CGeometry *geometry, CSolver **solver_conta
         }
         numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), 0.0);
         numerics->SetMaxDelta(nodes->GetDES_FilterWidth(iPoint), 0.0);
-        numerics->SetSBSLimiter(nodes->GetSBSLimiter(iPoint), 1.0);
         if (config->GetSBSParam().useMeanTurb) numerics->SetAvgTurbKineticEnergy(nodes->GetMeanTurbKinEnergy(iPoint), 0.0);
       }
     }
@@ -1170,55 +1165,6 @@ void CTurbSSTSolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeome
 
   InitiateComms(geometry, config, MPI_QUANTITIES::OU_PROCESS);
   CompleteComms(geometry, config, MPI_QUANTITIES::OU_PROCESS);
-}
-
-void CTurbSSTSolver::SetBackscatterLimiter(CSolver **solver, CGeometry *geometry, CConfig *config) {
-  SU2_ZONE_SCOPED
-
-  /*--- Bound the stochastic source of the k equation by the (hybrid) dissipation,
-        |P_stoch| = C_B rho k_s |Omega.xi| <= beta* rho omega k F_DES, with k_s the (instantaneous or
-        time-averaged) TKE scaling the forcing and C_B including the modeled fraction if SBS_DAMP_SOURCE
-        (see CSourcePieceWise_TurbSST::AddStochSource). The resulting factor scales the forcing in the
-        turbulence equations, in the momentum equations and in the diagnostics alike, so the energy
-        exchange between modeled and resolved motion stays balanced (the same limiter as the SA-based
-        model, see CTurbSASolver::SetBackscatterLimiter). The density cancels out. ---*/
-
-  const auto& sbs = config->GetSBSParam();
-  const su2double beta_star = constants[6];
-  const bool isLangevin = (sbs.stochSourceType == LANGEVIN);
-  const bool isOU = (sbs.stochSourceType == ORNSTEIN_UHLENBECK);
-
-  auto* flowNodes = su2staticcast_p<CFlowVariable*>(solver[FLOW_SOL]->GetNodes());
-
-  SU2_OMP_FOR_STAT(omp_chunk_size)
-  for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-    su2double limiter = 1.0;
-
-    if (nodes->GetLES_Mode(iPoint) > sbs.stochFdThreshold) {
-      const auto vorticity = flowNodes->GetVorticity(iPoint);
-      su2double stochDotVor = 0.0;
-      for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-        const su2double xi = isLangevin ? nodes->GetSolution(iPoint, 2+iDim)
-                           : (isOU ? nodes->GetOU_Process(iPoint, iDim) : nodes->GetLangevinSourceTerms(iPoint, iDim));
-        stochDotVor += vorticity[iDim] * xi;
-      }
-
-      const su2double k = nodes->GetSolution(iPoint, 0);
-      const su2double omega = nodes->GetSolution(iPoint, 1);
-      const su2double kForcing = sbs.useMeanTurb ? nodes->GetMeanTurbKinEnergy(iPoint) : k;
-      const su2double modeledFraction = sbs.dampStochTerm ? nodes->GetModeledFraction(iPoint) : 1.0;
-
-      const su2double forcing = sbs.SBS_Cmag * modeledFraction * fabs(kForcing) * fabs(stochDotVor);
-      const su2double dissipation = beta_star * max(omega, 0.0) * max(k, 0.0) * nodes->GetF_DES(iPoint);
-      if (forcing > dissipation) limiter = dissipation / forcing;
-    }
-    nodes->SetSBSLimiter(iPoint, limiter);
-  }
-  END_SU2_OMP_FOR
-
-  /*--- Also read at halo points by the flow viscous residual. ---*/
-  InitiateComms(geometry, config, MPI_QUANTITIES::SBS_LIMITER);
-  CompleteComms(geometry, config, MPI_QUANTITIES::SBS_LIMITER);
 }
 
 void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geometry) {

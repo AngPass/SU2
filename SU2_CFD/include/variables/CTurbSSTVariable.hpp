@@ -59,7 +59,6 @@ protected:
   MatrixType stochSourceOld;
   MatrixType OU_Process;
   VectorType sbsInBox;
-  VectorType sbsLimiter;         /*!< \brief Limiting factor of the stochastic forcing (Stochastic Backscatter Model). */
   VectorType besselIntegral;
   MatrixType smoothMatrix;
   MatrixType smoothBetaVec;      /*!< \brief Non-orthogonal correction coefficients (packed per neighbor as 3 components) for the gradient-corrected Laplacian smoothing. */
@@ -150,18 +149,6 @@ public:
    * \param[in] iPoint - Point index.
    */
   inline void SetModeledFraction(unsigned long iPoint, su2double val_modeled_fraction) override { ModeledFraction(iPoint) = val_modeled_fraction; }
-
-  /*!
-   * \brief Get the limiting factor of the stochastic forcing (Stochastic Backscatter Model).
-   * \param[in] iPoint - Point index.
-   */
-  inline su2double GetSBSLimiter(unsigned long iPoint) const override { return sbsLimiter(iPoint); }
-
-  /*!
-   * \brief Set the limiting factor of the stochastic forcing (Stochastic Backscatter Model).
-   * \param[in] iPoint - Point index.
-   */
-  inline void SetSBSLimiter(unsigned long iPoint, su2double val_limiter) override { sbsLimiter(iPoint) = val_limiter; }
 
   /*!
    * \brief Get the mean turbulent kinetic energy.

@@ -79,15 +79,6 @@ private:
   void ComputeOU_Process(CSolver** solver, CConfig* config, CGeometry* geometry);
 
   /*!
-   * \brief Compute the limiting factor of the stochastic forcing (Stochastic Backscatter Model), which
-   *        bounds the stochastic source of the k equation by the dissipation, see CVariable::GetSBSLimiter.
-   * \param[in] solver - Solver container.
-   * \param[in] geometry - Geometrical definition.
-   * \param[in] config - Definition of the particular problem.
-   */
-  void SetBackscatterLimiter(CSolver** solver, CGeometry* geometry, CConfig* config);
-
-  /*!
    * \brief Compute nu tilde from the wall functions.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] solver_container - Container vector with all the solutions.

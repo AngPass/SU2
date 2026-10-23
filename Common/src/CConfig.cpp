@@ -3166,7 +3166,7 @@ void CConfig::SetConfig_Options() {
   addDoubleArrayOption("SBS_BOX_BOUNDS", 6, false, SBSParam.StochBackscatterBoxBounds);
 
   /* DESCRIPTION: Shielding function lower threshold for application of Stochastic Backscatter Model */
-  addDoubleOption("SBS_FD_LOWER_THRESHOLD", SBSParam.stochFdThreshold, 0.9);
+  addDoubleOption("SBS_FD_LOWER_THRESHOLD", SBSParam.stochFdThreshold, 1e-4);
 
   /* DESCRIPTION: Use a mean (time-averaged) turbulence quantity in the definition of the stochastic source term. */
   addBoolOption("SBS_USE_MEAN_TURB", SBSParam.useMeanTurb, false);

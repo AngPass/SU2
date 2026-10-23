@@ -150,10 +150,7 @@ class CSourceBase_TurbSA : public CNumerics {
    */
   inline void AddStochSource(const CConfig* config, CSAVariables& var, su2double& prod) {
 
-    /*--- The forcing is bounded by the destruction term through the limiting factor sbsLimiter_i,
-          computed by the solver (CTurbSASolver::SetBackscatterLimiter) and applied identically to the
-          momentum forcing, so that the energy exchange stays balanced. It is frozen in the Jacobian. ---*/
-    su2double Cmag = config->GetSBSParam().SBS_Cmag * sbsLimiter_i;
+    su2double Cmag = config->GetSBSParam().SBS_Cmag;
 
     /*--- Use the mean (time-averaged) eddy viscosity to scale the stochastic forcing when requested. ---*/
     su2double nut = config->GetSBSParam().useMeanTurb ? max(avg_eddy_visc_i, 1e-10)
@@ -230,7 +227,6 @@ class CSourceBase_TurbSA : public CNumerics {
       AD::SetPreaccIn(maxDelta_i);
       AD::SetPreaccIn(wallDist_i);
       if (config->GetSBSParam().useMeanTurb) AD::SetPreaccIn(avg_eddy_visc_i);
-      AD::SetPreaccIn(sbsLimiter_i);
     }
 
     /*--- Common auxiliary variables and constants of the model. ---*/
@@ -249,13 +245,6 @@ class CSourceBase_TurbSA : public CNumerics {
       const su2double nu = laminar_viscosity / density;
       var.inv_k2_d2 = 1.0 / (var.k2 * var.dist_i_2);
 
-      /*--- Where the stochastic source enters the SA equation (LES region), the low-Reynolds damping
-            functions are switched off (fv1 = 1, fv2 = 0, fw = 1). The same override is applied to the
-            eddy viscosity in CTurbSASolver::Postprocessing, so that nu_t = nu_tilde consistently. ---*/
-      const bool sbsLESOverride = config->GetSBSParam().StochasticBackscatter &&
-                                   config->GetSBSParam().stochSourceTurb &&
-                                   lesMode_i > config->GetSBSParam().stochFdThreshold;
-
       /*--- Modified values for roughness, roughness_i = 0 for smooth walls and Ji remains the same.
        * Ref: Aupoix, B. and Spalart, P. R., "Extensions of the Spalart-Allmaras Turbulence Model to Account for Wall
        * Roughness," International Journal of Heat and Fluid Flow, Vol. 24, 2003, pp. 454-462.
@@ -266,23 +255,13 @@ class CSourceBase_TurbSA : public CNumerics {
       const su2double Ji_2 = pow(var.Ji, 2);
       const su2double Ji_3 = Ji_2 * var.Ji;
 
-      if (sbsLESOverride) {
-        var.fv1 = 1.0;
-        var.d_fv1 = 0.0;
-      } else {
-        var.fv1 = Ji_3 / (Ji_3 + var.cv1_3);
-        var.d_fv1 = 3 * Ji_2 * var.cv1_3 / (nu * pow(Ji_3 + var.cv1_3, 2));
-      }
+      var.fv1 = Ji_3 / (Ji_3 + var.cv1_3);
+      var.d_fv1 = 3 * Ji_2 * var.cv1_3 / (nu * pow(Ji_3 + var.cv1_3, 2));
 
       /*--- Using a modified relation so as to not change the Shat that depends on fv2.
        * From NASA turb modeling resource and 2003 paper. ---*/
-      if (sbsLESOverride) {
-        var.fv2 = 0.0;
-        var.d_fv2 = 0.0;
-      } else {
-        var.fv2 = 1 - ScalarVar_i[0] / (nu + ScalarVar_i[0] * var.fv1);
-        var.d_fv2 = -(1 / nu - Ji_2 * var.d_fv1) / pow(1 + var.Ji * var.fv1, 2);
-      }
+      var.fv2 = 1 - ScalarVar_i[0] / (nu + ScalarVar_i[0] * var.fv1);
+      var.d_fv2 = -(1 / nu - Ji_2 * var.d_fv1) / pow(1 + var.Ji * var.fv1, 2);
 
       /*--- Evaluate Omega with a rotational correction term. ---*/
 
@@ -306,17 +285,12 @@ class CSourceBase_TurbSA : public CNumerics {
       /*--- Compute auxiliary function r ---*/
       rFunc::get(ScalarVar_i[0], var);
 
-      if (sbsLESOverride) {
-        var.fw = 1.0;
-        var.d_fw = 0.0;
-      } else {
-        var.g = var.r + var.cw2 * (pow(var.r, 6) - var.r);
-        var.g_6 = pow(var.g, 6);
-        var.glim = pow((1 + var.cw3_6) / (var.g_6 + var.cw3_6), 1.0 / 6.0);
-        var.fw = var.g * var.glim;
-        var.d_g = var.d_r * (1 + var.cw2 * (6 * pow(var.r, 5) - 1));
-        var.d_fw = var.d_g * var.glim * (1 - var.g_6 / (var.g_6 + var.cw3_6));
-      }
+      var.g = var.r + var.cw2 * (pow(var.r, 6) - var.r);
+      var.g_6 = pow(var.g, 6);
+      var.glim = pow((1 + var.cw3_6) / (var.g_6 + var.cw3_6), 1.0 / 6.0);
+      var.fw = var.g * var.glim;
+      var.d_g = var.d_r * (1 + var.cw2 * (6 * pow(var.r, 5) - 1));
+      var.d_fw = var.d_g * var.glim * (1 - var.g_6 / (var.g_6 + var.cw3_6));
 
       var.norm2_Grad = GeometryToolbox::SquaredNorm(nDim, ScalarVar_Grad_i[0]);
 
@@ -360,7 +334,8 @@ class CSourceBase_TurbSA : public CNumerics {
       su2double Production = 0.0, Destruction = 0.0;
       SourceTerms::get(ScalarVar_i[0], var, Production, Destruction, Jacobian_i[0][0]);
 
-      if (sbsLESOverride && config->GetSBSParam().stochSourceTurb)
+      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceTurb &&
+          lesMode_i > config->GetSBSParam().stochFdThreshold)
         AddStochSource(config, var, Production);
 
       Residual[0] = (Production - Destruction) * Volume;
@@ -865,12 +840,9 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
 
     /*--- Scale the stochastic source term by the fraction of turbulent kinetic energy that is
           modeled rather than resolved (see CFlowOutput) only if explicitly requested via
-          SBS_DAMP_SOURCE; by default the modeled fraction is 1, i.e. no damping. The forcing is
-          bounded by the dissipation through the limiting factor sbsLimiter_i, computed by the solver
-          (CTurbSSTSolver::SetBackscatterLimiter) and applied identically to the momentum forcing,
-          so that the energy exchange stays balanced. It is frozen in the Jacobian. ---*/
+          SBS_DAMP_SOURCE; by default the modeled fraction is 1, i.e. no damping. ---*/
     const su2double modeledFraction = config->GetSBSParam().dampStochTerm ? modeledFraction_i : 1.0;
-    su2double Cmag = config->GetSBSParam().SBS_Cmag * modeledFraction * sbsLimiter_i;
+    su2double Cmag = config->GetSBSParam().SBS_Cmag * modeledFraction;
     su2double tke = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_i : ScalarVar_i[0];
     const bool isLangevin = (config->GetSBSParam().stochSourceType == LANGEVIN);
 
@@ -997,7 +969,6 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
         AD::SetPreaccIn(maxDelta_i);
         if (sbs.useMeanTurb) AD::SetPreaccIn(avg_turb_ke_i);
         if (sbs.dampTimeFiltering || sbs.dampStochTerm) AD::SetPreaccIn(modeledFraction_i);
-        AD::SetPreaccIn(sbsLimiter_i);
       }
     }
 

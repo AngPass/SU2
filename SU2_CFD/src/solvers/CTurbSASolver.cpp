@@ -283,10 +283,6 @@ void CTurbSASolver::Preprocessing(CGeometry *geometry, CSolver **solver_containe
       if (config->GetSBSParam().stochSourceType == ORNSTEIN_UHLENBECK) ComputeOU_Process(solver_container, config, geometry);
     }
 
-    /*--- Limiting factor of the stochastic forcing, at every inner iteration since it depends on the
-          current turbulence and stochastic variables. ---*/
-    if (backscatter) SetBackscatterLimiter(solver_container, geometry, config);
-
   }
 
 }
@@ -298,12 +294,6 @@ void CTurbSASolver::Postprocessing(CGeometry *geometry, CSolver **solver_contain
 
   const bool neg_spalart_allmaras = config->GetSAParsedOptions().version == SA_OPTIONS::NEG;
   const bool backscatter = config->GetSBSParam().StochasticBackscatter;
-
-  /*--- Stochastic Backscatter Model: in the LES region where the stochastic source enters the SA
-        equation, the low-Reynolds damping is switched off (fv1 = 1), consistently with the source
-        term (see CSourceBase_TurbSA::ComputeResidual). ---*/
-  const bool sbsLESOverride = backscatter && config->GetSBSParam().stochSourceTurb;
-  const su2double sbsThreshold = config->GetSBSParam().stochFdThreshold;
 
   /*--- Compute eddy viscosity ---*/
 
@@ -325,8 +315,7 @@ void CTurbSASolver::Postprocessing(CGeometry *geometry, CSolver **solver_contain
       Ji += cR1*roughness/(dist+EPS);
 
     const su2double Ji_3 = Ji*Ji*Ji;
-    su2double fv1 = Ji_3/(Ji_3+cv1_3);
-    if (sbsLESOverride && nodes->GetLES_Mode(iPoint) > sbsThreshold) fv1 = 1.0;
+    const su2double fv1 = Ji_3/(Ji_3+cv1_3);
 
     su2double muT = rho*fv1*nu_hat;
 
@@ -510,7 +499,6 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
         numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), 0.0);
         numerics->SetMaxDelta(nodes->GetDES_FilterWidth(iPoint), 0.0);
         numerics->SetWallDistance(geometry->nodes->GetWall_Distance(iPoint), 0.0);
-        numerics->SetSBSLimiter(nodes->GetSBSLimiter(iPoint), 1.0);
 
         /*--- Time-averaged eddy viscosity, used instead of the instantaneous one to scale the
               stochastic forcing when SBS_USE_MEAN_TURB is active. ---*/
@@ -1457,55 +1445,6 @@ void CTurbSASolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeomet
 
   InitiateComms(geometry, config, MPI_QUANTITIES::OU_PROCESS);
   CompleteComms(geometry, config, MPI_QUANTITIES::OU_PROCESS);
-}
-
-void CTurbSASolver::SetBackscatterLimiter(CSolver **solver, CGeometry *geometry, CConfig *config) {
-  SU2_ZONE_SCOPED
-
-  /*--- Bound the stochastic source of the SA equation by its destruction term in LES mode,
-        |S_stoch| = (C_B/2)|Omega.xi| nu_t <= cw1 (nu_tilde/d)^2 (fv1 = 1, fw = 1 there, see
-        CSourceBase_TurbSA::AddStochSource), with d the DES length scale. The resulting factor scales
-        the forcing in the SA equation, in the momentum equations and in the diagnostics alike, so the
-        energy exchange between modeled and resolved motion stays balanced (the same limiter as the
-        SST-based model, see CTurbSSTSolver::SetBackscatterLimiter). ---*/
-
-  const auto& sbs = config->GetSBSParam();
-  const su2double k2 = pow(0.41, 2), cb1 = 0.1355, cb2 = 0.622, sigma = 2./3.;
-  const su2double cw1 = cb1/k2 + (1.0+cb2)/sigma;
-  const su2double Cmag = sbs.SBS_Cmag;
-  const bool isLangevin = (sbs.stochSourceType == LANGEVIN);
-  const bool isOU = (sbs.stochSourceType == ORNSTEIN_UHLENBECK);
-
-  auto* flowNodes = su2staticcast_p<CFlowVariable*>(solver[FLOW_SOL]->GetNodes());
-
-  SU2_OMP_FOR_STAT(omp_chunk_size)
-  for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-    su2double limiter = 1.0;
-
-    if (nodes->GetLES_Mode(iPoint) > sbs.stochFdThreshold) {
-      const auto vorticity = flowNodes->GetVorticity(iPoint);
-      su2double stochDotVor = 0.0;
-      for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-        const su2double xi = isLangevin ? nodes->GetSolution(iPoint, 1+iDim)
-                           : (isOU ? nodes->GetOU_Process(iPoint, iDim) : nodes->GetLangevinSourceTerms(iPoint, iDim));
-        stochDotVor += vorticity[iDim] * xi;
-      }
-
-      const su2double nuTilde = nodes->GetSolution(iPoint, 0);
-      const su2double nuT = sbs.useMeanTurb ? max(nodes->GetMeanEddyViscosity(iPoint), 1e-10) : max(nuTilde, 1e-10);
-      const su2double lengthScale = max(nodes->GetDES_LengthScale(iPoint), 1e-10);
-
-      const su2double forcing = 0.5 * Cmag * fabs(stochDotVor) * nuT;
-      const su2double destruction = cw1 * pow(max(nuTilde, 0.0)/lengthScale, 2);
-      if (forcing > destruction) limiter = destruction / forcing;
-    }
-    nodes->SetSBSLimiter(iPoint, limiter);
-  }
-  END_SU2_OMP_FOR
-
-  /*--- Also read at halo points by the flow viscous residual. ---*/
-  InitiateComms(geometry, config, MPI_QUANTITIES::SBS_LIMITER);
-  CompleteComms(geometry, config, MPI_QUANTITIES::SBS_LIMITER);
 }
 
 void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geometry) {
