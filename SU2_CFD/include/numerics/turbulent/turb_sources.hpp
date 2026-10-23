@@ -150,35 +150,64 @@ class CSourceBase_TurbSA : public CNumerics {
    */
   inline void AddStochSource(const CConfig* config, CSAVariables& var, su2double& prod) {
 
-    su2double Cmag = config->GetSBSParam().SBS_Cmag;
-
-    /*--- Use the mean (time-averaged) eddy viscosity to scale the stochastic forcing when requested. ---*/
-    su2double nut = config->GetSBSParam().useMeanTurb ? max(avg_eddy_visc_i, 1e-10)
-                                                       : max(ScalarVar_i[0] * var.fv1, 1e-10);
-    su2double lengthscale = config->GetConst_DES()*maxDelta_i;
-    su2double tke = pow(nut/lengthscale, 2);
+    /*--- Intensity weighted by the LES sensor. ---*/
+    const su2double Cmag = config->GetSBSParam().SBS_Cmag * lesMode_i;
 
     const bool isLangevin = (config->GetSBSParam().stochSourceType == LANGEVIN);
+    const su2double stochDotVor = isLangevin
+        ? Vorticity_i[0]*ScalarVar_i[1] + Vorticity_i[1]*ScalarVar_i[2] + Vorticity_i[2]*ScalarVar_i[3]
+        : Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2];
 
-    su2double StochDotVor = 0.0;
-    if (isLangevin)
-      StochDotVor = - Cmag * tke * (Vorticity_i[0]*ScalarVar_i[1] + Vorticity_i[1]*ScalarVar_i[2] + Vorticity_i[2]*ScalarVar_i[3]);
-    else
-      StochDotVor = - Cmag * tke * (Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2]);
+    /*--- Source = -(Cmag/2)(Omega.xi)*nu_t*fac, with fac = d(nu_tilde)/d(nu_t). ---*/
+    su2double nutFac = 0.0, d_nutFac = 0.0;
+    const su2double c = var.cv1_3;
 
-    su2double fac = 1.0 / (var.fv1 + ScalarVar_i[0] * var.d_fv1);
-    su2double timeScale = lengthscale*lengthscale/(2.0*nut);
-    su2double stochProdNut = StochDotVor * timeScale * fac;
+    if (!config->GetSBSParam().useMeanTurb) {
+      /*--- Closed form of nu_t*fac (fac alone diverges for chi -> 0). ---*/
+      const su2double nue = ScalarVar_i[0];
+      if (nue > 0.0) {
+        const su2double J = var.Ji, chi = nue * var.d_Ji;
+        const su2double J3 = pow(J, 3);
+        const su2double num = nue * J * (J3 + c);
+        const su2double den = J * (J3 + c) + 3.0 * chi * c;
+        const su2double d_num = J * (J3 + c) + nue * (4.0 * J3 + c) * var.d_Ji;
+        const su2double d_den = (4.0 * J3 + 4.0 * c) * var.d_Ji;
+        nutFac = num / den;
+        d_nutFac = (d_num * den - num * d_den) / (den * den);
+      }
+    } else {
+      /*--- Mean nu_t: fac evaluated on the mean state, chi_mean from nu_t_mean/nu = chi*fv1(J). ---*/
+      const su2double nu = 1.0 / var.d_Ji;
+      const su2double rough = max(var.Ji - ScalarVar_i[0] * var.d_Ji, 0.0);
+      const su2double a = avg_eddy_visc_i / nu;
+      if (a > 0.0) {
+        /*--- Newton on G(chi) = (chi-a)*J^3 - a*cv1^3, monotone from chi_0 >= root. ---*/
+        su2double chiMean = a + pow(a * c, 0.25);
+        for (unsigned short iter = 0; iter < 50; iter++) {
+          const su2double J = chiMean + rough;
+          const su2double J2 = J * J;
+          const su2double G = (chiMean - a) * J2 * J - a * c;
+          const su2double dG = J2 * (J + 3.0 * (chiMean - a));
+          const su2double delta = G / dG;
+          chiMean -= delta;
+          if (fabs(delta) <= 1e-12 * chiMean) break;
+        }
+        const su2double JMean = chiMean + rough;
+        const su2double J3 = pow(JMean, 3);
+        nutFac = nu * chiMean * JMean * (J3 + c) / (JMean * (J3 + c) + 3.0 * chiMean * c);
+      }
+    }
+
+    const su2double stochProdNut = -0.5 * Cmag * stochDotVor * nutFac;
 
     prod -= stochProdNut;
 
-    /*--- d(stochProdNut)/d(nu_tilde): stochProdNut = -(Cmag/2)(Omega.B)*nut, linear in nut here. ---*/
-    const bool nutFromNuTilde = !config->GetSBSParam().useMeanTurb && (ScalarVar_i[0] * var.fv1 > 1e-10);
-    if (nutFromNuTilde) Jacobian_i[0][0] -= stochProdNut / nut;
+    /*--- d(stochProdNut)/d(nu_tilde). ---*/
+    Jacobian_i[0][0] += 0.5 * Cmag * stochDotVor * d_nutFac;
 
-    /*--- d(stochProdNut)/d(stochVar), the coupling AddStochSource introduces. ---*/
+    /*--- d(stochProdNut)/d(stochVar). ---*/
     if (isLangevin) {
-      const su2double dStochProdNut_dStochVar = Cmag * tke * timeScale * fac;
+      const su2double dStochProdNut_dStochVar = 0.5 * Cmag * nutFac;
       for (unsigned short iDim = 0; iDim < 3; iDim++)
         Jacobian_i[0][1+iDim] += dStochProdNut_dStochVar * Vorticity_i[iDim] * Volume;
     }
@@ -197,9 +226,7 @@ class CSourceBase_TurbSA : public CNumerics {
         options(config->GetSAParsedOptions()),
         axisymmetric(config->GetAxisymmetric()),
         transition_LM(config->GetKind_Trans_Model() == TURB_TRANS_MODEL::LM) {
-    /*--- Setup the Jacobian pointer, we need to return su2double** but we know
-     * the Jacobian is 1x1 so we use this trick to avoid heap allocation. ---*/
-    /*--- Setup the Jacobian pointer (size increased for Stochastic Backscatter Model). ---*/
+    /*--- Setup the Jacobian pointer (4x4 for the Langevin equations), avoiding heap allocation. ---*/
     for (unsigned short iVar = 0; iVar < 4; iVar++)
       Jacobian_i[iVar] = Jacobian_Buffer + 4*iVar;
   }
@@ -221,7 +248,7 @@ class CSourceBase_TurbSA : public CNumerics {
     AD::SetPreaccIn(ScalarVar_Grad_i, nVar, nDim);
     AD::SetPreaccIn(stochSource, 3);
 
-    /*--- Stochastic Backscatter Model inputs (only set, hence only registered, when it is active). ---*/
+    /*--- Stochastic Backscatter Model inputs. ---*/
     if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().StochasticBackscatter) {
       AD::SetPreaccIn(lesMode_i);
       AD::SetPreaccIn(maxDelta_i);
@@ -334,8 +361,7 @@ class CSourceBase_TurbSA : public CNumerics {
       su2double Production = 0.0, Destruction = 0.0;
       SourceTerms::get(ScalarVar_i[0], var, Production, Destruction, Jacobian_i[0][0]);
 
-      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceTurb &&
-          lesMode_i > config->GetSBSParam().stochFdThreshold)
+      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceTurb)
         AddStochSource(config, var, Production);
 
       Residual[0] = (Production - Destruction) * Volume;
@@ -838,11 +864,9 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
   inline void AddStochSource(const CConfig* config, su2double& prodK, su2double& prodOm, su2double prodFac,
                              su2double& jacK_k, su2double& jacOm_k) {
 
-    /*--- Scale the stochastic source term by the fraction of turbulent kinetic energy that is
-          modeled rather than resolved (see CFlowOutput) only if explicitly requested via
-          SBS_DAMP_SOURCE; by default the modeled fraction is 1, i.e. no damping. ---*/
+    /*--- Intensity weighted by the LES sensor and, with SBS_DAMP_SOURCE, by the modeled fraction. ---*/
     const su2double modeledFraction = config->GetSBSParam().dampStochTerm ? modeledFraction_i : 1.0;
-    su2double Cmag = config->GetSBSParam().SBS_Cmag * modeledFraction;
+    su2double Cmag = config->GetSBSParam().SBS_Cmag * modeledFraction * lesMode_i;
     su2double tke = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_i : ScalarVar_i[0];
     const bool isLangevin = (config->GetSBSParam().stochSourceType == LANGEVIN);
 
@@ -855,8 +879,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
     prodK  -= stochProd;
     prodOm -= stochProd * prodFac;
 
-    /*--- The Jacobians are w.r.t. the conserved variables (rho*xi, rho*k), like the rest of the SST
-          Jacobian, hence the density of the forcing cancels out. ---*/
+    /*--- Jacobians w.r.t. conserved variables (rho*xi, rho*k). ---*/
     if (isLangevin) {
       for (unsigned short iDim = 0; iDim < 3; iDim++) {
         const su2double dProdK_dStochVar = Cmag * tke * Vorticity_i[iDim];
@@ -865,10 +888,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
       }
     }
 
-    /*--- d(prodK)/dk and d(prodOm)/dk. Returned to the caller (rather than added to Jacobian_i here)
-          because the caller assigns the k/omega block of the Jacobian after this call. They vanish
-          when the forcing is scaled by the mean (time-averaged) TKE, which does not depend on the
-          instantaneous k. ---*/
+    /*--- d(prodK)/dk and d(prodOm)/dk, returned to the caller (zero with the mean TKE). ---*/
     jacK_k = 0.0;
     jacOm_k = 0.0;
     if (!config->GetSBSParam().useMeanTurb) {
@@ -958,8 +978,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
     AD::SetPreaccIn(V_i[idx.SoundSpeed()]);
     AD::SetPreaccIn(stochSource, 3);
 
-    /*--- Hybrid RANS/LES inputs, only set (hence only registered) when the corresponding option is
-          active, see CTurbSSTSolver::Source_Residual. ---*/
+    /*--- Hybrid RANS/LES inputs (only when set). ---*/
     if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) {
       const auto& sbs = config->GetSBSParam();
       AD::SetPreaccIn(FDDES_i);
@@ -1054,17 +1073,10 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
       su2double P = Eddy_Viscosity_i * pow(P_Base, 2);
       su2double pk = max(0.0, min(P, prod_limit));
 
-      /*--- If the modeled stress tensor is high-pass filtered in the momentum equation
-            (FILTER_STRESSES, see CAvgGrad_Base::SetStressTensor), the production term must be
-            corrected by the same amount that is subtracted from tau there,
-            tau_ij -= Eddy_Viscosity * modeledFraction * meanStrain_ij, so that the k-equation
-            only extracts from the resolved flow the energy that the (filtered) stress tensor is
-            actually removing from it. Using P_Base^2 (i.e. nu_t*S^2) alone would ignore this and
-            keep destroying modelled TKE that the momentum equation no longer removes from the
-            mean flow, which would be inconsistent. ---*/
+      /*--- FILTER_STRESSES: remove the filtered part of tau from the production. ---*/
 
-      if (config->GetSBSParam().filterStresses && lesMode_i > config->GetSBSParam().stochFdThreshold) {
-        const su2double modeledFraction = config->GetSBSParam().dampTimeFiltering ? modeledFraction_i : 1.0;
+      if (config->GetSBSParam().filterStresses) {
+        const su2double filterWeight = (config->GetSBSParam().dampTimeFiltering ? modeledFraction_i : 1.0) * lesMode_i;
 
         su2double meanStrain[3][3] = {{0.0}};
         meanStrain[0][0] = meanStrainRate_i[0];
@@ -1082,7 +1094,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
             meanStrainDotS += meanStrain[iDim][jDim] * Sij;
           }
         }
-        pk = max(pk - Eddy_Viscosity_i * modeledFraction * meanStrainDotS, 0.0);
+        pk = max(pk - Eddy_Viscosity_i * filterWeight * meanStrainDotS, 0.0);
       }
 
       const auto& eddy_visc_var = sstParsedOptions.version == SST_OPTIONS::V1994 ? VorticityMag : StrainMag_i;
@@ -1127,7 +1139,7 @@ class CSourcePieceWise_TurbSST final : public CNumerics {
       }
 
       su2double jacStochK_k = 0.0, jacStochOm_k = 0.0;
-      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceTurb && lesMode_i>config->GetSBSParam().stochFdThreshold)
+      if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceTurb)
         AddStochSource(config, pk, pw, (pk > EPS) ? pw/pk : 0.0, jacStochK_k, jacStochOm_k);
 
       /*--- Add the production terms to the residuals. ---*/

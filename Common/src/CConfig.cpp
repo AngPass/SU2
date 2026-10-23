@@ -3131,8 +3131,7 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: SBS intensity coefficient */
   addDoubleOption("SBS_INTENSITY_COEFF", SBSParam.SBS_Cmag, 1.0);
 
-  /* DESCRIPTION: 4th order (JST-like) artificial dissipation coefficient of the centered flux of
-   *              the Langevin equations (SBS_SOURCE_TYPE= LANGEVIN), 0 for none. */
+  /* DESCRIPTION: 4th order artificial dissipation of the Langevin equations (0 for none) */
   addDoubleOption("SBS_KAPPA_4TH", SBSParam.SBS_Kappa4, 0.0);
 
   /* DESCRIPTION: Specify Hybrid RANS/LES model */
@@ -3165,26 +3164,16 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Specify extents of box where Stochastic Backscatter Model is active */
   addDoubleArrayOption("SBS_BOX_BOUNDS", 6, false, SBSParam.StochBackscatterBoxBounds);
 
-  /* DESCRIPTION: Shielding function lower threshold for application of Stochastic Backscatter Model */
-  addDoubleOption("SBS_FD_LOWER_THRESHOLD", SBSParam.stochFdThreshold, 1e-4);
-
   /* DESCRIPTION: Use a mean (time-averaged) turbulence quantity in the definition of the stochastic source term. */
   addBoolOption("SBS_USE_MEAN_TURB", SBSParam.useMeanTurb, false);
 
-  /* DESCRIPTION: High-pass filter the modeled (subgrid) stress tensor where the LES sensor is active
-   *              (any Hybrid RANS/LES method, independent of STOCHASTIC_BACKSCATTER). With the SST-based
-   *              models the k production is corrected consistently; with the SA-based models only the
-   *              momentum stresses are filtered, the one-equation model having no k budget to correct. */
+  /* DESCRIPTION: High-pass filter the modeled stresses, weighted by the LES sensor (Hybrid RANS/LES) */
   addBoolOption("FILTER_STRESSES", SBSParam.filterStresses, false);
 
-  /* DESCRIPTION: Scale the high-pass stress filtering (FILTER_STRESSES) by the modeled turbulent
-   *              kinetic energy fraction (SST-based Stochastic Backscatter Model only); if false,
-   *              filtering is applied at full strength (modeled fraction = 1) */
+  /* DESCRIPTION: Scale FILTER_STRESSES by the modeled TKE fraction (SST-based models) */
   addBoolOption("DAMP_TIME_FILTERING", SBSParam.dampTimeFiltering, false);
 
-  /* DESCRIPTION: Scale the stochastic source terms (momentum and turbulence equations) by the
-   *              modeled turbulent kinetic energy fraction (SST-based Stochastic Backscatter
-   *              Model only); if false, the modeled fraction is 1, i.e. no damping. */
+  /* DESCRIPTION: Scale the stochastic source terms by the modeled TKE fraction (SST-based models) */
   addBoolOption("SBS_DAMP_SOURCE", SBSParam.dampStochTerm, false);
 
   /* DESCRIPTION: Read the turbulent kinetic energy from an external reference RANS restart file
@@ -3240,8 +3229,7 @@ void CConfig::SetConfig_Options() {
   addStringListOption("HISTORY_OUTPUT", nHistoryOutput, HistoryOutput);
   /* DESCRIPTION: Type of output printed to the volume solution file */
   addStringListOption("VOLUME_OUTPUT", nVolumeOutput, VolumeOutput);
-  /* DESCRIPTION: Volume output fields/groups persisted across restarts when WRT_RESTART_AVERAGES=YES.
-     If left empty, defaults to MEAN_TURB_KIN_ENERGY and the MEAN_STRAIN_* components. */
+  /* DESCRIPTION: Averaged fields persisted across restarts (default: mean TKE and mean velocity) */
   addStringListOption("RESTART_AVG_FIELDS", nRestartAvgFields, RestartAvgFields);
   /* DESCRIPTION: Running-average method for TIME_AVERAGE/BACKSCATTER volume output fields */
   addEnumOption("TIME_AVG_METHOD", Kind_TimeAvgMethod, TimeAvgMethod_Map, TIME_AVG_METHOD::CUMULATIVE);
@@ -4223,15 +4211,12 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     if (TimeMarching != TIME_MARCHING::HARMONIC_BALANCE) { TimeMarching = TIME_MARCHING::STEADY; }
   }
 
-  /*--- RESTART_AVERAGE defaults to RESTART_SOL, so the running averages are restored whenever the
-        solution itself is restarted, unless the user explicitly requests otherwise. ---*/
+  /*--- RESTART_AVERAGE defaults to RESTART_SOL. ---*/
   if (!OptionIsSet("RESTART_AVERAGE")) {
     Restart_Average = Restart;
   }
 
-  /*--- Restored running averages (RESTART_AVERAGE + WRT_RESTART_AVERAGES) continue from the restart
-        iteration: a later WINDOW_START_ITER would blend the samples before the window into the
-        restored mean, without resetting it when the window starts. ---*/
+  /*--- Restored running averages continue from the restart iteration. ---*/
   if (Time_Domain && Restart_Average && Wrt_Restart_Averages && StartWindowIteration > Restart_Iter) {
     SU2_MPI::Error("WINDOW_START_ITER cannot be larger than RESTART_ITER when the running averages are "
                    "restored (RESTART_AVERAGE= YES and WRT_RESTART_AVERAGES= YES).", CURRENT_FUNCTION);
@@ -4245,17 +4230,7 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     Restart_Iter_Average = (Restart_Iter > 0) ? Restart_Iter - 1 : 0;
   }
 
-  /*--- If the user did not specify RESTART_AVG_FIELDS, default to persisting the mean turbulent
-        kinetic energy and the mean velocity (used by SBS_USE_MEAN_TURB/FILTER_STRESSES: the solver
-        rebuilds the mean strain-rate tensor from the gradient of the restored mean velocity, see
-        CNSSolver/CIncNSSolver::Preprocessing, rather than persisting the strain tensor itself).
-        Triggered by WRT_RESTART_AVERAGES=YES (the running average is accumulated and written), or by
-        RESTART_AVERAGE=YES with FILTER_STRESSES active even when WRT_RESTART_AVERAGES=NO: in that
-        "frozen" case the mean fields are only read once from an existing companion file and never
-        updated internally (see CFlowOutput::RestoreAveragedFields/LoadTimeAveragedData), but
-        RESTART_AVG_FIELDS still needs to name what to look for in that file. Placed after
-        Restart_Average/Restart_Iter_Average above have resolved their RESTART_SOL/RESTART_ITER
-        defaults, since this check depends on the final value of Restart_Average. ---*/
+  /*--- Default RESTART_AVG_FIELDS: mean TKE and mean velocity. ---*/
   if ((Wrt_Restart_Averages ||
        (Restart_Average && Kind_HybridRANSLES != NO_HYBRIDRANSLES && SBSParam.filterStresses)) &&
       nRestartAvgFields == 0) {
@@ -4267,10 +4242,7 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
       RestartAvgFields[iField] = defaultRestartAvgFields[iField];
   }
 
-  /*--- Consistency checks for the Stochastic Backscatter Model (SBS) and the related Hybrid RANS/LES
-        options. Done here, on every rank and independently of the verbosity, rather than in SetOutput
-        (which only runs on the master node when printing is enabled). The 3D requirement is checked
-        by the turbulence solvers, which know the dimension of the mesh. ---*/
+  /*--- Consistency checks for the Stochastic Backscatter Model and related options. ---*/
 
   /*--- The SA_* and SST_* Hybrid RANS/LES kinds are implemented by the corresponding turbulence
         solver only (see CTurbSASolver/CTurbSSTSolver::SetDES_LengthScale). ---*/
@@ -4286,9 +4258,7 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     if (Kind_HybridRANSLES == NO_HYBRIDRANSLES)
       SU2_MPI::Error("Stochastic Backscatter can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);
 
-    /*--- The system matrix of the Laplacian smoothing (and the Bessel scaling) is built once from the
-          LES filter width, which therefore must not depend on the flow solution: this rules out the
-          vorticity-based (ZDES), shear-layer-adapted (EDDES) and IDDES filter widths. ---*/
+    /*--- The smoothing matrix needs a solution-independent filter width (no ZDES/EDDES/IDDES). ---*/
     if (Kind_HybridRANSLES != SA_DES && Kind_HybridRANSLES != SA_DDES &&
         Kind_HybridRANSLES != SST_DES && Kind_HybridRANSLES != SST_DDES)
       SU2_MPI::Error("Stochastic Backscatter is only available with HYBRID_RANSLES= SA_DES, SA_DDES, SST_DES or SST_DDES.",
@@ -4311,9 +4281,6 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
 
     if (SBSParam.SBS_maxIterSmooth > 0 && SBSParam.SBS_Cdelta < 0.0)
       SU2_MPI::Error("Backscatter lengthscale coefficient (SBS_LENGTHSCALE_COEFF) must be non-negative.", CURRENT_FUNCTION);
-
-    if (SBSParam.stochFdThreshold < 0.0 || SBSParam.stochFdThreshold >= 1.0)
-      SU2_MPI::Error("SBS_FD_LOWER_THRESHOLD must be in [0, 1).", CURRENT_FUNCTION);
 
     if (SBSParam.StochBackscatterInBox) {
       if (!OptionIsSet("SBS_BOX_BOUNDS"))
@@ -6926,7 +6893,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
         if (Kind_HybridRANSLES != NO_HYBRIDRANSLES) {
           if (LES_FilterWidth > 0.0) cout << "User-specified LES filter width: " << LES_FilterWidth << endl;
           if (SBSParam.filterStresses) {
-            cout << "| Modeled stress tensor high-pass filtered where the shielding function is above: " << setw(4) << setprecision(4) << SBSParam.stochFdThreshold << endl;
+            cout << "| Modeled stress tensor high-pass filtered, weighted by the LES sensor (shielding function)." << endl;
             if (!Wrt_Restart_Averages && !Restart_Average) {
               cout << "| Warning: FILTER_STRESSES is active but both WRT_RESTART_AVERAGES and RESTART_AVERAGE are NO, "
                       "so the mean velocity it filters against is never populated (stays zero): FILTER_STRESSES has no "
@@ -6977,7 +6944,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
                               << setw(10) << fixed << setprecision(4) << SBSParam.StochBackscatterBoxBounds[5] << endl;
             }
             if (Kind_HybridRANSLES != SA_DES && Kind_HybridRANSLES != SST_DES)
-              cout << "| Stochastic source terms suppressed where the shielding function is lower than: " << setw(4) << setprecision(4) << SBSParam.stochFdThreshold << endl;
+              cout << "| Stochastic source terms weighted by the LES sensor (shielding function)." << endl;
           } else {
             cout << "OFF" << endl;
           }

@@ -412,10 +412,7 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
   bool boundary_i, boundary_j;
   bool weighted = true;
 
-  /*--- MEAN_VEL_* fields are purely a velocity vector (no leading scalar like
-        Temperature/density), so the vector components to be rotated under
-        rotationally-periodic transforms start at index 0, unlike SOLUTION and
-        PRIMITIVE which carry the vector starting at index 1. ---*/
+  /*--- MEAN_VEL_* is a pure vector, rotated from index 0. ---*/
   const unsigned short velOffset = (commType == PERIODIC_MEAN_VEL_GG ||
                                      commType == PERIODIC_MEAN_VEL_LS ||
                                      commType == PERIODIC_MEAN_VEL_ULS) ? 0 : 1;
@@ -1128,9 +1125,7 @@ void CSolver::InitiatePeriodicComms(CGeometry *geometry,
           case PERIODIC_SBS_SUM:
           case PERIODIC_SBS_COPY:
 
-            /*--- Stochastic Backscatter Model: generic work buffer, either holding partial (edge-based)
-             sums to be completed with the matching point's contribution, or values to be copied to
-             the passive face. Only translational periodicity is supported (no rotation). ---*/
+            /*--- Stochastic Backscatter Model work buffer (translational periodicity only). ---*/
 
             for (iVar = 0; iVar < COUNT_PER_POINT; iVar++)
               bufDSend[buf_offset+iVar] = base_nodes->GetSBSPeriodicBuf(iPoint, iVar);

@@ -69,10 +69,7 @@ protected:
   MatrixType sbsPeriodicBuf;     /*!< \brief Work buffer exchanged between matching periodic points (Stochastic Backscatter Model). */
 
 public:
-  /*!< \brief Max number of point-to-point neighbors supported by the fixed-size smoothMatrix/
-   *          smoothBetaVec storage used for the Laplacian smoothing of the Langevin source term
-   *          (Stochastic Backscatter Model). The solver must reject (not silently overrun) any
-   *          point whose actual mesh connectivity exceeds this. */
+  /*!< \brief Max number of neighbors of the smoothing matrix storage. */
   static constexpr unsigned short MAXNNEIGHBORS = 32;
 
   /*!
@@ -85,9 +82,7 @@ public:
    * \param[in] nvar - Number of variables of the problem.
    * \param[in] constants - sst model constants
    * \param[in] config - Definition of the particular problem.
-   * \param[in] ghost - Whether these are the boundary ghost rows of the solver, which the edge kernels
-   *            only read the solution and the blending function of: the Stochastic Backscatter Model
-   *            work arrays are then not allocated.
+   * \param[in] ghost - Boundary ghost rows (no backscatter work arrays).
    */
   CTurbSSTVariable(su2double kine, su2double omega, su2double mut, unsigned long npoint,
                    unsigned long ndim, unsigned long nvar, const su2double* constants, CConfig *config,
@@ -163,16 +158,14 @@ public:
   inline void SetMeanTurbKinEnergy(unsigned long iPoint, su2double val_mean_tke) override { MeanTurbKE(iPoint) = val_mean_tke; }
 
   /*!
-   * \brief Get the turbulent kinetic energy read from the external reference RANS restart file
-   *        (SBS_RANS_CONSTRAINT).
+   * \brief Get the reference RANS TKE (SBS_RANS_CONSTRAINT).
    * \param[in] iPoint - Point index.
    * \return Reference RANS turbulent kinetic energy.
    */
   inline su2double GetRANS_TKE(unsigned long iPoint) const override { return RANS_TKE(iPoint); }
 
   /*!
-   * \brief Set the turbulent kinetic energy read from the external reference RANS restart file
-   *        (SBS_RANS_CONSTRAINT).
+   * \brief Set the reference RANS TKE (SBS_RANS_CONSTRAINT).
    */
   inline void SetRANS_TKE(unsigned long iPoint, su2double val_rans_tke) override { RANS_TKE(iPoint) = val_rans_tke; }
 
@@ -225,8 +218,7 @@ public:
   inline void SetSmoothingMatrixCoeff(unsigned long iPoint, unsigned short iNode, su2double val_smoothmat) override { smoothMatrix(iPoint, iNode) = val_smoothmat; }
 
   /*!
-   * \brief Get a component of the non-orthogonal correction coefficient for the gradient-corrected
-   *        Laplacian smoothing of the stochastic source term.
+   * \brief Get a non-orthogonal correction coefficient of the smoothing operator.
    * \param[in] iPoint - Point index.
    * \param[in] iNode - Neighbor index.
    * \param[in] iDim - Dimension index.
@@ -236,16 +228,14 @@ public:
   }
 
   /*!
-   * \brief Set a component of the non-orthogonal correction coefficient for the gradient-corrected
-   *        Laplacian smoothing of the stochastic source term.
+   * \brief Set a non-orthogonal correction coefficient of the smoothing operator.
    */
   inline void SetSmoothingBetaVec(unsigned long iPoint, unsigned short iNode, unsigned short iDim, su2double val_betavec) override {
     smoothBetaVec(iPoint, iNode*3 + iDim) = val_betavec;
   }
 
   /*!
-   * \brief Get a component of the Green-Gauss gradient of the stochastic source term currently
-   *        being smoothed.
+   * \brief Get the gradient of the source term being smoothed.
    * \param[in] iPoint - Point index.
    * \param[in] iDim - Dimension index.
    */
@@ -254,23 +244,20 @@ public:
   }
 
   /*!
-   * \brief Set a component of the Green-Gauss gradient of the stochastic source term currently
-   *        being smoothed.
+   * \brief Set the gradient of the source term being smoothed.
    */
   inline void SetLangevinSourceGrad(unsigned long iPoint, unsigned short iDim, su2double val_grad) override {
     langevinSourceGrad(iPoint, iDim) = val_grad;
   }
 
   /*!
-   * \brief Get the diagonal coefficient of the system matrix for the Laplacian smoothing of the
-   *        stochastic source term.
+   * \brief Get the diagonal coefficient of the smoothing matrix.
    * \param[in] iPoint - Point index.
    */
   inline su2double GetSmoothingDiag(unsigned long iPoint) const override { return smoothDiag(iPoint); }
 
   /*!
-   * \brief Set the diagonal coefficient of the system matrix for the Laplacian smoothing of the
-   *        stochastic source term.
+   * \brief Set the diagonal coefficient of the smoothing matrix.
    */
   inline void SetSmoothingDiag(unsigned long iPoint, su2double val_diag) override { smoothDiag(iPoint) = val_diag; }
 

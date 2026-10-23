@@ -35,9 +35,7 @@
  * \ingroup ViscDiscr
  * \brief Convection and diffusion of the Spalart-Allmaras model, non-conservative and with a
  *        diagonal (but asymmetric) diffusion coefficient.
- * \note SA writes its own convective term rather than using the inherited CUpwScalarFlux one,
- *       because with stochastic backscatter active (nVar 4) the three Langevin equations are
- *       advected with a centered flux, unlike the plain upwind SA equation itself.
+ * \note Own convective term: the Langevin equations use a centered flux.
  */
 template <class Double, class FlowIndices, int nDim, size_t nVar>
 class CScalarFlux_SA
@@ -130,9 +128,7 @@ class CScalarFlux_SA
 
   /*!
    * \brief Diffusion coefficients of both orientations of the edge.
-   * \note The coefficient is not symmetric: it uses the transported variable of the row it is
-   *       going to be used for (the quadratic, non-conservative part of the diffusion term).
-   *       Coefficients past index 0 are left at zero, the backscatter equations have no diffusion.
+   * \note Not symmetric. Zero for the backscatter equations.
    */
   template <class VariableType>
   FORCEINLINE CPair<Vector<Double, nVar>> coefficients(const FlowIndices& idx, Int iPoint,

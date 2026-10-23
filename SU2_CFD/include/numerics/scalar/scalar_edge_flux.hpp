@@ -154,15 +154,11 @@ struct CScalarValues {
 };
 
 /*!
- * \brief 4th order artificial dissipation of the centered flux of the Langevin equations of
- *        stochastic backscatter, variables [first, nVar), with the scaling of CJSTScheme.
+ * \brief 4th order artificial dissipation of the centered flux of the Langevin equations.
  * \param[in] kappa4 - Dissipation coefficient (SBS_KAPPA_4TH), the term is skipped when 0.
  * \param[in] lambda - Spectral radius of the edge, the magnitude of the face normal volume flux.
  * \param[in] weight - Weight of the transported variable in the flux, the density for a conservative model.
- * \note Uses the undivided Laplacian of the solution, computed by the solver before the edge loop.
- *       Interior edges only: a ghost side has neither the Laplacian nor the neighbor count.
- *       The Jacobians are the usual approximation, the dependence on the neighbors of the
- *       neighbors cannot be represented in the edge blocks.
+ * \note Interior edges only, approximate Jacobians.
  */
 template <class Double, class Int, class VariableType, size_t nVar>
 FORCEINLINE void langevinDissipation(const ScalarFluxOptions& opt, su2double kappa4, size_t first, Int iPoint,
@@ -391,9 +387,7 @@ class CUpwScalarBase : public CUpwScalarFlux<Double_, Derived, FlowIndices, nDim
   static constexpr bool DiffusionReadsDensity = false;
 
   /*!
-   * \brief Number of leading variables reconstructed by the convective scheme when opt.muscl is
-   *        set, all of them by default; a model with trailing variables that must keep their nodal
-   *        values (the Langevin equations of stochastic backscatter) redeclares it.
+   * \brief Number of leading variables reconstructed by MUSCL (all by default, not the Langevin ones).
    * \note Only honoured for a static equation count.
    */
   static constexpr size_t NVarReconstructed = nVar_;

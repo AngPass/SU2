@@ -338,20 +338,14 @@ protected:
   vector<string> GetRequestedAvgFieldNames(const CConfig *config) const;
 
   /*!
-   * \brief Write all currently active TIME_AVERAGE/BACKSCATTER volume output fields to a small
-   *        companion ASCII file (together with the number of samples accumulated so far), so they
-   *        can be restored on restart instead of restarting the running averages from scratch.
+   * \brief Write the averaged volume output fields and the number of samples to a companion file.
    * \param[in] config - Definition of the particular problem per zone.
    * \param[in] geometry - Geometrical definition of the problem.
    */
   void WriteAveragedFields(CConfig *config, CGeometry *geometry) override;
 
   /*!
-   * \brief Restore all TIME_AVERAGE/BACKSCATTER volume output fields from the companion file
-   *        written by WriteAveragedFields, if present. With WRT_RESTART_AVERAGES=NO ("frozen" mode,
-   *        see CConfig's RESTART_AVG_FIELDS default-selection comment), also seeds the flow solver's
-   *        mean-velocity node storage directly from the file, since LoadTimeAveragedData will not be
-   *        pushing live updates into it for the rest of the run.
+   * \brief Restore the averaged volume output fields (and, in frozen mode, the solver's mean velocity).
    * \param[in] config - Definition of the particular problem per zone.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] solver_container - The container holding all solution data.
@@ -395,9 +389,7 @@ protected:
   void SetFixedCLScreenOutput(const CConfig *config);
 
   /*!
-   * \brief Scaling of the stochastic forcing intensity actually applied by the solver at a point: with
-   *        SBS_DAMP_SOURCE, the modeled fraction of the turbulent kinetic energy (see
-   *        CAvgGrad_Base::SetStochSourceMom).
+   * \brief Scaling of the stochastic forcing intensity (modeled fraction with SBS_DAMP_SOURCE).
    * \param iPoint - Index of the point.
    * \param config - Definition of the particular problem.
    * \param node_turb - Turbulence-model solver solution.
@@ -408,11 +400,7 @@ protected:
   }
 
   /*!
-   * \brief Compute the power of the stochastic forcing (Backscatter Model).
-   * \details The stochastic stress tensor added to the momentum equations is R_ij = eps_ijk a_k, with the
-   *          vector potential a = C_B rho k xi, and enters the stress tensor with a minus sign (see
-   *          CAvgGrad_Base::SetStressTensor), so the stochastic force is f = -curl(a). This returns u . f,
-   *          i.e. the power transferred to the resolved motion (positive = backscatter).
+   * \brief Power u . f of the stochastic force f = -curl(a), a = C_B rho k xi (positive = backscatter).
    * \param iPoint - Index of the point.
    * \param config - Definition of the particular problem.
    * \param node_flow - Flow solver solution.
@@ -423,22 +411,21 @@ protected:
   inline su2double GetPowerStochForcing(unsigned long iPoint, const CConfig *config, const CVariable *node_flow, const CVariable *node_turb, const CGeometry *geometry) {
 
     const su2double mag = config->GetSBSParam().SBS_Cmag;
-    const su2double threshold = config->GetSBSParam().stochFdThreshold;
 
-    /*--- Compute forcing intensity at point i ---*/
+    /*--- Forcing intensity at point i, weighted by the LES sensor ---*/
 
     su2double tkeEstim_i = 0.0;
     const su2double lesSensor_i = node_flow->GetLES_Mode(iPoint);
 
     if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
       su2double tke_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanTurbKinEnergy(iPoint) : node_turb->GetSolution(iPoint, 0);
-      tkeEstim_i = (lesSensor_i > threshold) ? tke_i : 0.0;
+      tkeEstim_i = lesSensor_i * tke_i;
     } else {
       const su2double rho_i = node_flow->GetDensity(iPoint);
       const su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(iPoint)
                                                                     : node_flow->GetEddyViscosity(iPoint) / rho_i;
       const su2double lengthscale_i = config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint);
-      tkeEstim_i = (lesSensor_i > threshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
+      tkeEstim_i = lesSensor_i * pow(nuT_i/lengthscale_i, 2);
     }
 
     su2double stochVec_i[3] = {0.0};
@@ -470,13 +457,13 @@ protected:
 
       if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
         su2double tke_j = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanTurbKinEnergy(jPoint) : node_turb->GetSolution(jPoint, 0);
-        tkeEstim_j = (lesSensor_j > threshold) ? tke_j : 0.0;
+        tkeEstim_j = lesSensor_j * tke_j;
       } else {
         const su2double rho_j = node_flow->GetDensity(jPoint);
         const su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(jPoint)
                                                                       : node_flow->GetEddyViscosity(jPoint) / rho_j;
         const su2double lengthscale_j = config->GetConst_DES() * node_turb->GetDES_FilterWidth(jPoint);
-        tkeEstim_j = (lesSensor_j > threshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
+        tkeEstim_j = lesSensor_j * pow(nuT_j/lengthscale_j, 2);
       }
 
       su2double stochVec_j[3] = {0.0};
@@ -514,11 +501,7 @@ protected:
   }
 
   /*!
-   * \brief Compute the stochastic energy backscatter.
-   * \details Energy transferred from the modeled to the resolved motion, -a . omega with the vector
-   *          potential a = C_B rho k xi: the volume integral of the forcing power u . (-curl(a)), up to
-   *          boundary terms, and the opposite of the source added to the turbulence model equation
-   *          (positive = backscatter, see GetPowerStochForcing).
+   * \brief Stochastic energy backscatter, -a . omega with a = C_B rho k xi (positive = backscatter).
    * \param iPoint - Index of the point.
    * \param config - Definition of the particular problem.
    * \param node_flow - Flow solver solution.
@@ -529,22 +512,21 @@ protected:
   inline su2double GetEnergyBackscatter(unsigned long iPoint, const CConfig *config, const CVariable *node_flow, const CVariable *node_turb, const CGeometry *geometry) {
 
     const su2double mag = config->GetSBSParam().SBS_Cmag;
-    const su2double threshold = config->GetSBSParam().stochFdThreshold;
 
-    /*--- Compute forcing intensity at point i ---*/
+    /*--- Forcing intensity at point i, weighted by the LES sensor ---*/
 
     su2double tkeEstim_i = 0.0;
     const su2double lesSensor_i = node_flow->GetLES_Mode(iPoint);
 
     if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
       su2double tke_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanTurbKinEnergy(iPoint) : node_turb->GetSolution(iPoint, 0);
-      tkeEstim_i = (lesSensor_i > threshold) ? tke_i : 0.0;
+      tkeEstim_i = lesSensor_i * tke_i;
     } else {
       const su2double rho_i = node_flow->GetDensity(iPoint);
       const su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(iPoint)
                                                                     : node_flow->GetEddyViscosity(iPoint) / rho_i;
       const su2double lengthscale_i = config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint);
-      tkeEstim_i = (lesSensor_i > threshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
+      tkeEstim_i = lesSensor_i * pow(nuT_i/lengthscale_i, 2);
     }
 
     su2double stochVec_i[3] = {0.0};

@@ -34,9 +34,7 @@
  * \ingroup ViscDiscr
  * \brief Convection and diffusion of the Menter SST model, conservative with a coupled (but
  *        neither symmetric nor diagonal) 2x2 diffusion matrix.
- * \note SST writes its own convective term: k and omega are upwinded as in CUpwScalarFlux,
- *       flux(iVar) = a0*rho_i*phi_i(iVar) + a1*rho_j*phi_j(iVar), while with stochastic backscatter
- *       active (nVar 5) the three Langevin equations are advected with a centered flux, as in SA.
+ * \note Own convective term: the Langevin equations use a centered flux.
  */
 template <class Double, class FlowIndices, int nDim, size_t nVar = 2>
 class CScalarFlux_SST
@@ -55,8 +53,7 @@ class CScalarFlux_SST
   explicit CScalarFlux_SST(const CConfig& config) : Base(config), kappa4(config.GetSBSParam().SBS_Kappa4) {}
 
   /*!
-   * \brief SST convection, upwind and density-weighted, plus the centered (density-weighted)
-   *        advection of the backscatter equations when nVar > 2.
+   * \brief SST upwind convection, plus centered advection of the backscatter equations.
    * \note The Jacobians are w.r.t. the conserved variables, the density weights the flux only.
    */
   template <class VariableType, size_t Size>

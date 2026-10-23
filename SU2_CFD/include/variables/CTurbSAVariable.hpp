@@ -58,10 +58,7 @@ private:
   MatrixType sbsPeriodicBuf;     /*!< \brief Work buffer exchanged between matching periodic points (Stochastic Backscatter Model). */
 
 public:
-  /*!< \brief Max number of point-to-point neighbors supported by the fixed-size smoothMatrix/
-   *          smoothBetaVec storage used for the Laplacian smoothing of the Langevin source term
-   *          (Stochastic Backscatter Model). The solver must reject (not silently overrun) any
-   *          point whose actual mesh connectivity exceeds this. */
+  /*!< \brief Max number of neighbors of the smoothing matrix storage. */
   static constexpr unsigned short MAXNNEIGHBORS = 32;
 
   /*!
@@ -73,9 +70,7 @@ public:
    * \param[in] nvar - Number of variables of the problem.
    * \param[in] constants -
    * \param[in] config - Definition of the particular problem.
-   * \param[in] ghost - Whether these are the boundary ghost rows of the solver, which the edge kernels
-   *            only read the solution of: the Stochastic Backscatter Model work arrays are then not
-   *            allocated.
+   * \param[in] ghost - Boundary ghost rows (no backscatter work arrays).
    */
   CTurbSAVariable(su2double val_nu_tilde, su2double val_muT, unsigned long npoint, unsigned long ndim, unsigned long nvar,
                   CConfig *config, bool ghost = false);
@@ -160,8 +155,7 @@ public:
   inline void SetSmoothingMatrixCoeff(unsigned long iPoint, unsigned short iNode, su2double val_smoothmat) override { smoothMatrix(iPoint, iNode) = val_smoothmat; }
 
   /*!
-   * \brief Get a component of the non-orthogonal correction coefficient for the gradient-corrected
-   *        Laplacian smoothing of the stochastic source term.
+   * \brief Get a non-orthogonal correction coefficient of the smoothing operator.
    * \param[in] iPoint - Point index.
    * \param[in] iNode - Neighbor index.
    * \param[in] iDim - Dimension index.
@@ -171,16 +165,14 @@ public:
   }
 
   /*!
-   * \brief Set a component of the non-orthogonal correction coefficient for the gradient-corrected
-   *        Laplacian smoothing of the stochastic source term.
+   * \brief Set a non-orthogonal correction coefficient of the smoothing operator.
    */
   inline void SetSmoothingBetaVec(unsigned long iPoint, unsigned short iNode, unsigned short iDim, su2double val_betavec) override {
     smoothBetaVec(iPoint, iNode*3 + iDim) = val_betavec;
   }
 
   /*!
-   * \brief Get a component of the Green-Gauss gradient of the stochastic source term currently
-   *        being smoothed.
+   * \brief Get the gradient of the source term being smoothed.
    * \param[in] iPoint - Point index.
    * \param[in] iDim - Dimension index.
    */
@@ -189,23 +181,20 @@ public:
   }
 
   /*!
-   * \brief Set a component of the Green-Gauss gradient of the stochastic source term currently
-   *        being smoothed.
+   * \brief Set the gradient of the source term being smoothed.
    */
   inline void SetLangevinSourceGrad(unsigned long iPoint, unsigned short iDim, su2double val_grad) override {
     langevinSourceGrad(iPoint, iDim) = val_grad;
   }
 
   /*!
-   * \brief Get the diagonal coefficient of the system matrix for the Laplacian smoothing of the
-   *        stochastic source term.
+   * \brief Get the diagonal coefficient of the smoothing matrix.
    * \param[in] iPoint - Point index.
    */
   inline su2double GetSmoothingDiag(unsigned long iPoint) const override { return smoothDiag(iPoint); }
 
   /*!
-   * \brief Set the diagonal coefficient of the system matrix for the Laplacian smoothing of the
-   *        stochastic source term.
+   * \brief Set the diagonal coefficient of the smoothing matrix.
    */
   inline void SetSmoothingDiag(unsigned long iPoint, su2double val_diag) override { smoothDiag(iPoint) = val_diag; }
 

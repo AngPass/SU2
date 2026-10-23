@@ -136,9 +136,7 @@ void CTurbSolver::LoadRestart(CGeometry** geometry, CSolver*** solver, CConfig* 
       nVarInRestart = min(nVarInRestart, minVar);
     }
 
-    /*--- Stochastic Backscatter Model, ORNSTEIN_UHLENBECK: the process is not a solution variable but it
-          is written to the restart file as StochVar_x/y/z (see CFlowOutput), hence it is located by name.
-          Restored with SBS_RESTART, like the Langevin variables. ---*/
+    /*--- Ornstein-Uhlenbeck process, restored by name (StochVar_x/y/z) with SBS_RESTART. ---*/
 
     long ouField = -1;
     if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().restartStochField &&
@@ -326,12 +324,7 @@ void CTurbSolver::Impose_Fixed_Values(const CGeometry *geometry, const CConfig *
     END_SU2_OMP_FOR
   }
 
-  /*--- Stochastic Backscatter Model (Langevin): homogeneous Dirichlet condition xi = 0 on every physical
-        boundary. The stochastic stress R_ij = eps_ijk a_k (a = C_B rho k xi) is only evaluated on interior
-        edges (the boundary numerics never receive it), so its discrete curl, i.e. the stochastic force
-        -curl(a), only closes at boundary nodes if a vanishes there; a = 0 on the boundary also removes the
-        boundary term from the energy exchange between resolved and modeled motion. The WHITE_NOISE and
-        ORNSTEIN_UHLENBECK variants already have xi = 0 there (zero source on boundary markers). ---*/
+  /*--- Langevin variables: xi = 0 on physical boundaries, where the stochastic stress is not evaluated. ---*/
 
   if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
     const unsigned short firstStochVar = nVar - 3;

@@ -149,16 +149,11 @@ void CAvgGrad_Base::SetStressTensor(const su2double *val_primvar,
   }
 
   if ((config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) && config->GetSBSParam().filterStresses) {
-    /*--- High-pass filter the modeled stress tensor where the LES sensor is active: subtract the
-          low-frequency part of the eddy-viscosity closure from the instantaneous tau. This part is
-          evaluated using the mean (time-averaged) strain-rate tensor meanStrainRate_i/j (built from
-          the time-averaged velocity gradient, see CFlowOutput) together with the current
-          (instantaneous) eddy viscosity val_eddy_viscosity, i.e. it is NOT itself time-averaged. ---*/
-    const su2double sensorThreshold = config->GetSBSParam().stochFdThreshold;
+    /*--- High-pass filter, weighted by the LES sensor: subtract mu_t times the mean strain rate. ---*/
     su2double meanStrain_i[6], meanStrain_j[6];
     for (unsigned short iVar = 0; iVar < 6; iVar++) {
-      meanStrain_i[iVar] = (lesMode_i > sensorThreshold) ? meanStrainRate_i[iVar] : 0.0;
-      meanStrain_j[iVar] = (lesMode_j > sensorThreshold) ? meanStrainRate_j[iVar] : 0.0;
+      meanStrain_i[iVar] = lesMode_i * meanStrainRate_i[iVar];
+      meanStrain_j[iVar] = lesMode_j * meanStrainRate_j[iVar];
     }
     su2double meanStrain[3][3];
     meanStrain[0][0] = 0.5*(meanStrain_i[0]+meanStrain_j[0]);
@@ -168,10 +163,7 @@ void CAvgGrad_Base::SetStressTensor(const su2double *val_primvar,
     meanStrain[0][2] = meanStrain[2][0] = 0.5*(meanStrain_i[4]+meanStrain_j[4]);
     meanStrain[1][2] = meanStrain[2][1] = 0.5*(meanStrain_i[5]+meanStrain_j[5]);
 
-    /*--- Scale this term by the fraction of turbulent kinetic energy that is modeled rather than
-          resolved (see CFlowOutput) only if explicitly requested via DAMP_TIME_FILTERING; by
-          default the filtering is applied at full strength (modeled fraction = 1), even when the
-          SST-based Stochastic Backscatter Model is active. ---*/
+    /*--- Scaled by the modeled fraction with DAMP_TIME_FILTERING. ---*/
     const su2double modeledFraction = config->GetSBSParam().dampTimeFiltering ?
                                        0.5 * (modeledFraction_i + modeledFraction_j) : 1.0;
 
@@ -183,25 +175,24 @@ void CAvgGrad_Base::SetStressTensor(const su2double *val_primvar,
 
 void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
   su2double tke_i = 0.0, tke_j = 0.0;
-  su2double sensorThreshold = config->GetSBSParam().stochFdThreshold;
-  
+
+  /*--- Intensity weighted by the LES sensor. ---*/
+
   if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
     su2double turbKinEn_i = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_i : turb_ke_i;
     su2double turbKinEn_j = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_j : turb_ke_j;
-    tke_i = (lesMode_i > sensorThreshold) ? turbKinEn_i : 0.0;
-    tke_j = (lesMode_j > sensorThreshold) ? turbKinEn_j : 0.0;
+    tke_i = lesMode_i * turbKinEn_i;
+    tke_j = lesMode_j * turbKinEn_j;
   } else {
     su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_i : Eddy_Viscosity_i / PrimVar_i[nDim+2];
     su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_j : Eddy_Viscosity_j / PrimVar_j[nDim+2];
     su2double lengthscale_i = config->GetConst_DES() * maxDelta_i;
     su2double lengthscale_j = config->GetConst_DES() * maxDelta_j;
-    tke_i = (lesMode_i > sensorThreshold) ? pow(nuT_i/lengthscale_i, 2) : 0.0;
-    tke_j = (lesMode_j > sensorThreshold) ? pow(nuT_j/lengthscale_j, 2) : 0.0;
+    tke_i = lesMode_i * pow(nuT_i/lengthscale_i, 2);
+    tke_j = lesMode_j * pow(nuT_j/lengthscale_j, 2);
   }
   
-  /*--- Scale the stochastic source term by the fraction of turbulent kinetic energy that is
-        modeled rather than resolved (see CFlowOutput) only if explicitly requested via
-        SBS_DAMP_SOURCE; by default the modeled fraction is 1, i.e. no damping. ---*/
+  /*--- Scaled by the modeled fraction with SBS_DAMP_SOURCE. ---*/
   const su2double modeledFraction = config->GetSBSParam().dampStochTerm ?
                                      0.5 * (modeledFraction_i + modeledFraction_j) : 1.0;
   su2double intensityCoeff = config->GetSBSParam().SBS_Cmag * modeledFraction;

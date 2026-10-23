@@ -83,13 +83,7 @@ void CNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, C
 
   CommonPreprocessing(geometry, solver_container, config, iMesh, iRKStep, RunTime_EqSystem, Output);
 
-  /*--- Rebuild the mean (deviatoric) strain-rate tensor from the gradient of the time-averaged
-        velocity, once per physical time step, since the mean velocity (persisted/restored via
-        WRT_RESTART_AVERAGES, see CFlowOutput::LoadTimeAveragedData) is only updated once per
-        physical time step (hybrid RANS/LES stress filtering). The mean velocity itself is
-        exchanged first so the gradient stencil has valid halo values; the gradient computation
-        communicates its own result (including at halo points) internally, so the strain tensor
-        built from it below needs no separate communication. ---*/
+  /*--- Mean strain rate from the mean velocity gradient, once per time step (FILTER_STRESSES). ---*/
 
   if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses && InnerIter == 0) {
     InitiateComms(geometry, config, MPI_QUANTITIES::MEAN_VELOCITY);

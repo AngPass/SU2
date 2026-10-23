@@ -513,10 +513,7 @@ CNumerics::ResidualType<> CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsign
       numerics->SetAvgEddyViscosity(turbNodes->GetMeanEddyViscosity(iPoint), turbNodes->GetMeanEddyViscosity(jPoint));
     }
 
-    /*--- Fraction of turbulent kinetic energy that is modeled (as opposed to resolved), used to
-          scale the stochastic momentum source term (Stochastic Backscatter Model, SST-based
-          hybrid models only). Only set (and available, see CTurbSSTVariable) when actually used,
-          i.e. when DAMP_TIME_FILTERING or SBS_DAMP_SOURCE is active. ---*/
+    /*--- Modeled fraction (SST, DAMP_TIME_FILTERING or SBS_DAMP_SOURCE). ---*/
 
     if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) &&
         (config->GetSBSParam().dampTimeFiltering || config->GetSBSParam().dampStochTerm)) {
@@ -524,9 +521,7 @@ CNumerics::ResidualType<> CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsign
     }
   }
 
-  /*--- Mean strain-rate tensor (built from the time-averaged velocity gradient), used to high-pass
-        filter the modeled stresses where the LES sensor is active. Available whenever a hybrid
-        RANS/LES method is active, independent of the Stochastic Backscatter Model. ---*/
+  /*--- Mean strain rate, for FILTER_STRESSES. ---*/
 
   if (hybridActive && config->GetSBSParam().filterStresses) {
     for (unsigned short iVar = 0; iVar < 6; iVar++)

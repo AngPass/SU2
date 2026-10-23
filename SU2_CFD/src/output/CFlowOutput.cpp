@@ -2647,10 +2647,7 @@ void CFlowOutput::RestoreAveragedFields(CConfig *config, CGeometry *geometry, CS
   unsigned long nSamples = 0;
   vector<string> fileFieldNames;
 
-  /*--- "Frozen" mode: WRT_RESTART_AVERAGES=NO means nothing accumulates new samples into these
-        fields afterwards (the live feed in LoadTimeAveragedData is gated on WRT_RESTART_AVERAGES), so
-        the mean velocity consumed by FILTER_STRESSES has to be seeded directly into the flow solver's
-        node storage here, once, since this is the only place it will ever be set. ---*/
+  /*--- Frozen mode (WRT_RESTART_AVERAGES=NO): seed the solver's mean velocity here, once. ---*/
   /*--- The mean velocity node storage only exists with FILTER_STRESSES (see CNSVariable/CIncNSVariable). ---*/
   const bool filterStresses = config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses;
   CVariable* const Node_Flow = (!config->GetWrt_Restart_Averages() && filterStresses && solver_container != nullptr) ?
@@ -4332,14 +4329,7 @@ void CFlowOutput::SetTimeAveragedFields(const CConfig *config) {
     }
 
     if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses) {
-      /*--- Mean (deviatoric) strain-rate tensor, built by the solver from the gradient of the
-            time-averaged velocity (see CNSSolver/CIncNSSolver::Preprocessing) and used to high-pass
-            filter the modeled stresses (see CAvgGrad_Base::SetStressTensor): the low-frequency part
-            of the eddy-viscosity closure is evaluated with these mean strain components and the
-            current (instantaneous) eddy viscosity, then subtracted from the instantaneous stress.
-            Exposed here purely as a read-only diagnostic (not averaged by COutput itself, and not
-            part of the WRT_RESTART_AVERAGES companion file: MEAN_VELOCITY-X/Y/Z is persisted
-            instead, see LoadTimeAveragedData below). ---*/
+      /*--- Mean strain rate used by FILTER_STRESSES, diagnostic only. ---*/
       AddVolumeOutput("MEAN_STRAIN_XX", "MeanStrainRate_XX", "TIME_AVERAGE", "Mean strain-rate tensor xx-component");
       AddVolumeOutput("MEAN_STRAIN_YY", "MeanStrainRate_YY", "TIME_AVERAGE", "Mean strain-rate tensor yy-component");
       AddVolumeOutput("MEAN_STRAIN_XY", "MeanStrainRate_XY", "TIME_AVERAGE", "Mean strain-rate tensor xy-component");
@@ -4382,12 +4372,7 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
 
   if (config->GetWrt_Restart_Averages() &&
       config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses) {
-    /*--- Feed the running-average velocity (persisted/restored via WRT_RESTART_AVERAGES) back into
-          the flow solver's node storage: CNSSolver/CIncNSSolver::Preprocessing takes its gradient,
-          once per physical time step, to rebuild the mean strain-rate tensor used to high-pass
-          filter the modeled stresses (FILTER_STRESSES). Gated on WRT_RESTART_AVERAGES itself (not just
-          RESTART_AVERAGE) so that with WRT_RESTART_AVERAGES=NO the mean velocity seeded once in
-          RestoreAveragedFields stays frozen instead of being overwritten here every iteration. ---*/
+    /*--- Mean velocity back to the solver (FILTER_STRESSES), not in frozen mode. ---*/
     Node_Flow->SetMeanVelocity(iPoint, 0, GetVolumeOutputValue("MEAN_VELOCITY-X", iPoint));
     Node_Flow->SetMeanVelocity(iPoint, 1, GetVolumeOutputValue("MEAN_VELOCITY-Y", iPoint));
     if (nDim == 3)
@@ -4449,11 +4434,7 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
     }
 
     if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses) {
-      /*--- MEAN_STRAIN_* is a read-only diagnostic here: the solver (CNSSolver/CIncNSSolver::
-            Preprocessing) builds it once per physical time step from the gradient of the persisted
-            MEAN_VELOCITY-X/Y/Z field (see the SetMeanVelocity calls below), not by time-averaging the
-            instantaneous strain, so it is displayed as-is rather than accumulated with
-            SetAvgVolumeOutputValue. ---*/
+      /*--- MEAN_STRAIN_* is built by the solver, not averaged here. ---*/
       SetVolumeOutputValue("MEAN_STRAIN_XX", iPoint, Node_Flow->GetMeanStrainRate(iPoint, 0));
       SetVolumeOutputValue("MEAN_STRAIN_YY", iPoint, Node_Flow->GetMeanStrainRate(iPoint, 1));
       SetVolumeOutputValue("MEAN_STRAIN_XY", iPoint, Node_Flow->GetMeanStrainRate(iPoint, 3));
@@ -4473,25 +4454,16 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
         if (config->GetSBSParam().useMeanTurb) {
           Node_Turb->SetMeanTurbKinEnergy(iPoint, GetVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint));
         }
-        /*--- Fraction of turbulent kinetic energy that is modeled (as opposed to resolved by the
-              mean flow), used to scale the stochastic source terms. Only computed (and allocated,
-              see CTurbSSTVariable) when actually used, i.e. when DAMP_TIME_FILTERING or
-              SBS_DAMP_SOURCE is active. ---*/
+        /*--- Modeled fraction of the TKE (DAMP_TIME_FILTERING or SBS_DAMP_SOURCE). ---*/
         if (config->GetSBSParam().dampTimeFiltering || config->GetSBSParam().dampStochTerm) {
           su2double modeledFraction;
           if (config->GetSBSParam().sbsRansConstraint) {
-            /*--- modeled_fraction = k_mean / k_RANS, clipped to 1: the time-averaged SST k (as in the
-                  branch below) against the reference RANS solution's k (SBS_RANS_CONSTRAINT), taken
-                  as a measure of the total kinetic energy and read once at startup into RANS_TKE (see
-                  CTurbSSTSolver). ---*/
+            /*--- k_mean / k_RANS, clipped to 1. ---*/
             const su2double kMean = GetVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint);
             const su2double kRANS = Node_Turb->GetRANS_TKE(iPoint);
             modeledFraction = min(1.0, kMean / max(kRANS, EPS));
           } else {
-            /*--- modeled_fraction = k_mean / (k_mean + 0.5*(u'u'+v'v'+w'w')), with the resolved
-                  velocity variances computed above (UUPRIME, VVPRIME, WWPRIME). The Stochastic
-                  Backscatter Model is only available for 3D flows (checked in CConfig.cpp), so
-                  WWPRIME is always available here. ---*/
+            /*--- k_mean / (k_mean + resolved TKE). ---*/
             const su2double kMean = GetVolumeOutputValue("MEAN_TURB_KIN_ENERGY", iPoint);
             const su2double resolvedTKE = 0.5 * (GetVolumeOutputValue("UUPRIME", iPoint) + GetVolumeOutputValue("VVPRIME", iPoint) +
                                                  GetVolumeOutputValue("WWPRIME", iPoint));
@@ -4514,15 +4486,15 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
     if (config->GetSBSParam().StochasticBackscatter) {
       const su2double lesSensor = Node_Flow->GetLES_Mode(iPoint);
       const su2double mag = config->GetSBSParam().SBS_Cmag;
-      const su2double threshold = config->GetSBSParam().stochFdThreshold;
+      /*--- Weighted by the LES sensor. ---*/
       su2double tke_estim = 0.0;
       if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
         su2double tke = (config->GetSBSParam().useMeanTurb) ? Node_Turb->GetMeanTurbKinEnergy(iPoint) : Node_Turb->GetSolution(iPoint, 0);
-        tke_estim = (lesSensor > threshold) ? tke: 0.0;
+        tke_estim = lesSensor * tke;
       } else {
         const su2double lengthscale = config->GetConst_DES() * Node_Turb->GetDES_FilterWidth(iPoint);
         const su2double nutScale = (config->GetSBSParam().useMeanTurb) ? Node_Turb->GetMeanEddyViscosity(iPoint) : nu_t;
-        tke_estim = (lesSensor > threshold) ? pow(nutScale/lengthscale, 2) : 0.0;
+        tke_estim = lesSensor * pow(nutScale/lengthscale, 2);
       }
       su2double csi_x, csi_y, csi_z;
       if (config->GetSBSParam().stochSourceType == LANGEVIN) {

@@ -1140,7 +1140,6 @@ private:
     bool restartStochField;                 /*!< \brief Option for restarting stochastic field from solution file. */
     bool besselScaleFactor;                 /*!< \brief Option for scaling the spatially-correlated random field using Bessel integral. */
     su2double StochBackscatterBoxBounds[6]; /*!< \brief Bounds of the box where the Stochastic Backscatter Model is active. */
-    su2double stochFdThreshold;             /*!< \brief Shielding function lower threshold for application of Stochastic Backscatter Model. */
     bool useMeanTurb;                       /*!< \brief Option for using a mean (time-averaged) turbulence quantity in the definition of the random source term. */
     unsigned short stochSourceType;         /*!< \brief Kind of stochastic source term included in the balance equations. */
     bool filterStresses;                    /*!< \brief Option for high-pass filtering the modeled (subgrid) stress tensor where the LES sensor is active. Usable with any Hybrid RANS/LES method, independent of StochasticBackscatter. */
@@ -5722,8 +5721,7 @@ public:
   bool GetWrt_Restart_Overwrite(void) const { return Wrt_Restart_Overwrite; }
 
   /*!
-   * \brief Flag for whether TIME_AVERAGE/BACKSCATTER volume output fields are persisted to a
-   *        companion file and restored on restart, so the running averages continue coherently.
+   * \brief Flag for persisting the averaged volume output fields across restarts.
    * \return Flag for restoring/persisting averaged fields across restarts.
    */
   bool GetWrt_Restart_Averages(void) const { return Wrt_Restart_Averages; }

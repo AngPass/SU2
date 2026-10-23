@@ -155,24 +155,21 @@ public:
    * \param[in] iPoint - Point index.
    * \param[in] iNode - Neighbor index.
    * \param[in] iDim - Dimension index.
-   * \param[in] val_betavec - Non-orthogonal correction coefficient for the gradient-corrected
-   *                           Laplacian smoothing of the stochastic source term.
+   * \param[in] val_betavec - Non-orthogonal correction coefficient of the smoothing operator.
    */
   inline virtual void SetSmoothingBetaVec(unsigned long iPoint, unsigned short iNode, unsigned short iDim, su2double val_betavec) {}
 
   /*!
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
-   * \return Diagonal coefficient (1 + sum of the orthogonal neighbor coefficients) of the system
-   *         matrix for the Laplacian smoothing of the stochastic source term.
+   * \return Diagonal coefficient of the smoothing matrix.
    */
   inline virtual su2double GetSmoothingDiag(unsigned long iPoint) const { return 1.0; }
 
   /*!
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
-   * \param[in] val_diag - Diagonal coefficient of the system matrix for the Laplacian smoothing
-   *                        of the stochastic source term.
+   * \param[in] val_diag - Diagonal coefficient of the smoothing matrix.
    */
   inline virtual void SetSmoothingDiag(unsigned long iPoint, su2double val_diag) {}
 

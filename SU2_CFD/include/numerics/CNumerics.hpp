@@ -970,8 +970,7 @@ public:
   }
 
   /*!
-   * \brief Set the fraction of turbulent kinetic energy that is modeled, used to scale the
-   *        Stochastic Backscatter Model source terms (SST turbulence model).
+   * \brief Set the modeled fraction of the TKE (Stochastic Backscatter Model, SST).
    * \param[in] val_modeledFraction_i - Value of the modeled fraction at point i.
    * \param[in] val_modeledFraction_j - Value of the modeled fraction at point j.
    */

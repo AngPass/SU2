@@ -404,12 +404,7 @@ public:
   inline virtual void SetDES_LengthScale(unsigned long iPoint, su2double val_des_lengthscale) {}
 
   /*!
-   * \brief A virtual member: get the LES filter width (Delta) implied by the Hybrid RANS/LES
-   *        variant selected via HYBRID_RANSLES, as computed by SetDES_LengthScale (e.g. the
-   *        vorticity-based Delta for *_ZDES, the vortex-tilting-based Delta for *_EDDES), so that
-   *        other DES-related routines (stochastic backscatter smoothing, Ornstein-Uhlenbeck
-   *        process, ...) use a filter width consistent with the chosen variant instead of always
-   *        falling back to the raw, isotropic cell length.
+   * \brief A virtual member: get the LES filter width of the selected Hybrid RANS/LES variant.
    * \param[in] iPoint - Point index.
    */
   inline virtual su2double GetDES_FilterWidth(unsigned long iPoint) const { return 0.0; }
@@ -421,9 +416,7 @@ public:
   inline virtual void SetDES_FilterWidth(unsigned long iPoint, su2double val_des_filterwidth) {}
 
   /*!
-   * \brief A virtual member: get the ratio of the RANS lengthscale to the Hybrid RANS/LES lengthscale
-   *        (as computed by SetDES_LengthScale), used by the Stochastic Backscatter Model hybrid
-   *        transition correction (SST-based hybrid models only). Equal to 1 in pure RANS regions.
+   * \brief A virtual member: get the ratio of the RANS to the Hybrid RANS/LES lengthscale.
    * \param[in] iPoint - Point index.
    */
   inline virtual su2double GetF_DES(unsigned long iPoint) const { return 1.0; }
@@ -435,11 +428,7 @@ public:
   inline virtual void SetF_DES(unsigned long iPoint, su2double val_F_DES) {}
 
   /*!
-   * \brief A virtual member: get the fraction of turbulent kinetic energy that is modeled
-   *        (as opposed to resolved), used to scale the stochastic source terms of the Hybrid
-   *        RANS/LES transition correction (SST-based hybrid models only). Defaults to 1 (fully
-   *        modeled), which leaves the stochastic source terms unaffected for turbulence models
-   *        other than SST.
+   * \brief A virtual member: get the modeled fraction of the TKE (1 by default).
    * \param[in] iPoint - Point index.
    */
   inline virtual su2double GetModeledFraction(unsigned long iPoint) const { return 1.0; }
@@ -475,8 +464,7 @@ public:
   inline virtual void SetMeanEddyViscosity(unsigned long iPoint, su2double val_mean_eddy_visc) {}
 
   /*!
-   * \brief A virtual member. Turbulent kinetic energy read from an external reference RANS
-   *        restart file (SBS_RANS_CONSTRAINT), used as a measure of the total kinetic energy.
+   * \brief A virtual member: get the reference RANS TKE (SBS_RANS_CONSTRAINT).
    * \param[in] iPoint - Point index.
    */
   inline virtual su2double GetRANS_TKE(unsigned long iPoint) const { return 0.0; }
@@ -498,9 +486,7 @@ public:
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
    * \param[in] iVar - Component index of the symmetric tensor (0=xx, 1=yy, 2=zz, 3=xy, 4=xz, 5=yz).
-   * \param[in] val_mean_strain - Mean (deviatoric) strain-rate tensor component, i.e. the tensor
-   *            built from the time-averaged velocity gradient (2*dUi/dxi - 2/3*div for the normal
-   *            components, dUi/dxj+dUj/dxi for the shear components).
+   * \param[in] val_mean_strain - Mean (deviatoric) strain-rate tensor component.
    */
   inline virtual void SetMeanStrainRate(unsigned long iPoint, unsigned short iVar, su2double val_mean_strain) {}
 
@@ -543,8 +529,7 @@ public:
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
    * \param[in] iDim - Dimension index.
-   * \param[in] val_grad - Component of the Green-Gauss gradient of the stochastic source term
-   *                        currently being smoothed.
+   * \param[in] val_grad - Gradient component of the source term being smoothed.
    */
   inline virtual void SetLangevinSourceGrad(unsigned long iPoint, unsigned short iDim, su2double val_grad) {}
 
@@ -552,8 +537,7 @@ public:
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
    * \param[in] iDim - Dimension index.
-   * \return Component of the Jacobi-preconditioned BiCGSTAB search direction "p" used while
-   *         Laplacian-smoothing the stochastic source term.
+   * \return Component of the BiCGSTAB direction p.
    */
   inline virtual su2double GetSmoothPhat(unsigned long iPoint, unsigned short iDim) const { return 0.0; }
 
@@ -569,8 +553,7 @@ public:
    * \brief A virtual member.
    * \param[in] iPoint - Point index.
    * \param[in] iDim - Dimension index.
-   * \return Component of the Jacobi-preconditioned BiCGSTAB stabilizer direction "s" used while
-   *         Laplacian-smoothing the stochastic source term.
+   * \return Component of the BiCGSTAB direction s.
    */
   inline virtual su2double GetSmoothShat(unsigned long iPoint, unsigned short iDim) const { return 0.0; }
 

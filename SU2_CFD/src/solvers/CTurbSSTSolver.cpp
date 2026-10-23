@@ -67,8 +67,7 @@ CTurbSSTSolver::CTurbSSTSolver(CGeometry *geometry, CConfig *config, const CSolv
     nVar += 3;
     nVarGrad = nPrimVar = nVar;
 
-    /*--- Only kine and omega (indices 0,1) are MUSCL-reconstructed when MUSCL_TURB=YES; the 3 Langevin
-          components always keep their raw nodal values, see CScalarFlux_SST::NVarReconstructed. ---*/
+    /*--- Only k and omega are MUSCL-reconstructed, not the Langevin variables. ---*/
   }
 
   /*--- Single grid simulation ---*/
@@ -182,10 +181,7 @@ CTurbSSTSolver::CTurbSSTSolver(CGeometry *geometry, CConfig *config, const CSolv
   InitiateComms(geometry, config, MPI_QUANTITIES::SOLUTION_EDDY);
   CompleteComms(geometry, config, MPI_QUANTITIES::SOLUTION_EDDY);
 
-  /*--- Read the turbulent kinetic energy from an external reference RANS restart file
-        (SBS_RANS_CONSTRAINT), stored per-point as a measure of the total kinetic energy. Done
-        once, on the finest mesh level only: the file is expected to match the fine mesh, like any
-        other restart file. ---*/
+  /*--- Reference RANS TKE (SBS_RANS_CONSTRAINT), finest mesh only. ---*/
 
   if (iMesh == MESH_0 && IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().sbsRansConstraint) {
     const string filename = config->GetRead_Binary_Restart() ? "solution_flow_RANS.dat" : "solution_flow_RANS.csv";
@@ -315,15 +311,13 @@ void CTurbSSTSolver::Preprocessing(CGeometry *geometry, CSolver **solver_contain
 
     unsigned long innerIter = config->GetInnerIter();
     if (backscatter && innerIter==0) {
-      /*--- Only read by SetLangevinSourceTerms, once per physical time step (kept here rather than
-            in the constructor so that it follows the grid if it moves). ---*/
+      /*--- Once per time step, to follow a moving grid. ---*/
       if (backscatterInBox) SetBackscatterInBox(config, geometry);
 
       InitiateComms(geometry, config, MPI_QUANTITIES::MEAN_TKE);
       CompleteComms(geometry, config, MPI_QUANTITIES::MEAN_TKE);
 
-      /*--- The modeled fraction is computed (in the output, once per time step) on domain points only,
-            but is also read at halo points by the flow viscous residual. ---*/
+      /*--- The modeled fraction is also read at halo points. ---*/
       if (config->GetSBSParam().dampTimeFiltering || config->GetSBSParam().dampStochTerm) {
         InitiateComms(geometry, config, MPI_QUANTITIES::MODELED_FRACTION);
         CompleteComms(geometry, config, MPI_QUANTITIES::MODELED_FRACTION);
@@ -522,18 +516,14 @@ void CTurbSSTSolver::Source_Residual(CGeometry *geometry, CSolver **solver_conta
     if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) {
       numerics->SetFDDES(nodes->GetF_DES(iPoint), 0.0);
 
-      /*--- Correct the production term for the high-pass filtering of the modeled stress tensor
-            in the momentum equation (FILTER_STRESSES), so that the k-equation stays consistent
-            with the (filtered) stress actually acting on the resolved flow. Independent of the
-            Stochastic Backscatter Model, see CAvgGrad_Base::SetStressTensor. ---*/
+      /*--- FILTER_STRESSES correction of the k production. ---*/
 
       if (config->GetSBSParam().filterStresses) {
         numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), 0.0);
         for (unsigned short iVar = 0; iVar < 6; iVar++) {
           numerics->SetMeanStrainRate(iVar, flowNodes->GetMeanStrainRate(iPoint, iVar), 0.0);
         }
-        /*--- The modeled fraction is only computed (and allocated, see CTurbSSTVariable) when the
-              Stochastic Backscatter Model is active; otherwise the numerics keep their default of 1. ---*/
+        /*--- Modeled fraction, only with the Stochastic Backscatter Model (1 otherwise). ---*/
         if (config->GetSBSParam().dampTimeFiltering && config->GetSBSParam().StochasticBackscatter) {
           numerics->SetModeledFraction(nodes->GetModeledFraction(iPoint), 0.0);
         }
@@ -542,10 +532,7 @@ void CTurbSSTSolver::Source_Residual(CGeometry *geometry, CSolver **solver_conta
       /*--- Compute source terms in Langevin equations (Stochastic Basckscatter Model) ---*/
 
       if (config->GetSBSParam().StochasticBackscatter) {
-        /*--- Fraction of turbulent kinetic energy that is modeled (as opposed to resolved), used
-              to scale the stochastic source term added to the k and omega production terms
-              (SST-based hybrid models only, AddStochSource). Only set (and available, see
-              CTurbSSTVariable) when actually used, i.e. when SBS_DAMP_SOURCE is active. ---*/
+        /*--- Modeled fraction for the stochastic source (SBS_DAMP_SOURCE). ---*/
         if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) && config->GetSBSParam().dampStochTerm) {
           numerics->SetModeledFraction(nodes->GetModeledFraction(iPoint), 0.0);
         }
@@ -623,10 +610,7 @@ void CTurbSSTSolver::BC_HeatFlux_Wall(CGeometry *geometry, CSolver **solver_cont
     /*--- distance to closest neighbor ---*/
     su2double wall_dist = geometry->vertex[val_marker][iVertex]->GetNearestNeighborDistance();
 
-    /*--- Zero-initialized: only solution[0]/[1] (k, omega) are set below. When the Stochastic
-          Backscatter Model (Langevin) is active, nVar also covers 3 extra stochastic components
-          (solution[2..4]); leaving them default-initialized pins them to zero at the wall instead
-          of reading indeterminate stack memory. ---*/
+    /*--- Zero-initialized, so that the Langevin variables (if any) are zero at the wall. ---*/
     su2double solution[MAXNVAR] = {0.0};
 
     if (rough_wall) {
@@ -703,9 +687,7 @@ void CTurbSSTSolver::BC_HeatFlux_Wall(CGeometry *geometry, CSolver **solver_cont
     LinSysRes.SetBlock_Zero(iPoint);
 
     if (implicit) {
-      /*--- Change rows of the Jacobian (includes 1 in the diagonal). Covers all nVar (not just
-            k, omega) so the Dirichlet solution[2..nVar-1]=0 imposed above for the Stochastic
-            Backscatter Model's Langevin components (when active) is enforced consistently. ---*/
+      /*--- Change rows of the Jacobian (includes 1 in the diagonal), Langevin variables included. ---*/
       for (auto iVar = 0u; iVar < nVar; iVar++)
         Jacobian.DeleteValsRowi(iPoint, iVar);
     }
@@ -1055,16 +1037,18 @@ void CTurbSSTSolver::SetBackscatterInBox(CConfig *config, CGeometry *geometry) {
 void CTurbSSTSolver::SetLangevinSourceTerms(CConfig *config, CGeometry* geometry) {
   SU2_ZONE_SCOPED
 
-  const su2double threshold = config->GetSBSParam().stochFdThreshold;
   const su2double dummySource = 1e3;
   unsigned long timeIter = config->GetTimeIter();
+
+  /*--- Unit-variance noise where the LES sensor (which weights the forcing) is not negligible. ---*/
+  const su2double minLesSensor = 1e-5;
 
   SU2_OMP_FOR_STAT(omp_chunk_size)
   for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++){
     unsigned long iPointGlobal = geometry->nodes->GetGlobalIndex(iPoint);
     for (unsigned short iDim = 0; iDim < nDim; iDim++){
       su2double lesSensor = nodes->GetLES_Mode(iPoint) * nodes->GetSBSInBox(iPoint);
-      if (lesSensor>threshold) {
+      if (lesSensor > minLesSensor) {
         su2double rnd = RandomToolbox::GetNormal(iPointGlobal, iDim, timeIter);
         nodes->SetLangevinSourceTermsOld(iPoint, iDim, rnd);
         nodes->SetLangevinSourceTerms(iPoint, iDim, rnd);
@@ -1091,9 +1075,7 @@ void CTurbSSTSolver::SetLangevinSourceTerms(CConfig *config, CGeometry* geometry
     END_SU2_OMP_FOR
   }
 
-  /*--- The two copies of a periodic point have different global indices, hence would draw different
-        random numbers: copy the values (and the active/inactive flag, encoded in the "old" value)
-        from the master to the passive periodic face. ---*/
+  /*--- Copy the noise (and the active flag) to the passive periodic face. ---*/
 
   if (config->GetnMarker_Periodic() > 0) {
     SU2_OMP_FOR_STAT(omp_chunk_size)
@@ -1144,8 +1126,7 @@ void CTurbSSTSolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeome
   }
   END_SU2_OMP_FOR
 
-  /*--- Keep both copies of a periodic point identical (the time scale depends on local quantities,
-        e.g. the filter width, which can differ slightly on the two sides). ---*/
+  /*--- Keep both copies of a periodic point identical. ---*/
 
   if (config->GetnMarker_Periodic() > 0) {
     SU2_OMP_FOR_STAT(omp_chunk_size)
@@ -1173,12 +1154,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
   static std::array<su2double, 3> globalResNorm;
   static std::array<unsigned long, 3> global_nPointLES;
   static std::array<su2double, 6> globalChecks;
-  /*--- Scalars (one per component) driving BiCGSTAB control flow (loop conditions/break). These
-        must be "static" (as in the original Jacobi implementation) rather than plain locals: the
-        whole point-loop and Allreduce machinery below runs master-thread-only per MPI rank (BEGIN/
-        END_SU2_OMP_SAFE_GLOBAL_ACCESS), but the loop conditions and breakdown checks are plain code
-        executed redundantly by every OpenMP thread sharing this parallel region, so they must all
-        observe the exact same, already-synchronized value that only the master thread computed. ---*/
+  /*--- Static, so that all OpenMP threads see the same control-flow scalars. ---*/
   static std::array<su2double, 3> globalRho, globalRhoPrev, globalAlpha, globalOmega, globalR0V, globalTS, globalTT;
 
   const su2double cDelta = config->GetSBSParam().SBS_Cdelta;
@@ -1186,24 +1162,12 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
   const su2double tol = -5.0;
   const su2double sourceLim = 5.0;
   const su2double eps_breakdown = 1e-50;
-  /*--- The non-orthogonal correction only needs to be refreshed periodically (its role is to
-        accelerate/correct convergence to the true gradient-based solution, not to change the fixed
-        point), so its extra point loop and MPI round-trip are skipped on iterations in between. It
-        also defines the RHS of the linear system solved below, which must stay fixed while BiCGSTAB
-        builds its Krylov subspace, so a refresh restarts (warm-started from the current solution)
-        the Krylov iteration. ---*/
+  /*--- Refresh interval of the non-orthogonal correction (RHS), each refresh restarts BiCGSTAB. ---*/
   const unsigned short gradRefreshInterval = 5;
   unsigned long timeIter = config->GetTimeIter();
   unsigned long restartIter = config->GetRestart_Iter();
 
-  /*--- Assemble system matrix: the orthogonal (implicit) coefficient a_ij and the diagonal
-        diag_i = 1 + sum(a_ij), both purely geometric (independent of iDim), plus the
-        non-orthogonal correction vector betaVec used to reconstruct the full gradient-based
-        diffusive flux across each face (deferred correction, folded into the RHS, see below).
-        All edge-based sums (diagonal, matrix-vector products, gradient, non-orthogonal RHS) are
-        partial at periodic points, since each copy of the point only sees the edges on its own
-        side: they are completed with the contribution of the matching point (PERIODIC_SBS_SUM)
-        before being used, so that both copies hold the same (complete) values. */
+  /*--- Assemble the system matrix (geometric), sums completed at periodic points. ---*/
 
   if (timeIter == restartIter) {
     BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
@@ -1245,10 +1209,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
         nodes->SetSmoothingMatrixCoeff(iPoint, iNode, a_ij);
         sumA += a_ij;
 
-        /*--- Directional decomposition of the operator, 0.5*sum_j(a_ij * e_ij e_ij^T) with e_ij the
-              unit edge vector: on a Cartesian grid its eigenvalues are exactly the coefficients
-              beta_x, beta_y, beta_z of the equivalent lattice operator assumed by the Bessel
-              scaling (diag = 1 + 2*(beta_x+beta_y+beta_z)), consistently with a_ij by construction. ---*/
+        /*--- Directional coefficients of the operator, for the Bessel scaling. ---*/
 
         const su2double halfA = 0.5 * a_ij / dist_ij_2;
         betaTensor[0] += halfA * dx_ij_vec[0] * dx_ij_vec[0];
@@ -1275,9 +1236,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
 
     SBSPeriodicComm(geometry, config, PERIODIC_SBS_SUM);
 
-    /*--- Diagonal coefficient and, if requested, the Bessel integral used to rescale the smoothed
-          field to unit variance. The latter is purely geometric too, so it is computed once here
-          (not once per component and per time step). ---*/
+    /*--- Diagonal coefficient and Bessel integral (geometric, computed once). ---*/
 
     SU2_OMP_FOR_DYN(omp_chunk_size)
     for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
@@ -1326,12 +1285,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
     END_SU2_OMP_FOR
   }
 
-  /*--- Points actually solved for (active, see SetLangevinSourceTerms), and points whose Green-Gauss
-        gradient or zeroed phat/shat can be read by an active point (on this or another rank, or across
-        a periodic boundary), per component, so that the point loops of the solver only visit them
-        instead of the whole partition. The rank-private BiCGSTAB work vectors are sized to the active
-        points. All of these are filled and used by the master thread only, like the point loops
-        themselves (the other threads keep them empty). ---*/
+  /*--- Active points, and points read by them (gradient, phat/shat). Master thread only. ---*/
 
   using WorkVecs = std::array<std::vector<su2double>, 3>;
   std::array<std::vector<unsigned long>, 3> activePoints, gradPoints;
@@ -1357,8 +1311,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
         isActive[iDim][iPoint] = true;
         activePoints[iDim].push_back(iPoint);
       }
-      /*--- Halo neighbors are conservatively taken as possibly active (their flag is not exchanged),
-            and periodic points always need their partial gradient for the periodic sum. ---*/
+      /*--- Halo neighbors may be active, periodic points need their partial gradient. ---*/
       for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
         bool needed = isActive[iDim][iPoint] || isPeriodic[iPoint];
         for (unsigned short iNode = 0; !needed && iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
@@ -1374,15 +1327,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
   }
   END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
-  /*--- Matrix-free operator A(x)_i = diag_i*x_i - sum_j(a_ij*x_j), the only part of the discrete
-        system that is a genuine matrix (the tangential/non-orthogonal term below is a fixed RHS
-        contribution between gradient refreshes, not part of A), applied to the components in comps
-        at once. GetInput(j, iDim) reads whichever field is currently being multiplied by A (the
-        solution itself to form the initial residual, or the preconditioned BiCGSTAB directions
-        phat/shat); the result is written into the local, rank-private (never used as a neighbor, so
-        never halo-exchanged) work vectors. Slot iDim of the periodic buffer holds the partial sum of
-        component iDim, so a single periodic exchange serves all the components. Runs master-thread-
-        only per rank, exactly like the original Jacobi sweep. ---*/
+  /*--- Matrix-free A(x)_i = diag_i*x_i - sum_j(a_ij*x_j), for all the components in comps. ---*/
 
   auto ComputeMatVec = [&](const std::vector<unsigned short>& comps, auto&& GetInput, WorkVecs& out) {
     BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
@@ -1411,12 +1356,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
     END_SU2_OMP_SAFE_GLOBAL_ACCESS
   };
 
-  /*--- Dot products between rank-private work vectors (a . b into out, for each job), restricted to
-        the points actually being solved for (points outside the active LES region are frozen at 0 and
-        never enter the linear system, mirroring the exclusion in the original Jacobi sweep), for the
-        components in comps, all reduced over the MPI ranks in a single call. Writes into the static
-        scalars "out" so every OpenMP thread sharing this parallel region observes the same, already-
-        synchronized values once outside the master-only block. ---*/
+  /*--- Dot products over the active points, a single Allreduce for all components and jobs. ---*/
 
   struct DotJob { const WorkVecs* a; const WorkVecs* b; std::array<su2double, 3>* out; };
 
@@ -1440,10 +1380,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
     END_SU2_OMP_SAFE_GLOBAL_ACCESS
   };
 
-  /*--- Refresh the RHS of component iDim at the start (or restart) of one of its blocks: recompute the
-        Green-Gauss gradient used for the non-orthogonal RHS correction (one component at a time, since
-        the gradient storage holds a single component). The halo values of the solution must be up to
-        date. ---*/
+  /*--- RHS of component iDim, with the gradient of the non-orthogonal correction. ---*/
 
   auto RefreshRhs = [&](unsigned short iDim) {
     BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
@@ -1465,9 +1402,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
     }
     END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
-    /*--- At periodic points the edge-based surface integral is completed with the edges of the
-          matching point; the (equal and opposite) periodic boundary faces of the two copies,
-          omitted on both sides, cancel out exactly. ---*/
+    /*--- Complete the gradient at periodic points. ---*/
 
     SBSPeriodicComm(geometry, config, PERIODIC_SBS_SUM);
 
@@ -1483,9 +1418,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
     CompleteComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG_GRAD);
 
     BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS {
-      /*--- Inactive points are frozen at 0 (homogeneous Dirichlet) and must enter the matrix-free
-            operator as zeros: clear any phat/shat left over from a previous time step in which
-            the point was active, at the inactive points that ComputeMatVec can read as neighbors. ---*/
+      /*--- Inactive points enter the operator as zeros. ---*/
       for (const auto iPoint : gradPoints[iDim]) {
         if (isActive[iDim][iPoint]) continue;
         nodes->SetSmoothPhat(iPoint, iDim, 0.0);
@@ -1518,31 +1451,20 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
     END_SU2_OMP_SAFE_GLOBAL_ACCESS
   };
 
-  /*--- Solve, for each spatial dimension, diag_i*x_i - sum_j(a_ij*x_j) = source_i_old + tangential_i
-        with a matrix-free, Jacobi(diagonal)-preconditioned BiCGSTAB, restarting the Krylov subspace
-        (warm-started from the current solution) every time the tangential/gradient RHS term is
-        refreshed, so the matrix and RHS are always fixed for the duration of a Krylov subspace.
-        The components are independent systems, solved in lockstep: each one keeps its own BiCGSTAB
-        scalars, restarts and stopping criteria (so it follows exactly the same iterations as if it
-        were solved on its own), while the halo exchanges (which carry all the components anyway),
-        the periodic exchanges and the global reductions of a step are shared by all the components
-        still iterating. The control flow below is executed redundantly by every OpenMP thread, and
-        only depends on the (static) globally reduced scalars, so all threads take the same path. ---*/
+  /*--- Jacobi-preconditioned BiCGSTAB, components solved in lockstep sharing the communications. ---*/
 
   std::array<unsigned short, 3> totalIter{}, printIter{}, blockIter{};
   std::array<bool, 3> converged{}, needRestart{};
   for (unsigned short iDim = 0; iDim < nDim; iDim++) needRestart[iDim] = true;
 
-  /*--- Convergence history of each component, printed once all of them are done so that the
-        output stays grouped per component (filled by the master thread of the master rank). ---*/
+  /*--- Convergence history, printed per component at the end. ---*/
   std::array<std::vector<std::pair<unsigned short, su2double>>, 3> history;
 
   std::vector<unsigned short> comps;
 
   auto IsDone = [&](unsigned short iDim) { return converged[iDim] || totalIter[iDim] >= maxIter; };
 
-  /*--- Components whose BiCGSTAB breaks down (denominator ~0) leave the current step and restart
-        their block, exactly as when solved on their own. ---*/
+  /*--- Components that break down restart their block. ---*/
   auto DropBrokenDown = [&](const std::array<su2double, 3>& denom) {
     std::vector<unsigned short> kept;
     for (const auto iDim : comps) {
@@ -1554,9 +1476,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
 
   while (true) {
 
-    /*--- Start (or restart) of a block for the components that need it: refresh the halo values of
-          the solution (all components at once), the RHS, and rebuild the initial residual
-          r0 = b - A*x (warm-started from the current solution estimate). ---*/
+    /*--- (Re)start the block of the components that need it: RHS and r0 = b - A*x. ---*/
 
     comps.clear();
     for (unsigned short iDim = 0; iDim < nDim; iDim++)
@@ -1576,9 +1496,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
         for (unsigned long k = 0; k < activePoints[iDim].size(); k++) {
           rVec[iDim][k] = bRhs[iDim][k] - rVec[iDim][k];
           rhat0Vec[iDim][k] = rVec[iDim][k];
-          /*--- p_0 = v_0 = 0 (standard BiCGSTAB init): with rho_prev=alpha=omega=1 reset below, the
-                first inner iteration's p update (p = r + beta*(p-omega*v)) then correctly reduces to
-                p_1 = r_0 regardless of beta, since the (p_0 - omega*v_0) term vanishes. ---*/
+          /*--- p_0 = v_0 = 0. ---*/
           pVec[iDim][k] = 0.0;
           vVec[iDim][k] = 0.0;
         }
@@ -1595,10 +1513,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
       END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
       for (const auto iDim : comps) {
-        /*--- Account for the cost of this refresh/restart against the iteration budget: this
-              guarantees the block/restart loop always makes progress towards maxIter, even in the
-              degenerate case where every restarted Krylov subspace breaks down immediately (e.g. an
-              already-converged residual, for which rho would be ~0 by construction). ---*/
+        /*--- A restart counts as an iteration, so that the loop always progresses. ---*/
         totalIter[iDim]++;
         if (log10(globalResNorm[iDim]) < tol) converged[iDim] = true;
         blockIter[iDim] = 0;
@@ -1606,8 +1521,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
       }
     }
 
-    /*--- One BiCGSTAB step for all the components still iterating. After the restarts above, a
-          component that is not done never needs a restart here, so none left means all done. ---*/
+    /*--- One BiCGSTAB step for the components still iterating. ---*/
 
     comps.clear();
     for (unsigned short iDim = 0; iDim < nDim; iDim++)
@@ -1687,10 +1601,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
     for (const auto iDim : comps) {
       blockIter[iDim]++; totalIter[iDim]++; printIter[iDim]++;
 
-      /*--- Record convergence at the first iteration, then every 10, and finally once more at
-            whichever iteration ends the solve (converged or maxIter reached). printIter counts only
-            real BiCGSTAB update steps (unlike totalIter, which also advances once per block restart
-            to bound the iterations), so the first-iteration record is the first actual step. ---*/
+      /*--- Record the first, every 10th and the last iteration. ---*/
       const bool isConverged = (log10(globalResNorm[iDim]) < tol || totalIter[iDim] == maxIter);
       const bool printConvergence = (printIter[iDim] == 1) || (printIter[iDim] % 10 == 0) || isConverged;
 
@@ -1780,9 +1691,7 @@ void CTurbSSTSolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geome
         var_check_old = globalChecks[1] * invDenom - pow(mean_check_old, 2);
 
         if (!config->GetSBSParam().besselScaleFactor) {
-          /*--- Standardize with the global statistics of the smoothed field (zero mean, unit variance
-                over the active points), with the same clipping as the Bessel scaling. Inactive points
-                stay at zero. ---*/
+          /*--- Standardize with the global statistics of the active points. ---*/
           const su2double invStd = 1.0/sqrt(max(var_check_old, 1e-10));
           SU2_OMP_FOR_(schedule(static, omp_chunk_size) SU2_NOWAIT)
           for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {

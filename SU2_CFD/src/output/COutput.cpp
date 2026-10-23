@@ -917,13 +917,7 @@ bool COutput::SetResultFiles(CGeometry *geometry, CConfig *config, CSolver** sol
   /*--- Check if the data sorters are allocated, if not, allocate them. --- */
   AllocateDataSorters(config, geometry);
 
-  /*--- Restore TIME_AVERAGE/BACKSCATTER fields from a previous run, if requested (RESTART_AVERAGE),
-        before the first volume data load of the run so the running averages continue coherently.
-        This is independent of WRT_RESTART_AVERAGES: with WRT_RESTART_AVERAGES=NO the restored mean is
-        instead "frozen" (read once here, never updated internally afterwards -- see
-        CFlowOutput::RestoreAveragedFields/LoadTimeAveragedData), which lets FILTER_STRESSES run off an
-        existing companion file without accumulating or rewriting it. This has to happen exactly once,
-        and before LoadDataIntoSorter below computes the first sample of this run for each field. ---*/
+  /*--- Restore the averaged fields (RESTART_AVERAGE) once, before the first data load. ---*/
   if (!averagedFieldsRestoreAttempted) {
     averagedFieldsRestoreAttempted = true;
     if (config->GetRestart_Average()) RestoreAveragedFields(config, geometry, solver_container);
@@ -969,9 +963,7 @@ bool COutput::SetResultFiles(CGeometry *geometry, CConfig *config, CSolver** sol
     isFileWrite = true;
   }
 
-  /*--- Write the running-average restart file (WRT_RESTART_AVERAGES) once per call, after all
-        requested volume output files have been written, rather than once per file, and only on
-        genuine output iterations (skip the DT_STEPPING_2ND N-1 restart-continuity duplicate). ---*/
+  /*--- Write the averages restart file once per call, on genuine output iterations. ---*/
   if (isFileWrite && isPrimaryOutputIter) WriteAveragedFields(config, geometry);
 
   if (rank == MASTER_NODE && isFileWrite) {
@@ -1718,10 +1710,7 @@ void COutput::PreprocessVolumeOutput(CConfig *config){
      }
   }
 
-  /*--- Fields/groups requested via RESTART_AVG_FIELDS (WRT_RESTART_AVERAGES) must be part of the
-        active volume output selection, otherwise their running average is never computed. Force-add
-        any that are missing, so persisting a field for restart does not also require separately
-        adding it to VOLUME_OUTPUT. ---*/
+  /*--- Force-add the RESTART_AVG_FIELDS to the volume output. ---*/
   if (config->GetWrt_Restart_Averages()) {
     for (unsigned short iField = 0; iField < config->GetnRestartAvgFields(); iField++) {
       const string& name = config->GetRestartAvgFields_Field(iField);
@@ -1733,9 +1722,7 @@ void COutput::PreprocessVolumeOutput(CConfig *config){
     }
   }
 
-  /*--- Some time-averaged fields are fed back into the solver (see CFlowOutput::LoadTimeAveragedData):
-        if they are not part of the volume output selection they are never computed and read as zero
-        (e.g. zero mean TKE, hence no stochastic forcing). Force-add the ones that are actually used. ---*/
+  /*--- Force-add the time-averaged fields used by the solver. ---*/
   if (config->GetTime_Domain() && config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) {
     const auto& sbs = config->GetSBSParam();
     const bool sst = (config->GetKind_Turb_Model() == TURB_MODEL::SST);
@@ -1753,8 +1740,7 @@ void COutput::PreprocessVolumeOutput(CConfig *config){
       }
     }
 
-    /*--- Also in the "frozen" mode (RESTART_AVERAGE=YES, WRT_RESTART_AVERAGES=NO), so that the restored
-          mean velocity is part of the volume output like in the accumulated mode. ---*/
+    /*--- Also in frozen mode (RESTART_AVERAGE=YES, WRT_RESTART_AVERAGES=NO). ---*/
     if (sbs.filterStresses && (config->GetWrt_Restart_Averages() || config->GetRestart_Average())) {
       requiredAvgFields.emplace_back("MEAN_VELOCITY-X");
       requiredAvgFields.emplace_back("MEAN_VELOCITY-Y");
@@ -1997,10 +1983,7 @@ su2double COutput::GetVolumeOutputValue(const string& name, unsigned long iPoint
 
 void COutput::SetAvgVolumeOutputValue(const string& name, unsigned long iPoint, su2double value){
 
-  /*--- CUMULATIVE: classic running average, every sample weighted equally (1/N). EXPONENTIAL: every
-        new sample is blended in with a fixed weight (TIME_AVG_EXP_CONST), except for the very first
-        sample overall (no prior iterations and nothing restored from WRT_RESTART_AVERAGES), which is
-        used to initialize the average directly instead of blending it with an unset old_value. ---*/
+  /*--- CUMULATIVE: weight 1/N. EXPONENTIAL: fixed weight, the very first sample initializes. ---*/
   su2double scaling;
   if (timeAvgMethod == TIME_AVG_METHOD::EXPONENTIAL && (curAbsTimeIter + priorAvgSamples) > 0) {
     scaling = timeAvgExpConst;
