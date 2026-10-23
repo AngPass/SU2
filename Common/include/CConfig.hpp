@@ -1149,6 +1149,7 @@ private:
     bool sbsRansConstraint;                 /*!< \brief Option for reading the turbulent kinetic energy from an external reference RANS restart file (solution_flow_RANS), stored as a measure of the total kinetic energy. Only available for SST-based Hybrid RANS/LES models. */
   } SBSParam;
   bool enforceLES;                          /*!< \brief Option to enforce LES mode in hybrid RANS-LES simulations. */
+  bool SA_DES_NoDamping;                    /*!< \brief Blend the SA damping functions towards fv1 = 1, fv2 = 0, fw = 1 with the LES sensor. */
   su2double LES_FilterWidth;                /*!< \brief LES filter width for hybrid RANS-LES simulations. */
 
   unsigned short nSpanWiseSections; /*!< \brief number of span-wise sections */
@@ -9860,6 +9861,12 @@ public:
    * \return TRUE if LES is enforced.
    */
   bool GetEnforceLES(void) const { return enforceLES; }
+
+  /*!
+   * \brief Get if the SA damping functions are blended out in LES mode.
+   * \return TRUE if SA_DES_NO_DAMPING is active.
+   */
+  bool GetSA_DES_NoDamping(void) const { return SA_DES_NoDamping; }
 
   /*!
    * \brief Get the LES Filter Width.

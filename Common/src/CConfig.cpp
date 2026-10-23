@@ -3166,6 +3166,9 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Specify if the LES mode must be enforced */
   addBoolOption("ENFORCE_LES", enforceLES, false);
 
+  /* DESCRIPTION: Blend the SA damping functions towards fv1 = 1, fv2 = 0, fw = 1 with the LES sensor (SA-based Hybrid RANS/LES) */
+  addBoolOption("SA_DES_NO_DAMPING", SA_DES_NoDamping, false);
+
   /* DESCRIPTION: Specify if the stochastic source term must be included in the turbulence model equation */
   addBoolOption("SBS_SOURCE_TURB", SBSParam.stochSourceTurb, true);
 
@@ -4324,6 +4327,9 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
 
   if (enforceLES && Kind_HybridRANSLES == NO_HYBRIDRANSLES)
     SU2_MPI::Error("ENFORCE_LES can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);
+
+  if (SA_DES_NoDamping && (Kind_HybridRANSLES == NO_HYBRIDRANSLES || IsHybridRANSLES_SST(Kind_HybridRANSLES)))
+    SU2_MPI::Error("SA_DES_NO_DAMPING can only be activated with a SA-based Hybrid RANS/LES model.", CURRENT_FUNCTION);
 
   if (Time_Domain && !GetWrt_Restart_Overwrite()){
     SU2_MPI::Error("Appending iterations to the filename (WRT_RESTART_OVERWRITE=NO) is incompatible with transient problems.", CURRENT_FUNCTION);
@@ -7065,6 +7071,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
         }
         /*--- Consistency checks of the Hybrid RANS/LES and SBS options are done in SetPostprocessing. ---*/
         if (enforceLES) cout << "LES enforced in the whole computational domain." << endl;
+        if (SA_DES_NoDamping) cout << "SA damping functions blended out with the LES sensor." << endl;
         break;
       case MAIN_SOLVER::NEMO_EULER:
         if (Kind_Regime == ENUM_REGIME::COMPRESSIBLE) cout << "Compressible two-temperature thermochemical non-equilibrium Euler equations." << endl;

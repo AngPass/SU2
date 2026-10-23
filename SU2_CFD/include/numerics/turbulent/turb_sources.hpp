@@ -158,20 +158,24 @@ class CSourceBase_TurbSA : public CNumerics {
         ? Vorticity_i[0]*ScalarVar_i[1] + Vorticity_i[1]*ScalarVar_i[2] + Vorticity_i[2]*ScalarVar_i[3]
         : Vorticity_i[0]*stochSource[0] + Vorticity_i[1]*stochSource[1] + Vorticity_i[2]*stochSource[2];
 
-    /*--- Source = -(Cmag/2)(Omega.xi)*nu_t*fac, with fac = d(nu_tilde)/d(nu_t). ---*/
+    /*--- Source = -(Cmag/2)(Omega.xi)*nu_t*fac, with fac = d(nu_tilde)/d(nu_t). With the blended
+          fv1 = (J^3 + w*cv1^3)/(J^3 + cv1^3) (w = 0 without SA_DES_NO_DAMPING), A = J^3 + w*cv1^3,
+          B = J^3 + cv1^3: nu_t*fac = nu_tilde*A*B / (A*B + 3*(1-w)*chi*J^2*cv1^3). ---*/
     su2double nutFac = 0.0, d_nutFac = 0.0;
     const su2double c = var.cv1_3;
+    const su2double wDamp = config->GetSA_DES_NoDamping() ? lesMode_i : 0.0;
 
     if (!config->GetSBSParam().useMeanTurb) {
       /*--- Closed form of nu_t*fac (fac alone diverges for chi -> 0). ---*/
       const su2double nue = ScalarVar_i[0];
       if (nue > 0.0) {
-        const su2double J = var.Ji, chi = nue * var.d_Ji;
-        const su2double J3 = pow(J, 3);
-        const su2double num = nue * J * (J3 + c);
-        const su2double den = J * (J3 + c) + 3.0 * chi * c;
-        const su2double d_num = J * (J3 + c) + nue * (4.0 * J3 + c) * var.d_Ji;
-        const su2double d_den = (4.0 * J3 + 4.0 * c) * var.d_Ji;
+        const su2double J = var.Ji, J2 = J * J, chi = nue * var.d_Ji;
+        const su2double A = J2 * J + wDamp * c, B = J2 * J + c;
+        const su2double num = nue * A * B;
+        const su2double den = A * B + 3.0 * (1.0 - wDamp) * chi * J2 * c;
+        const su2double d_AB = 3.0 * J2 * var.d_Ji * (A + B);
+        const su2double d_num = A * B + nue * d_AB;
+        const su2double d_den = d_AB + 3.0 * (1.0 - wDamp) * c * var.d_Ji * (J2 + 2.0 * chi * J);
         nutFac = num / den;
         d_nutFac = (d_num * den - num * d_den) / (den * den);
       }
@@ -181,20 +185,20 @@ class CSourceBase_TurbSA : public CNumerics {
       const su2double rough = max(var.Ji - ScalarVar_i[0] * var.d_Ji, 0.0);
       const su2double a = avg_eddy_visc_i / nu;
       if (a > 0.0) {
-        /*--- Newton on G(chi) = (chi-a)*J^3 - a*cv1^3, monotone from chi_0 >= root. ---*/
+        /*--- Newton on G(chi) = (chi-a)*J^3 + cv1^3*(w*chi-a), monotone from chi_0 >= root. ---*/
         su2double chiMean = a + pow(a * c, 0.25);
         for (unsigned short iter = 0; iter < 50; iter++) {
           const su2double J = chiMean + rough;
           const su2double J2 = J * J;
-          const su2double G = (chiMean - a) * J2 * J - a * c;
-          const su2double dG = J2 * (J + 3.0 * (chiMean - a));
+          const su2double G = (chiMean - a) * J2 * J + c * (wDamp * chiMean - a);
+          const su2double dG = J2 * (J + 3.0 * (chiMean - a)) + wDamp * c;
           const su2double delta = G / dG;
           chiMean -= delta;
           if (fabs(delta) <= 1e-12 * chiMean) break;
         }
-        const su2double JMean = chiMean + rough;
-        const su2double J3 = pow(JMean, 3);
-        nutFac = nu * chiMean * JMean * (J3 + c) / (JMean * (J3 + c) + 3.0 * chiMean * c);
+        const su2double J = chiMean + rough, J2 = J * J;
+        const su2double A = J2 * J + wDamp * c, B = J2 * J + c;
+        nutFac = nu * chiMean * A * B / (A * B + 3.0 * (1.0 - wDamp) * chiMean * J2 * c);
       }
     }
 
@@ -252,12 +256,14 @@ class CSourceBase_TurbSA : public CNumerics {
     AD::SetPreaccIn(ScalarVar_Grad_i, nVar, nDim);
     AD::SetPreaccIn(stochSource, 3);
 
-    /*--- Stochastic Backscatter Model inputs. ---*/
-    if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().StochasticBackscatter) {
-      AD::SetPreaccIn(lesMode_i);
-      AD::SetPreaccIn(maxDelta_i);
-      AD::SetPreaccIn(wallDist_i);
-      if (config->GetSBSParam().useMeanTurb) AD::SetPreaccIn(avg_eddy_visc_i);
+    /*--- Hybrid RANS/LES inputs (Stochastic Backscatter Model, SA_DES_NO_DAMPING). ---*/
+    if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) {
+      if (config->GetSBSParam().StochasticBackscatter || config->GetSA_DES_NoDamping()) AD::SetPreaccIn(lesMode_i);
+      if (config->GetSBSParam().StochasticBackscatter) {
+        AD::SetPreaccIn(maxDelta_i);
+        AD::SetPreaccIn(wallDist_i);
+        if (config->GetSBSParam().useMeanTurb) AD::SetPreaccIn(avg_eddy_visc_i);
+      }
     }
 
     /*--- Common auxiliary variables and constants of the model. ---*/
@@ -294,6 +300,13 @@ class CSourceBase_TurbSA : public CNumerics {
       var.fv2 = 1 - ScalarVar_i[0] / (nu + ScalarVar_i[0] * var.fv1);
       var.d_fv2 = -(1 / nu - Ji_2 * var.d_fv1) / pow(1 + var.Ji * var.fv1, 2);
 
+      /*--- SA_DES_NO_DAMPING: blend fv1 -> 1, fv2 -> 0 (and fw -> 1 below) with the LES sensor. ---*/
+      const su2double wDamp = config->GetSA_DES_NoDamping() ? lesMode_i : 0.0;
+      var.fv1 = (1.0 - wDamp) * var.fv1 + wDamp;
+      var.d_fv1 *= 1.0 - wDamp;
+      var.fv2 *= 1.0 - wDamp;
+      var.d_fv2 *= 1.0 - wDamp;
+
       /*--- Evaluate Omega with a rotational correction term. ---*/
 
       Omega::get(Vorticity_i, nDim, PrimVar_Grad_i + idx.Velocity(), var);
@@ -322,6 +335,8 @@ class CSourceBase_TurbSA : public CNumerics {
       var.fw = var.g * var.glim;
       var.d_g = var.d_r * (1 + var.cw2 * (6 * pow(var.r, 5) - 1));
       var.d_fw = var.d_g * var.glim * (1 - var.g_6 / (var.g_6 + var.cw3_6));
+      var.fw = (1.0 - wDamp) * var.fw + wDamp;
+      var.d_fw *= 1.0 - wDamp;
 
       var.norm2_Grad = GeometryToolbox::SquaredNorm(nDim, ScalarVar_Grad_i[0]);
 

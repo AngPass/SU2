@@ -251,8 +251,8 @@ void CTurbSASolver::Preprocessing(CGeometry *geometry, CSolver **solver_containe
       CompleteComms(geometry, config, MPI_QUANTITIES::DES_FILTERWIDTH);
     }
 
-    /*--- Only needed by backscatter/ hybrid models with filtered stresses. ---*/
-    if (backscatter || config->GetSBSParam().filterStresses) {
+    /*--- Only needed by backscatter, filtered stresses and SA_DES_NO_DAMPING (halo eddy viscosity). ---*/
+    if (backscatter || config->GetSBSParam().filterStresses || config->GetSA_DES_NoDamping()) {
       InitiateComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
       CompleteComms(geometry, config, MPI_QUANTITIES::LES_SENSOR);
     }
@@ -292,6 +292,7 @@ void CTurbSASolver::Postprocessing(CGeometry *geometry, CSolver **solver_contain
 
   const bool neg_spalart_allmaras = config->GetSAParsedOptions().version == SA_OPTIONS::NEG;
   const bool backscatter = config->GetSBSParam().StochasticBackscatter;
+  const bool noDamping = config->GetSA_DES_NoDamping();
 
   /*--- Compute eddy viscosity ---*/
 
@@ -313,7 +314,13 @@ void CTurbSASolver::Postprocessing(CGeometry *geometry, CSolver **solver_contain
       Ji += cR1*roughness/(dist+EPS);
 
     const su2double Ji_3 = Ji*Ji*Ji;
-    const su2double fv1 = Ji_3/(Ji_3+cv1_3);
+    su2double fv1 = Ji_3/(Ji_3+cv1_3);
+
+    /*--- SA_DES_NO_DAMPING: fv1 blended towards 1 with the LES sensor, as in the source terms. ---*/
+    if (noDamping) {
+      const su2double wDamp = nodes->GetLES_Mode(iPoint);
+      fv1 = (1.0 - wDamp) * fv1 + wDamp;
+    }
 
     su2double muT = rho*fv1*nu_hat;
 
@@ -483,6 +490,10 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
       /*--- Set DES length scale ---*/
 
       numerics->SetDistance(nodes->GetDES_LengthScale(iPoint), 0.0);
+
+      /*--- LES sensor, for SA_DES_NO_DAMPING (set below with backscatter). ---*/
+
+      if (config->GetSA_DES_NoDamping()) numerics->SetLES_Mode(nodes->GetLES_Mode(iPoint), 0.0);
 
       /*--- Compute source terms in Langevin equations (Stochastic Basckscatter Model) ---*/
 
