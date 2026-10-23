@@ -1450,17 +1450,16 @@ void CTurbSASolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeomet
 void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geometry) {
   SU2_ZONE_SCOPED
 
-  static su2double globalResNorm;
-  static unsigned long global_nPointLES;
+  static std::array<su2double, 3> globalResNorm;
+  static std::array<unsigned long, 3> global_nPointLES;
   static std::array<su2double, 6> globalChecks;
-  /*--- Scalars driving BiCGSTAB control flow (loop conditions/break). These must be "static" (as
-        in the original Jacobi implementation) rather than plain locals: the whole point-loop and
-        Allreduce machinery below runs master-thread-only per MPI rank (BEGIN/END_SU2_OMP_SAFE_
-        GLOBAL_ACCESS), but the while-loop conditions and breakdown checks are plain code executed
-        redundantly by every OpenMP thread sharing this parallel region, so they must all observe
-        the exact same, already-synchronized value that only the master thread computed. ---*/
-  static su2double globalRho, globalRhoPrev, globalAlpha, globalOmega, globalR0V, globalTS, globalTT;
-  static bool breakdown;
+  /*--- Scalars (one per component) driving BiCGSTAB control flow (loop conditions/break). These
+        must be "static" (as in the original Jacobi implementation) rather than plain locals: the
+        whole point-loop and Allreduce machinery below runs master-thread-only per MPI rank (BEGIN/
+        END_SU2_OMP_SAFE_GLOBAL_ACCESS), but the loop conditions and breakdown checks are plain code
+        executed redundantly by every OpenMP thread sharing this parallel region, so they must all
+        observe the exact same, already-synchronized value that only the master thread computed. ---*/
+  static std::array<su2double, 3> globalRho, globalRhoPrev, globalAlpha, globalOmega, globalR0V, globalTS, globalTT;
 
   const su2double cDelta = config->GetSBSParam().SBS_Cdelta;
   const unsigned short maxIter = config->GetSBSParam().SBS_maxIterSmooth;
@@ -1607,146 +1606,173 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
     END_SU2_OMP_FOR
   }
 
+  /*--- Points actually solved for (active, see SetLangevinSourceTerms), and points whose Green-Gauss
+        gradient or zeroed phat/shat can be read by an active point (on this or another rank, or across
+        a periodic boundary), per component, so that the point loops of the solver only visit them
+        instead of the whole partition. The rank-private BiCGSTAB work vectors are sized to the active
+        points. All of these are filled and used by the master thread only, like the point loops
+        themselves (the other threads keep them empty). ---*/
+
+  using WorkVecs = std::array<std::vector<su2double>, 3>;
+  std::array<std::vector<unsigned long>, 3> activePoints, gradPoints;
+  std::array<std::vector<bool>, 3> isActive;
+  std::vector<bool> isPeriodic;
+  WorkVecs bRhs, rVec, rhat0Vec, pVec, vVec, sVec, tVec;
+
+  BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS {
+    isPeriodic.assign(nPointDomain, false);
+    for (unsigned short iMarker = 0; iMarker < config->GetnMarker_All(); iMarker++) {
+      if (config->GetMarker_All_KindBC(iMarker) != PERIODIC_BOUNDARY) continue;
+      for (unsigned long iVertex = 0; iVertex < geometry->nVertex[iMarker]; iVertex++) {
+        const auto iPoint = geometry->vertex[iMarker][iVertex]->GetNode();
+        if (iPoint < nPointDomain) isPeriodic[iPoint] = true;
+      }
+    }
+
+    unsigned long local_nPointLES[3] = {0, 0, 0};
+    for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+      isActive[iDim].assign(nPointDomain, false);
+      for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+        if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
+        isActive[iDim][iPoint] = true;
+        activePoints[iDim].push_back(iPoint);
+      }
+      /*--- Halo neighbors are conservatively taken as possibly active (their flag is not exchanged),
+            and periodic points always need their partial gradient for the periodic sum. ---*/
+      for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+        bool needed = isActive[iDim][iPoint] || isPeriodic[iPoint];
+        for (unsigned short iNode = 0; !needed && iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
+          const auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
+          needed = (jPoint >= nPointDomain) || isActive[iDim][jPoint];
+        }
+        if (needed) gradPoints[iDim].push_back(iPoint);
+      }
+      for (auto* vec : {&bRhs, &rVec, &rhat0Vec, &pVec, &vVec, &sVec, &tVec}) (*vec)[iDim].assign(activePoints[iDim].size(), 0.0);
+      local_nPointLES[iDim] = activePoints[iDim].size();
+    }
+    SU2_MPI::Allreduce(local_nPointLES, global_nPointLES.data(), nDim, MPI_UNSIGNED_LONG, MPI_SUM, SU2_MPI::GetComm());
+  }
+  END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
   /*--- Matrix-free operator A(x)_i = diag_i*x_i - sum_j(a_ij*x_j), the only part of the discrete
         system that is a genuine matrix (the tangential/non-orthogonal term below is a fixed RHS
-        contribution between gradient refreshes, not part of A). GetInput reads whichever field is
-        currently being multiplied by A (the solution itself to form the initial residual, or the
-        preconditioned BiCGSTAB directions phat/shat); the result is written into a local, rank-
-        private (never used as a neighbor, so never halo-exchanged) work vector. Runs master-thread-
+        contribution between gradient refreshes, not part of A), applied to the components in comps
+        at once. GetInput(j, iDim) reads whichever field is currently being multiplied by A (the
+        solution itself to form the initial residual, or the preconditioned BiCGSTAB directions
+        phat/shat); the result is written into the local, rank-private (never used as a neighbor, so
+        never halo-exchanged) work vectors. Slot iDim of the periodic buffer holds the partial sum of
+        component iDim, so a single periodic exchange serves all the components. Runs master-thread-
         only per rank, exactly like the original Jacobi sweep. ---*/
 
-  auto ComputeMatVec = [&](unsigned short iDim, auto&& GetInput, std::vector<su2double>& out) {
+  auto ComputeMatVec = [&](const std::vector<unsigned short>& comps, auto&& GetInput, WorkVecs& out) {
     BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
-    for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-      if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
-      su2double sum = 0.0;
-      for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
-        auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
-        su2double a_ij = nodes->GetSmoothingMatrixCoeff(iPoint, iNode);
-        sum += a_ij * GetInput(jPoint);
+    for (const auto iDim : comps) {
+      for (const auto iPoint : activePoints[iDim]) {
+        su2double sum = 0.0;
+        for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
+          auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
+          su2double a_ij = nodes->GetSmoothingMatrixCoeff(iPoint, iNode);
+          sum += a_ij * GetInput(jPoint, iDim);
+        }
+        nodes->SetSBSPeriodicBuf(iPoint, iDim, sum);
       }
-      nodes->SetSBSPeriodicBuf(iPoint, 0, sum);
     }
     END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
     SBSPeriodicComm(geometry, config, PERIODIC_SBS_SUM);
 
     BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
-    for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-      if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
-      out[iPoint] = nodes->GetSmoothingDiag(iPoint)*GetInput(iPoint) - nodes->GetSBSPeriodicBuf(iPoint, 0);
+    for (const auto iDim : comps) {
+      for (unsigned long k = 0; k < activePoints[iDim].size(); k++) {
+        const auto iPoint = activePoints[iDim][k];
+        out[iDim][k] = nodes->GetSmoothingDiag(iPoint)*GetInput(iPoint, iDim) - nodes->GetSBSPeriodicBuf(iPoint, iDim);
+      }
     }
     END_SU2_OMP_SAFE_GLOBAL_ACCESS
   };
 
-  /*--- Dot product between two rank-private work vectors, restricted to the points actually being
-        solved for (points outside the active LES region are frozen at 0 and never enter the linear
-        system, mirroring the exclusion in the original Jacobi sweep), reduced over all MPI ranks.
-        Writes into the static scalar "out" so every OpenMP thread sharing this parallel region
-        observes the same, already-synchronized value once outside the master-only block. ---*/
+  /*--- Dot products between rank-private work vectors (a . b into out, for each job), restricted to
+        the points actually being solved for (points outside the active LES region are frozen at 0 and
+        never enter the linear system, mirroring the exclusion in the original Jacobi sweep), for the
+        components in comps, all reduced over the MPI ranks in a single call. Writes into the static
+        scalars "out" so every OpenMP thread sharing this parallel region observes the same, already-
+        synchronized values once outside the master-only block. ---*/
 
-  auto DotActive = [&](unsigned short iDim, const std::vector<su2double>& a, const std::vector<su2double>& b,
-                       su2double& out) {
-    su2double local = 0.0;
-    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
-    for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-      if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
-      local += a[iPoint]*b[iPoint];
+  struct DotJob { const WorkVecs* a; const WorkVecs* b; std::array<su2double, 3>* out; };
+
+  auto DotActive = [&](const std::vector<unsigned short>& comps, std::initializer_list<DotJob> jobs) {
+    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS {
+      su2double local[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, global[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+      int nValues = 0;
+      for (const auto& job : jobs) {
+        for (const auto iDim : comps) {
+          const auto& a = (*job.a)[iDim];
+          const auto& b = (*job.b)[iDim];
+          for (unsigned long k = 0; k < a.size(); k++) local[nValues] += a[k]*b[k];
+          nValues++;
+        }
+      }
+      SU2_MPI::Allreduce(local, global, nValues, MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
+      nValues = 0;
+      for (const auto& job : jobs)
+        for (const auto iDim : comps) (*job.out)[iDim] = global[nValues++];
     }
-    END_SU2_OMP_SAFE_GLOBAL_ACCESS
-
-    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
-    SU2_MPI::Allreduce(&local, &out, 1, MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
     END_SU2_OMP_SAFE_GLOBAL_ACCESS
   };
 
-  /*--- Solve, for each spatial dimension, diag_i*x_i - sum_j(a_ij*x_j) = source_i_old + tangential_i
-        with a matrix-free, Jacobi(diagonal)-preconditioned BiCGSTAB, restarting the Krylov subspace
-        (warm-started from the current solution) every time the tangential/gradient RHS term is
-        refreshed, so the matrix and RHS are always fixed for the duration of a Krylov subspace. ---*/
+  /*--- Refresh the RHS of component iDim at the start (or restart) of one of its blocks: recompute the
+        Green-Gauss gradient used for the non-orthogonal RHS correction (one component at a time, since
+        the gradient storage holds a single component). The halo values of the solution must be up to
+        date. ---*/
 
-  for (unsigned short iDim = 0; iDim < nDim; iDim++) {
-
-    std::vector<su2double> bRhs(nPointDomain, 0.0), rVec(nPointDomain, 0.0), rhat0Vec(nPointDomain, 0.0);
-    std::vector<su2double> pVec(nPointDomain, 0.0), vVec(nPointDomain, 0.0);
-    std::vector<su2double> sVec(nPointDomain, 0.0), tVec(nPointDomain, 0.0);
-
-    unsigned short totalIter = 0;
-    /*--- Counts only real BiCGSTAB update steps (unlike totalIter, which also advances once per
-          block restart to bound the outer loop), so the "first iteration" print check below fires
-          on the first actual step regardless of how many restarts preceded it. ---*/
-    unsigned short printIter = 0;
-    bool converged = false;
-
-    SU2_OMP_MASTER
-    if (rank == MASTER_NODE) {
-      cout << "\nResidual of Laplacian smoothing along dimension " << iDim+1
-           << "\n---------------------------------"
-           << "\n   Iter       RMS Residual"
-           << "\n---------------------------------" << endl;
+  auto RefreshRhs = [&](unsigned short iDim) {
+    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+    for (const auto iPoint : gradPoints[iDim]) {
+      su2double source_i = nodes->GetLangevinSourceTerms(iPoint, iDim);
+      su2double grad_i[3] = {0.0, 0.0, 0.0};
+      for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
+        auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
+        auto iEdge = geometry->nodes->GetEdge(iPoint, iNode);
+        auto* normal = geometry->edges->GetNormal(iEdge);
+        su2double sign = (geometry->edges->GetNode(iEdge, 0) == iPoint) ? 1.0 : -1.0;
+        su2double source_j = nodes->GetLangevinSourceTerms(jPoint, iDim);
+        su2double phi_face = 0.5*(source_i + source_j);
+        for (unsigned short index = 0; index < nDim; index++)
+          grad_i[index] += sign * phi_face * normal[index];
+      }
+      for (unsigned short index = 0; index < nDim; index++)
+        nodes->SetSBSPeriodicBuf(iPoint, index, grad_i[index]);
     }
-    END_SU2_OMP_MASTER
+    END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
-    while (!converged && totalIter < maxIter) {
+    /*--- At periodic points the edge-based surface integral is completed with the edges of the
+          matching point; the (equal and opposite) periodic boundary faces of the two copies,
+          omitted on both sides, cancel out exactly. ---*/
 
-      /*--- Start (or restart) of a block: refresh the halo values of the solution, recompute the
-            Green-Gauss gradient used for the non-orthogonal RHS correction, and rebuild the initial
-            residual r0 = b - A*x (warm-started from the current solution estimate). ---*/
+    SBSPeriodicComm(geometry, config, PERIODIC_SBS_SUM);
 
-      InitiateComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
-      CompleteComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
+    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+    for (const auto iPoint : gradPoints[iDim]) {
+      su2double volume_iPoint = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
+      for (unsigned short index = 0; index < nDim; index++)
+        nodes->SetLangevinSourceGrad(iPoint, index, nodes->GetSBSPeriodicBuf(iPoint, index) / max(volume_iPoint, 1e-10));
+    }
+    END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
-      BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
-      for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-        su2double source_i = nodes->GetLangevinSourceTerms(iPoint, iDim);
-        su2double grad_i[3] = {0.0, 0.0, 0.0};
-        for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
-          auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
-          auto iEdge = geometry->nodes->GetEdge(iPoint, iNode);
-          auto* normal = geometry->edges->GetNormal(iEdge);
-          su2double sign = (geometry->edges->GetNode(iEdge, 0) == iPoint) ? 1.0 : -1.0;
-          su2double source_j = nodes->GetLangevinSourceTerms(jPoint, iDim);
-          su2double phi_face = 0.5*(source_i + source_j);
-          for (unsigned short index = 0; index < nDim; index++)
-            grad_i[index] += sign * phi_face * normal[index];
-        }
-        for (unsigned short index = 0; index < nDim; index++)
-          nodes->SetSBSPeriodicBuf(iPoint, index, grad_i[index]);
+    InitiateComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG_GRAD);
+    CompleteComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG_GRAD);
+
+    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS {
+      /*--- Inactive points are frozen at 0 (homogeneous Dirichlet) and must enter the matrix-free
+            operator as zeros: clear any phat/shat left over from a previous time step in which
+            the point was active, at the inactive points that ComputeMatVec can read as neighbors. ---*/
+      for (const auto iPoint : gradPoints[iDim]) {
+        if (isActive[iDim][iPoint]) continue;
+        nodes->SetSmoothPhat(iPoint, iDim, 0.0);
+        nodes->SetSmoothShat(iPoint, iDim, 0.0);
       }
-      END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
-      /*--- At periodic points the edge-based surface integral is completed with the edges of the
-            matching point; the (equal and opposite) periodic boundary faces of the two copies,
-            omitted on both sides, cancel out exactly. ---*/
-
-      SBSPeriodicComm(geometry, config, PERIODIC_SBS_SUM);
-
-      BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
-      for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-        su2double volume_iPoint = geometry->nodes->GetVolume(iPoint) + geometry->nodes->GetPeriodicVolume(iPoint);
-        for (unsigned short index = 0; index < nDim; index++)
-          nodes->SetLangevinSourceGrad(iPoint, index, nodes->GetSBSPeriodicBuf(iPoint, index) / max(volume_iPoint, 1e-10));
-      }
-      END_SU2_OMP_SAFE_GLOBAL_ACCESS
-
-      InitiateComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG_GRAD);
-      CompleteComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG_GRAD);
-
-      unsigned long local_nPointLES = 0;
-
-      BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
-      for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-        su2double source_i_old = nodes->GetLangevinSourceTermsOld(iPoint, iDim);
-        if (source_i_old > 3.0*sourceLim) {
-          /*--- Inactive points are frozen at 0 (homogeneous Dirichlet) and must enter the matrix-free
-                operator as zeros: clear any phat/shat left over from a previous time step in which
-                the point was active, since ComputeMatVec reads these values for all neighbors. ---*/
-          nodes->SetSmoothPhat(iPoint, iDim, 0.0);
-          nodes->SetSmoothShat(iPoint, iDim, 0.0);
-          continue;
-        }
-        local_nPointLES += 1;
-
+      for (const auto iPoint : activePoints[iDim]) {
         su2double tangential_i = 0.0;
         for (unsigned short iNode = 0; iNode < geometry->nodes->GetnPoint(iPoint); iNode++) {
           auto jPoint = geometry->nodes->GetPoint(iPoint, iNode);
@@ -1759,142 +1785,223 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
         }
         nodes->SetSBSPeriodicBuf(iPoint, 0, tangential_i);
       }
-      END_SU2_OMP_SAFE_GLOBAL_ACCESS
+    }
+    END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
-      SBSPeriodicComm(geometry, config, PERIODIC_SBS_SUM);
+    SBSPeriodicComm(geometry, config, PERIODIC_SBS_SUM);
+
+    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+    for (unsigned long k = 0; k < activePoints[iDim].size(); k++) {
+      const auto iPoint = activePoints[iDim][k];
+      bRhs[iDim][k] = nodes->GetLangevinSourceTermsOld(iPoint, iDim) + nodes->GetSBSPeriodicBuf(iPoint, 0);
+    }
+    END_SU2_OMP_SAFE_GLOBAL_ACCESS
+  };
+
+  /*--- Solve, for each spatial dimension, diag_i*x_i - sum_j(a_ij*x_j) = source_i_old + tangential_i
+        with a matrix-free, Jacobi(diagonal)-preconditioned BiCGSTAB, restarting the Krylov subspace
+        (warm-started from the current solution) every time the tangential/gradient RHS term is
+        refreshed, so the matrix and RHS are always fixed for the duration of a Krylov subspace.
+        The components are independent systems, solved in lockstep: each one keeps its own BiCGSTAB
+        scalars, restarts and stopping criteria (so it follows exactly the same iterations as if it
+        were solved on its own), while the halo exchanges (which carry all the components anyway),
+        the periodic exchanges and the global reductions of a step are shared by all the components
+        still iterating. The control flow below is executed redundantly by every OpenMP thread, and
+        only depends on the (static) globally reduced scalars, so all threads take the same path. ---*/
+
+  std::array<unsigned short, 3> totalIter{}, printIter{}, blockIter{};
+  std::array<bool, 3> converged{}, needRestart{};
+  for (unsigned short iDim = 0; iDim < nDim; iDim++) needRestart[iDim] = true;
+
+  /*--- Convergence history of each component, printed once all of them are done so that the
+        output stays grouped per component (filled by the master thread of the master rank). ---*/
+  std::array<std::vector<std::pair<unsigned short, su2double>>, 3> history;
+
+  std::vector<unsigned short> comps;
+
+  auto IsDone = [&](unsigned short iDim) { return converged[iDim] || totalIter[iDim] >= maxIter; };
+
+  /*--- Components whose BiCGSTAB breaks down (denominator ~0) leave the current step and restart
+        their block, exactly as when solved on their own. ---*/
+  auto DropBrokenDown = [&](const std::array<su2double, 3>& denom) {
+    std::vector<unsigned short> kept;
+    for (const auto iDim : comps) {
+      if (fabs(denom[iDim]) < eps_breakdown) needRestart[iDim] = true;
+      else kept.push_back(iDim);
+    }
+    comps = kept;
+  };
+
+  while (true) {
+
+    /*--- Start (or restart) of a block for the components that need it: refresh the halo values of
+          the solution (all components at once), the RHS, and rebuild the initial residual
+          r0 = b - A*x (warm-started from the current solution estimate). ---*/
+
+    comps.clear();
+    for (unsigned short iDim = 0; iDim < nDim; iDim++)
+      if (!IsDone(iDim) && needRestart[iDim]) comps.push_back(iDim);
+
+    if (!comps.empty()) {
+
+      InitiateComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
+      CompleteComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
+
+      for (const auto iDim : comps) RefreshRhs(iDim);
+
+      ComputeMatVec(comps, [&](unsigned long j, unsigned short iDim){ return nodes->GetLangevinSourceTerms(j, iDim); }, rVec);
 
       BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
-      for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-        su2double source_i_old = nodes->GetLangevinSourceTermsOld(iPoint, iDim);
-        if (source_i_old > 3.0*sourceLim) continue;
-        bRhs[iPoint] = source_i_old + nodes->GetSBSPeriodicBuf(iPoint, 0);
+      for (const auto iDim : comps) {
+        for (unsigned long k = 0; k < activePoints[iDim].size(); k++) {
+          rVec[iDim][k] = bRhs[iDim][k] - rVec[iDim][k];
+          rhat0Vec[iDim][k] = rVec[iDim][k];
+          /*--- p_0 = v_0 = 0 (standard BiCGSTAB init): with rho_prev=alpha=omega=1 reset below, the
+                first inner iteration's p update (p = r + beta*(p-omega*v)) then correctly reduces to
+                p_1 = r_0 regardless of beta, since the (p_0 - omega*v_0) term vanishes. ---*/
+          pVec[iDim][k] = 0.0;
+          vVec[iDim][k] = 0.0;
+        }
       }
       END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
-      BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
-      SU2_MPI::Allreduce(&local_nPointLES, &global_nPointLES, 1, MPI_UNSIGNED_LONG, MPI_SUM, SU2_MPI::GetComm());
-      END_SU2_OMP_SAFE_GLOBAL_ACCESS
-
-      ComputeMatVec(iDim, [&](unsigned long j){ return nodes->GetLangevinSourceTerms(j, iDim); }, rVec);
+      DotActive(comps, {{&rVec, &rVec, &globalResNorm}});
 
       BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
-      for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-        if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
-        rVec[iPoint] = bRhs[iPoint] - rVec[iPoint];
-        rhat0Vec[iPoint] = rVec[iPoint];
-        /*--- p_0 = v_0 = 0 (standard BiCGSTAB init): with rho_prev=alpha=omega=1 reset below, the
-              first inner iteration's p update (p = r + beta*(p-omega*v)) then correctly reduces to
-              p_1 = r_0 regardless of beta, since the (p_0 - omega*v_0) term vanishes. ---*/
-        pVec[iPoint] = 0.0;
-        vVec[iPoint] = 0.0;
+      for (const auto iDim : comps) {
+        globalResNorm[iDim] = (global_nPointLES[iDim]==0) ? su2double(0.0) : sqrt(globalResNorm[iDim] / global_nPointLES[iDim]);
+        globalRho[iDim] = 1.0; globalAlpha[iDim] = 1.0; globalOmega[iDim] = 1.0;
       }
       END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
-      /*--- Account for the cost of this refresh/restart against the iteration budget: this
-            guarantees the outer (block/restart) loop always makes progress towards maxIter, even
-            in the degenerate case where every restarted Krylov subspace breaks down immediately
-            (e.g. an already-converged residual, for which rho would be ~0 by construction). ---*/
-      totalIter++;
-
-      su2double r0NormSq = 0.0;
-      DotActive(iDim, rVec, rVec, r0NormSq);
-      SU2_OMP_SAFE_GLOBAL_ACCESS(
-        globalResNorm = (global_nPointLES==0) ? su2double(0.0) : sqrt(r0NormSq / global_nPointLES);
-      )
-      if (log10(globalResNorm) < tol) converged = true;
-
-      SU2_OMP_SAFE_GLOBAL_ACCESS(globalRho = 1.0; globalAlpha = 1.0; globalOmega = 1.0; breakdown = false;)
-
-      unsigned short blockIter = 0;
-      while (!breakdown && !converged && blockIter < gradRefreshInterval && totalIter < maxIter) {
-
-        SU2_OMP_SAFE_GLOBAL_ACCESS(globalRhoPrev = globalRho;)
-        DotActive(iDim, rhat0Vec, rVec, globalRho);
-
-        if (fabs(globalRho) < eps_breakdown) { breakdown = true; break; }
-
-        su2double beta = (globalRho/globalRhoPrev) * (globalAlpha/globalOmega);
-
-        BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
-        for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-          if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
-          pVec[iPoint] = rVec[iPoint] + beta*(pVec[iPoint] - globalOmega*vVec[iPoint]);
-          nodes->SetSmoothPhat(iPoint, iDim, pVec[iPoint] / nodes->GetSmoothingDiag(iPoint));
-        }
-        END_SU2_OMP_SAFE_GLOBAL_ACCESS
-
-        InitiateComms(geometry, config, MPI_QUANTITIES::SMOOTH_PHAT);
-        CompleteComms(geometry, config, MPI_QUANTITIES::SMOOTH_PHAT);
-
-        ComputeMatVec(iDim, [&](unsigned long j){ return nodes->GetSmoothPhat(j, iDim); }, vVec);
-
-        DotActive(iDim, rhat0Vec, vVec, globalR0V);
-        if (fabs(globalR0V) < eps_breakdown) { breakdown = true; break; }
-        SU2_OMP_SAFE_GLOBAL_ACCESS(globalAlpha = globalRho / globalR0V;)
-
-        BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
-        for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-          if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
-          sVec[iPoint] = rVec[iPoint] - globalAlpha*vVec[iPoint];
-          nodes->SetSmoothShat(iPoint, iDim, sVec[iPoint] / nodes->GetSmoothingDiag(iPoint));
-        }
-        END_SU2_OMP_SAFE_GLOBAL_ACCESS
-
-        InitiateComms(geometry, config, MPI_QUANTITIES::SMOOTH_SHAT);
-        CompleteComms(geometry, config, MPI_QUANTITIES::SMOOTH_SHAT);
-
-        ComputeMatVec(iDim, [&](unsigned long j){ return nodes->GetSmoothShat(j, iDim); }, tVec);
-
-        DotActive(iDim, tVec, sVec, globalTS);
-        DotActive(iDim, tVec, tVec, globalTT);
-        if (fabs(globalTT) < eps_breakdown) { breakdown = true; break; }
-        SU2_OMP_SAFE_GLOBAL_ACCESS(globalOmega = globalTS / globalTT;)
-
-        su2double localResNorm = 0.0;
-        BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
-        for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
-          if (nodes->GetLangevinSourceTermsOld(iPoint, iDim) > 3.0*sourceLim) continue;
-          su2double source_i = nodes->GetLangevinSourceTerms(iPoint, iDim);
-          su2double phat = nodes->GetSmoothPhat(iPoint, iDim);
-          su2double shat = nodes->GetSmoothShat(iPoint, iDim);
-          source_i += globalAlpha*phat + globalOmega*shat;
-          nodes->SetLangevinSourceTerms(iPoint, iDim, source_i);
-          rVec[iPoint] = sVec[iPoint] - globalOmega*tVec[iPoint];
-          localResNorm += pow(rVec[iPoint], 2);
-        }
-        END_SU2_OMP_SAFE_GLOBAL_ACCESS
-
-        BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS {
-          SU2_MPI::Allreduce(&localResNorm, &globalResNorm, 1, MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
-          globalResNorm = (global_nPointLES==0) ? su2double(0.0) : sqrt(globalResNorm / global_nPointLES);
-        }
-        END_SU2_OMP_SAFE_GLOBAL_ACCESS
-
-        blockIter++; totalIter++; printIter++;
-
-        /*--- Print convergence at the first iteration, then every 10, and finally once more at
-              whichever iteration ends the loop (converged or maxIter reached). ---*/
-        const bool isConverged = (log10(globalResNorm) < tol || totalIter == maxIter);
-        const bool printConvergence = (printIter == 1) || (printIter % 10 == 0) || isConverged;
-
-        if (printConvergence) {
-          SU2_OMP_MASTER
-          if (rank == MASTER_NODE) {
-            cout << "  "
-                 << std::setw(5) << printIter
-                 << "       "
-                 << std::setw(12) << std::fixed << std::setprecision(6) << log10(globalResNorm)
-                 << endl;
-          }
-          END_SU2_OMP_MASTER
-        }
-
-        converged = isConverged;
+      for (const auto iDim : comps) {
+        /*--- Account for the cost of this refresh/restart against the iteration budget: this
+              guarantees the block/restart loop always makes progress towards maxIter, even in the
+              degenerate case where every restarted Krylov subspace breaks down immediately (e.g. an
+              already-converged residual, for which rho would be ~0 by construction). ---*/
+        totalIter[iDim]++;
+        if (log10(globalResNorm[iDim]) < tol) converged[iDim] = true;
+        blockIter[iDim] = 0;
+        needRestart[iDim] = false;
       }
     }
 
+    /*--- One BiCGSTAB step for all the components still iterating. After the restarts above, a
+          component that is not done never needs a restart here, so none left means all done. ---*/
+
+    comps.clear();
+    for (unsigned short iDim = 0; iDim < nDim; iDim++)
+      if (!IsDone(iDim) && !needRestart[iDim]) comps.push_back(iDim);
+
+    if (comps.empty()) break;
+
+    SU2_OMP_SAFE_GLOBAL_ACCESS(for (const auto iDim : comps) globalRhoPrev[iDim] = globalRho[iDim];)
+    DotActive(comps, {{&rhat0Vec, &rVec, &globalRho}});
+    DropBrokenDown(globalRho);
+    if (comps.empty()) continue;
+
+    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+    for (const auto iDim : comps) {
+      const su2double beta = (globalRho[iDim]/globalRhoPrev[iDim]) * (globalAlpha[iDim]/globalOmega[iDim]);
+      for (unsigned long k = 0; k < activePoints[iDim].size(); k++) {
+        const auto iPoint = activePoints[iDim][k];
+        pVec[iDim][k] = rVec[iDim][k] + beta*(pVec[iDim][k] - globalOmega[iDim]*vVec[iDim][k]);
+        nodes->SetSmoothPhat(iPoint, iDim, pVec[iDim][k] / nodes->GetSmoothingDiag(iPoint));
+      }
+    }
+    END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+    InitiateComms(geometry, config, MPI_QUANTITIES::SMOOTH_PHAT);
+    CompleteComms(geometry, config, MPI_QUANTITIES::SMOOTH_PHAT);
+
+    ComputeMatVec(comps, [&](unsigned long j, unsigned short iDim){ return nodes->GetSmoothPhat(j, iDim); }, vVec);
+
+    DotActive(comps, {{&rhat0Vec, &vVec, &globalR0V}});
+    DropBrokenDown(globalR0V);
+    if (comps.empty()) continue;
+    SU2_OMP_SAFE_GLOBAL_ACCESS(for (const auto iDim : comps) globalAlpha[iDim] = globalRho[iDim] / globalR0V[iDim];)
+
+    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS
+    for (const auto iDim : comps) {
+      for (unsigned long k = 0; k < activePoints[iDim].size(); k++) {
+        const auto iPoint = activePoints[iDim][k];
+        sVec[iDim][k] = rVec[iDim][k] - globalAlpha[iDim]*vVec[iDim][k];
+        nodes->SetSmoothShat(iPoint, iDim, sVec[iDim][k] / nodes->GetSmoothingDiag(iPoint));
+      }
+    }
+    END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+    InitiateComms(geometry, config, MPI_QUANTITIES::SMOOTH_SHAT);
+    CompleteComms(geometry, config, MPI_QUANTITIES::SMOOTH_SHAT);
+
+    ComputeMatVec(comps, [&](unsigned long j, unsigned short iDim){ return nodes->GetSmoothShat(j, iDim); }, tVec);
+
+    DotActive(comps, {{&tVec, &sVec, &globalTS}, {&tVec, &tVec, &globalTT}});
+    DropBrokenDown(globalTT);
+    if (comps.empty()) continue;
+    SU2_OMP_SAFE_GLOBAL_ACCESS(for (const auto iDim : comps) globalOmega[iDim] = globalTS[iDim] / globalTT[iDim];)
+
+    BEGIN_SU2_OMP_SAFE_GLOBAL_ACCESS {
+      su2double localResNorm[3] = {0.0, 0.0, 0.0}, globalResNormSq[3] = {0.0, 0.0, 0.0};
+      for (size_t iComp = 0; iComp < comps.size(); iComp++) {
+        const auto iDim = comps[iComp];
+        for (unsigned long k = 0; k < activePoints[iDim].size(); k++) {
+          const auto iPoint = activePoints[iDim][k];
+          su2double source_i = nodes->GetLangevinSourceTerms(iPoint, iDim);
+          su2double phat = nodes->GetSmoothPhat(iPoint, iDim);
+          su2double shat = nodes->GetSmoothShat(iPoint, iDim);
+          source_i += globalAlpha[iDim]*phat + globalOmega[iDim]*shat;
+          nodes->SetLangevinSourceTerms(iPoint, iDim, source_i);
+          rVec[iDim][k] = sVec[iDim][k] - globalOmega[iDim]*tVec[iDim][k];
+          localResNorm[iComp] += pow(rVec[iDim][k], 2);
+        }
+      }
+      SU2_MPI::Allreduce(localResNorm, globalResNormSq, static_cast<int>(comps.size()), MPI_DOUBLE, MPI_SUM, SU2_MPI::GetComm());
+      for (size_t iComp = 0; iComp < comps.size(); iComp++) {
+        const auto iDim = comps[iComp];
+        globalResNorm[iDim] = (global_nPointLES[iDim]==0) ? su2double(0.0) : sqrt(globalResNormSq[iComp] / global_nPointLES[iDim]);
+      }
+    }
+    END_SU2_OMP_SAFE_GLOBAL_ACCESS
+
+    for (const auto iDim : comps) {
+      blockIter[iDim]++; totalIter[iDim]++; printIter[iDim]++;
+
+      /*--- Record convergence at the first iteration, then every 10, and finally once more at
+            whichever iteration ends the solve (converged or maxIter reached). printIter counts only
+            real BiCGSTAB update steps (unlike totalIter, which also advances once per block restart
+            to bound the iterations), so the first-iteration record is the first actual step. ---*/
+      const bool isConverged = (log10(globalResNorm[iDim]) < tol || totalIter[iDim] == maxIter);
+      const bool printConvergence = (printIter[iDim] == 1) || (printIter[iDim] % 10 == 0) || isConverged;
+
+      if (printConvergence) {
+        SU2_OMP_MASTER
+        if (rank == MASTER_NODE) history[iDim].emplace_back(printIter[iDim], log10(globalResNorm[iDim]));
+        END_SU2_OMP_MASTER
+      }
+
+      converged[iDim] = isConverged;
+      if (blockIter[iDim] >= gradRefreshInterval) needRestart[iDim] = true;
+    }
+  }
+
+  for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+
     SU2_OMP_MASTER
-    if (rank == MASTER_NODE) cout << "---------------------------------" << endl;
+    if (rank == MASTER_NODE) {
+      cout << "\nResidual of Laplacian smoothing along dimension " << iDim+1
+           << "\n---------------------------------"
+           << "\n   Iter       RMS Residual"
+           << "\n---------------------------------" << endl;
+      for (const auto& record : history[iDim]) {
+        cout << "  "
+             << std::setw(5) << record.first
+             << "       "
+             << std::setw(12) << std::fixed << std::setprecision(6) << record.second
+             << endl;
+      }
+      cout << "---------------------------------" << endl;
+    }
     END_SU2_OMP_MASTER
 
     {
@@ -1948,7 +2055,7 @@ void CTurbSASolver::SmoothLangevinSourceTerms(CConfig* config, CGeometry* geomet
         }
         END_SU2_OMP_SAFE_GLOBAL_ACCESS
 
-        const auto invDenom = 1.0 / max(global_nPointLES, 1ul);
+        const auto invDenom = 1.0 / max(global_nPointLES[iDim], 1ul);
         mean_check_old = globalChecks[0] * invDenom;
         var_check_old = globalChecks[1] * invDenom - pow(mean_check_old, 2);
 
