@@ -687,6 +687,7 @@ private:
   Kappa_1st_Flow,           /*!< \brief Lax 1st order dissipation coefficient for flow equations (coarse multigrid levels). */
   Kappa_2nd_Flow,           /*!< \brief JST 2nd order dissipation coefficient for flow equations. */
   Kappa_4th_Flow,           /*!< \brief JST 4th order dissipation coefficient for flow equations. */
+  LD2_Coeff,                /*!< \brief Gradient extrapolation coefficient (alpha) of the LD2 scheme. */
   Cent_Jac_Fix_Factor,              /*!< \brief Multiply the dissipation contribution to the Jacobian of central schemes
                                                 by this factor to make the global matrix more diagonal dominant. */
   Cent_Inc_Jac_Fix_Factor;          /*!< \brief Multiply the dissipation contribution to the Jacobian of incompressible central schemes */
@@ -5108,6 +5109,12 @@ public:
    * \return Calibrated constant for the JST method for the flow equations.
    */
   su2double GetKappa_4th_Flow(void) const { return Kappa_4th_Flow; }
+
+  /*!
+   * \brief Value of the gradient extrapolation coefficient (alpha) of the LD2 scheme.
+   * \return LD2 coefficient (1/3 recovers 4th order on uniform grids).
+   */
+  su2double GetLD2_Coeff(void) const { return LD2_Coeff; }
 
   /*!
    * \brief Factor by which to multiply the dissipation contribution to Jacobians of central schemes.

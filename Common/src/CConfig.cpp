@@ -2200,6 +2200,8 @@ void CConfig::SetConfig_Options() {
   addDoubleArrayOption("JST_SENSOR_COEFF", 2, false, jst_coeff);
   /*!\brief LAX_SENSOR_COEFF \n DESCRIPTION: 1st order artificial dissipation coefficients for the Lax-Friedrichs method. \ingroup Config*/
   addDoubleOption("LAX_SENSOR_COEFF", Kappa_1st_Flow, 0.15);
+  /*!\brief LD2_COEFF \n DESCRIPTION: Gradient extrapolation coefficient (alpha) of the LD2 scheme. \ingroup Config*/
+  addDoubleOption("LD2_COEFF", LD2_Coeff, 0.36);
   /*!\brief USE_ACCURATE_FLUX_JACOBIANS \n DESCRIPTION: Use numerically computed Jacobians for AUSM+up(2) and SLAU(2) \ingroup Config*/
   addBoolOption("USE_ACCURATE_FLUX_JACOBIANS", Use_Accurate_Jacobians, false);
   /*!\brief CENTRAL_JACOBIAN_FIX_FACTOR \n DESCRIPTION: Improve the numerical properties (diagonal dominance) of the global Jacobian matrix, 3 to 4 is "optimum" (central schemes) \ingroup Config*/
@@ -7649,6 +7651,7 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
             SU2_MPI::Error("LD2 scheme available for constant density flows only.", CURRENT_FUNCTION);
           if (Energy_Equation)
             cout << "WARNING: Current implementation of the LD2 scheme not compatible with the energy equation. JST employed in energy equation instead." << endl;
+          cout << "LD2 coefficient: " << LD2_Coeff << ".\n";
         }
         else {
             cout << "Jameson-Schmidt-Turkel scheme (2nd order in space) for the flow inviscid terms.\n";
