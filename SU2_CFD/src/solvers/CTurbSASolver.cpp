@@ -33,8 +33,6 @@
 #include "../../../Common/include/parallelization/omp_structure.hpp"
 #include "../../../Common/include/toolboxes/geometry_toolbox.hpp"
 #include "../../../Common/include/toolboxes/random_toolbox.hpp"
-#include <iomanip>  // DEBUG (temporary)
-#include <sstream>  // DEBUG (temporary)
 
 
 CTurbSASolver::CTurbSASolver(CGeometry *geometry, CConfig *config, const CSolver* flow_solver, unsigned short iMesh,
@@ -430,6 +428,8 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
   const bool implicit = (config->GetKind_TimeIntScheme() == EULER_IMPLICIT);
   const bool harmonic_balance = (config->GetTime_Marching() == TIME_MARCHING::HARMONIC_BALANCE);
   const bool transition_BC = config->GetSAParsedOptions().bc;
+  const bool dualTime = (config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_1ST ||
+                         config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND);
 
   auto* flowNodes = su2staticcast_p<CFlowVariable*>(solver_container[FLOW_SOL]->GetNodes());
 
@@ -511,9 +511,12 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
         numerics->SetMaxDelta(nodes->GetDES_FilterWidth(iPoint), 0.0);
         numerics->SetWallDistance(geometry->nodes->GetWall_Distance(iPoint), 0.0);
 
-        /*--- Mean eddy viscosity (SBS_USE_MEAN_TURB). ---*/
-        if (config->GetSBSParam().useMeanTurb)
+        /*--- Mean eddy viscosity (SBS_USE_MEAN_TURB), and nu_tilde^n for the lagged Patankar sink
+              (current nu_tilde without dual time stepping, where Solution_time_n is not maintained). ---*/
+        if (config->GetSBSParam().useMeanTurb) {
           numerics->SetAvgEddyViscosity(nodes->GetMeanEddyViscosity(iPoint), 0.0);
+          numerics->SetNuTildeTimeN(dualTime ? nodes->GetSolution_time_n(iPoint, 0) : nodes->GetSolution(iPoint, 0));
+        }
       }
 
     }
@@ -533,46 +536,6 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
     /*--- Compute the source term ---*/
 
     auto residual = numerics->ComputeResidual(config);
-
-    /*--- DEBUG (temporary): report the first non-finite source residual/Jacobian on this rank. ---*/
-    {
-      static bool reported = false;
-      bool finite = true;
-      for (unsigned short iVar = 0; iVar < nVar; iVar++) {
-        finite = finite && std::isfinite(SU2_TYPE::GetValue(residual[iVar]));
-        for (unsigned short jVar = 0; jVar < nVar; jVar++)
-          finite = finite && std::isfinite(SU2_TYPE::GetValue(residual.jacobian_i[iVar][jVar]));
-      }
-      if (!finite && !reported) {
-        reported = true;
-        const auto* coord = geometry->nodes->GetCoord(iPoint);
-        const auto* vort = flowNodes->GetVorticity(iPoint);
-        std::ostringstream msg;
-        msg << std::setprecision(10) << "\n[SBS DEBUG] rank " << rank << " non-finite SA source at point "
-            << geometry->nodes->GetGlobalIndex(iPoint) << " (" << coord[0] << ", " << coord[1] << ", "
-            << (nDim == 3 ? coord[2] : 0.0) << "), time iter " << config->GetTimeIter() << ", inner iter "
-            << config->GetInnerIter() << "\n  solution:";
-        for (unsigned short iVar = 0; iVar < nVar; iVar++) msg << " " << nodes->GetSolution(iPoint, iVar);
-        msg << "\n  residual:";
-        for (unsigned short iVar = 0; iVar < nVar; iVar++) msg << " " << residual[iVar];
-        msg << "\n  jacobian row 0:";
-        for (unsigned short jVar = 0; jVar < nVar; jVar++) msg << " " << residual.jacobian_i[0][jVar];
-        msg << "\n  vorticity: " << vort[0] << " " << vort[1] << " " << vort[2]
-            << "\n  volume: " << geometry->nodes->GetVolume(iPoint)
-            << "  wall dist: " << geometry->nodes->GetWall_Distance(iPoint)
-            << "  DES length scale: " << nodes->GetDES_LengthScale(iPoint)
-            << "\n  rho: " << flowNodes->GetDensity(iPoint) << "  mu_lam: " << flowNodes->GetLaminarViscosity(iPoint)
-            << "  strain mag: " << flowNodes->GetStrainMag(iPoint);
-        if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES) {
-          msg << "\n  LES sensor: " << nodes->GetLES_Mode(iPoint) << "  filter width: " << nodes->GetDES_FilterWidth(iPoint);
-          if (config->GetSBSParam().StochasticBackscatter) {
-            msg << "  mean nu_t: " << nodes->GetMeanEddyViscosity(iPoint) << "\n  Langevin/stoch source:";
-            for (unsigned short iDim = 0; iDim < nDim; iDim++) msg << " " << nodes->GetLangevinSourceTerms(iPoint, iDim);
-          }
-        }
-        std::cout << msg.str() << std::endl;
-      }
-    }
 
     /*--- Store the intermittency ---*/
 

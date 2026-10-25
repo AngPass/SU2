@@ -204,14 +204,19 @@ class CSourceBase_TurbSA : public CNumerics {
 
     const su2double stochProdNut = -0.5 * Cmag * stochDotVor * nutFac;
 
-    prod -= stochProdNut;
+    if (config->GetSBSParam().useMeanTurb && stochProdNut > 0.0) {
+      /*--- Mean nu_t: the sink does not depend on nu_tilde, written as sink*(nu_tilde/nu_tilde^n)
+            (Patankar, lagged to the previous time step) in both residual and Jacobian, so that it
+            vanishes for nu_tilde -> 0 like the SA destruction. ---*/
+      const su2double nueN = max(nuTildeTimeN_i, 1e-12);
+      prod -= stochProdNut * max(ScalarVar_i[0], 0.0) / nueN;
+      Jacobian_i[0][0] -= stochProdNut / nueN;
+    } else {
+      prod -= stochProdNut;
 
-    /*--- d(stochProdNut)/d(nu_tilde). ---*/
-    Jacobian_i[0][0] += 0.5 * Cmag * stochDotVor * d_nutFac;
-
-    /*--- Mean nu_t: a sink is linearized as (sink/nu_tilde)*nu_tilde (Patankar), Jacobian only. ---*/
-    if (config->GetSBSParam().useMeanTurb && stochProdNut > 0.0 && ScalarVar_i[0] > 0.0)
-      Jacobian_i[0][0] -= stochProdNut / ScalarVar_i[0];
+      /*--- d(stochProdNut)/d(nu_tilde), zero with mean nu_t. ---*/
+      Jacobian_i[0][0] += 0.5 * Cmag * stochDotVor * d_nutFac;
+    }
 
     /*--- d(stochProdNut)/d(stochVar). ---*/
     if (isLangevin) {
@@ -262,7 +267,7 @@ class CSourceBase_TurbSA : public CNumerics {
       if (config->GetSBSParam().StochasticBackscatter) {
         AD::SetPreaccIn(maxDelta_i);
         AD::SetPreaccIn(wallDist_i);
-        if (config->GetSBSParam().useMeanTurb) AD::SetPreaccIn(avg_eddy_visc_i);
+        if (config->GetSBSParam().useMeanTurb) AD::SetPreaccIn(avg_eddy_visc_i, nuTildeTimeN_i);
       }
     }
 

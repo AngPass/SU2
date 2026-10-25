@@ -88,6 +88,8 @@ protected:
   avg_eddy_visc_i = 0.0,  /*!< \brief Time-averaged eddy viscosity at point i (Stochastic Backscatter Model, SA model). */
   avg_eddy_visc_j = 0.0;  /*!< \brief Time-averaged eddy viscosity at point j (Stochastic Backscatter Model, SA model). */
   su2double
+  nuTildeTimeN_i = 0.0;  /*!< \brief nu_tilde at the previous physical time step at point i, lags the Patankar sink (Stochastic Backscatter Model, SA model). */
+  su2double
   intermittency_eff_i, /*!< \brief effective intermittency at point i. */
   intermittency_i; /*!< \brief intermittency at point i. */
   su2double
@@ -910,6 +912,12 @@ public:
     avg_eddy_visc_i = val_avg_eddy_visc_i;
     avg_eddy_visc_j = val_avg_eddy_visc_j;
   }
+
+  /*!
+   * \brief Set nu_tilde at the previous physical time step (Stochastic Backscatter Model, SA model).
+   * \param[in] val_nu_tilde_n - Value of nu_tilde at time level n at point i.
+   */
+  inline void SetNuTildeTimeN(su2double val_nu_tilde_n) { nuTildeTimeN_i = val_nu_tilde_n; }
 
   /*!
    * \brief Set the stochastic variables from Langevin equations (Stochastic Backscatter Model).
