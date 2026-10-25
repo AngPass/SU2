@@ -623,6 +623,17 @@ public:
   static bool CheckStopFile();
 
   /*!
+   * \brief Stop-file check for time-domain problems. With DT_STEPPING_2ND the restart needs the solutions
+   *        of two consecutive time steps, so the first time the file is found the stop is delayed by one
+   *        time step and the files of the current one are written.
+   * \note Collective call, must be called by all ranks.
+   * \param[in] config - Definition of the particular problem.
+   * \param[out] writeFiles - true if the files of the current time step must be written even though the solver does not stop.
+   * \return Boolean indicating whether the solver must stop after the current time step.
+   */
+  static bool CheckStopFileTimeDomain(const CConfig* config, bool& writeFiles);
+
+  /*!
    * \brief Get whether a stop file was found by a previous check (no file system access, not collective).
    */
   static bool GetStopFileFound();

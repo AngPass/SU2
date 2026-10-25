@@ -69,6 +69,8 @@ class CDriver : public CDriverBase {
       fsi,         /*!< \brief FSI simulation flag.*/
       fem_solver;  /*!< \brief FEM fluid solver simulation flag. */
 
+  bool ForceOutput = false; /*!< \brief Write the files of the current time step even if the computation does not stop. */
+
   CFreeFormDefBox*** FFDBox;            /*!< \brief FFD FFDBoxes of the problem. */
 
   CIteration*** iteration_container;      /*!< \brief Container vector with all the iteration methods. */
