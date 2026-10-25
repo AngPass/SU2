@@ -482,7 +482,7 @@ void CMultizoneDriver::Output(unsigned long TimeIter) {
   for (iZone = 0; iZone < nZone; iZone++){
     wrote_files = output_container[iZone]->SetResultFiles(geometry_container[iZone][INST_0][MESH_0],
                                                             config_container[iZone],
-                                                            solver_container[iZone][INST_0][MESH_0], TimeIter, StopCalc || ForceOutput );
+                                                            solver_container[iZone][INST_0][MESH_0], TimeIter, StopCalc );
   }
 
   if (wrote_files){
@@ -677,15 +677,14 @@ bool CMultizoneDriver::Monitor(unsigned long TimeIter) {
 
   const bool FinalTimeReached = (CurTime >= MaxTime);
   const bool MaxIterationsReached = (TimeIter+1 >= nTimeIter);
-  const bool StopFileFound = COutput::CheckStopFileTimeDomain(driver_config, ForceOutput);
+  const bool StopFileFound = COutput::CheckStopFile();
 
   if ((TimeConvergence || FinalTimeReached || MaxIterationsReached || StopFileFound) && (rank == MASTER_NODE)){
     cout << "\n----------------------------- Solver Exit -------------------------------";
     if (TimeConvergence)  cout << "\nAll windowed time-averaged convergence criteria are fullfilled." << endl;
     if (FinalTimeReached) cout << "\nMaximum time reached (MAX_TIME = " << MaxTime << "s)." << endl;
     else if (MaxIterationsReached) cout << "\nMaximum number of time iterations reached (TIME_ITER = " << nTimeIter << ")." << endl;
-    if (StopFileFound) cout << "\nStop file found, exiting after time iteration " << TimeIter
-                            << " (restart with RESTART_ITER= " << TimeIter+1 << ")." << endl;
+    if (StopFileFound) cout << "\nStop file found, exiting after time iteration " << TimeIter << "." << endl;
     cout << "-------------------------------------------------------------------------" << endl;
   }
 

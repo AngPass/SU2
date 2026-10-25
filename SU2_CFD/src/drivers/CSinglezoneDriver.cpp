@@ -204,7 +204,7 @@ void CSinglezoneDriver::Output(unsigned long TimeIter) {
   bool wrote_files = output_container[ZONE_0]->SetResultFiles(geometry_container[ZONE_0][INST_0][MESH_0],
                                                                config_container[ZONE_0],
                                                                solver_container[ZONE_0][INST_0][MESH_0],
-                                                               TimeIter, StopCalc || ForceOutput);
+                                                               TimeIter, StopCalc);
 
   /*--- Save iteration solution for libROM ---*/
   if (config_container[MESH_0]->GetSave_libROM()) {
@@ -298,15 +298,14 @@ bool CSinglezoneDriver::Monitor(unsigned long TimeIter){
 
     FinalTimeReached = CurTime >= MaxTime;
     MaxIterationsReached = TimeIter+1 >= nTimeIter;
-    const bool StopFileFound = COutput::CheckStopFileTimeDomain(config_container[ZONE_0], ForceOutput);
+    const bool StopFileFound = COutput::CheckStopFile();
 
     if ((FinalTimeReached || MaxIterationsReached || TimeConvergence || StopFileFound) && (rank == MASTER_NODE)){
       cout << "\n----------------------------- Solver Exit -------------------------------";
       if (TimeConvergence) cout << "\nAll windowed time-averaged convergence criteria are fullfilled." << endl;
       if (FinalTimeReached) cout << "\nMaximum time reached (MAX_TIME = " << MaxTime << "s)." << endl;
       if (MaxIterationsReached) cout << "\nMaximum number of time iterations reached (TIME_ITER = " << nTimeIter << ")." << endl;
-      if (StopFileFound) cout << "\nStop file found, exiting after time iteration " << TimeIter
-                              << " (restart with RESTART_ITER= " << TimeIter+1 << ")." << endl;
+      if (StopFileFound) cout << "\nStop file found, exiting after time iteration " << TimeIter << "." << endl;
       cout << "-------------------------------------------------------------------------" << endl;
     }
     StopCalc = FinalTimeReached || MaxIterationsReached || TimeConvergence || StopFileFound;

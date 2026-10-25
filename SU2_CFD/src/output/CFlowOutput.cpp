@@ -4385,15 +4385,6 @@ void CFlowOutput::SetTimeAveragedFields(const CConfig *config) {
       AddVolumeOutput("MEAN_SOURCE_LANGEVIN-X", "MeanSourceLangevin_x", "BACKSCATTER", "Mean stochastic source term in x-Langevin equation");
       AddVolumeOutput("MEAN_SOURCE_LANGEVIN-Y", "MeanSourceLangevin_y", "BACKSCATTER", "Mean stochastic source term in y-Langevin equation");
       AddVolumeOutput("MEAN_SOURCE_LANGEVIN-Z", "MeanSourceLangevin_z", "BACKSCATTER", "Mean stochastic source term in z-Langevin equation");
-      AddVolumeOutput("MEAN_STOCHVAR-X", "MeanStochVar_x", "BACKSCATTER", "Mean x-component of the stochastic variable");
-      AddVolumeOutput("MEAN_STOCHVAR-Y", "MeanStochVar_y", "BACKSCATTER", "Mean y-component of the stochastic variable");
-      AddVolumeOutput("MEAN_STOCHVAR-Z", "MeanStochVar_z", "BACKSCATTER", "Mean z-component of the stochastic variable");
-      AddVolumeOutput("RMS_STOCHVAR-X", "RMS[StochVar_x]", "BACKSCATTER", "Mean square of the x-component of the stochastic variable");
-      AddVolumeOutput("RMS_STOCHVAR-Y", "RMS[StochVar_y]", "BACKSCATTER", "Mean square of the y-component of the stochastic variable");
-      AddVolumeOutput("RMS_STOCHVAR-Z", "RMS[StochVar_z]", "BACKSCATTER", "Mean square of the z-component of the stochastic variable");
-      AddVolumeOutput("VAR_STOCHVAR-X", "VarStochVar_x", "BACKSCATTER", "Variance of the x-component of the stochastic variable");
-      AddVolumeOutput("VAR_STOCHVAR-Y", "VarStochVar_y", "BACKSCATTER", "Variance of the y-component of the stochastic variable");
-      AddVolumeOutput("VAR_STOCHVAR-Z", "VarStochVar_z", "BACKSCATTER", "Variance of the z-component of the stochastic variable");
     }
   }
 }
@@ -4546,19 +4537,6 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
         csi_y = Node_Turb->GetLangevinSourceTerms(iPoint, 1);
         csi_z = Node_Turb->GetLangevinSourceTerms(iPoint, 2);
       }
-      /*--- Statistics of the stochastic variable: Var = <csi^2> - <csi>^2. ---*/
-      SetAvgVolumeOutputValue("MEAN_STOCHVAR-X", iPoint, csi_x);
-      SetAvgVolumeOutputValue("MEAN_STOCHVAR-Y", iPoint, csi_y);
-      SetAvgVolumeOutputValue("MEAN_STOCHVAR-Z", iPoint, csi_z);
-      SetAvgVolumeOutputValue("RMS_STOCHVAR-X", iPoint, csi_x*csi_x);
-      SetAvgVolumeOutputValue("RMS_STOCHVAR-Y", iPoint, csi_y*csi_y);
-      SetAvgVolumeOutputValue("RMS_STOCHVAR-Z", iPoint, csi_z*csi_z);
-      const su2double csiMean_x = GetVolumeOutputValue("MEAN_STOCHVAR-X", iPoint);
-      const su2double csiMean_y = GetVolumeOutputValue("MEAN_STOCHVAR-Y", iPoint);
-      const su2double csiMean_z = GetVolumeOutputValue("MEAN_STOCHVAR-Z", iPoint);
-      SetVolumeOutputValue("VAR_STOCHVAR-X", iPoint, GetVolumeOutputValue("RMS_STOCHVAR-X", iPoint) - csiMean_x*csiMean_x);
-      SetVolumeOutputValue("VAR_STOCHVAR-Y", iPoint, GetVolumeOutputValue("RMS_STOCHVAR-Y", iPoint) - csiMean_y*csiMean_y);
-      SetVolumeOutputValue("VAR_STOCHVAR-Z", iPoint, GetVolumeOutputValue("RMS_STOCHVAR-Z", iPoint) - csiMean_z*csiMean_z);
       /*--- Intensity actually applied by the solver (limiter and modeled fraction included). ---*/
       tke_estim *= GetStochForcingScaling(iPoint, config, Node_Turb);
       su2double stochSource_x = mag * tke_estim * csi_x;

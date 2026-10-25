@@ -84,20 +84,6 @@ bool COutput::CheckStopFile() {
   return STOP_FILE_FOUND;
 }
 
-bool COutput::CheckStopFileTimeDomain(const CConfig* config, bool& writeFiles) {
-  writeFiles = false;
-  const bool alreadyFound = STOP_FILE_FOUND;
-  if (!CheckStopFile()) return false;
-  if (alreadyFound || config->GetTime_Marching() != TIME_MARCHING::DT_STEPPING_2ND) return true;
-
-  /*--- First detection with DT_STEPPING_2ND: write this time step and stop after the next one. ---*/
-  writeFiles = true;
-  if (SU2_MPI::GetRank() == MASTER_NODE)
-    std::cout << "DT_STEPPING_2ND: running one more time step so that the restart files of two "
-                 "consecutive time steps are written.\n";
-  return false;
-}
-
 bool COutput::GetStopFileFound() { return STOP_FILE_FOUND; }
 
 COutput::COutput(const CConfig *config, unsigned short ndim, bool fem_output):
