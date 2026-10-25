@@ -82,8 +82,8 @@ protected:
   turb_ke_i,  /*!< \brief Turbulent kinetic energy at point i. */
   turb_ke_j;  /*!< \brief Turbulent kinetic energy at point j. */
   su2double
-  avg_turb_ke_i,  /*!< \brief Time-averaged turbulent kinetic energy at point i. */
-  avg_turb_ke_j;  /*!< \brief Time-averaged turbulent kinetic energy at point j. */
+  avg_turb_ke_i = 0.0,  /*!< \brief Time-averaged turbulent kinetic energy at point i. */
+  avg_turb_ke_j = 0.0;  /*!< \brief Time-averaged turbulent kinetic energy at point j. */
   su2double
   avg_eddy_visc_i = 0.0,  /*!< \brief Time-averaged eddy viscosity at point i (Stochastic Backscatter Model, SA model). */
   avg_eddy_visc_j = 0.0;  /*!< \brief Time-averaged eddy viscosity at point j (Stochastic Backscatter Model, SA model). */
@@ -115,11 +115,11 @@ protected:
   dist_i,  /*!< \brief Distance of point i to the nearest wall. */
   dist_j;  /*!< \brief Distance of point j to the nearest wall. */
   su2double
-  wallDist_i,  /*!< \brief Distance of point i to the nearest wall (auxiliary variable for Backscatter Model). */
-  wallDist_j;  /*!< \brief Distance of point j to the nearest wall (auxiliary variable for Backscatter Model). */
+  wallDist_i = 0.0,  /*!< \brief Distance of point i to the nearest wall (auxiliary variable for Backscatter Model). */
+  wallDist_j = 0.0;  /*!< \brief Distance of point j to the nearest wall (auxiliary variable for Backscatter Model). */
   su2double
-  maxDelta_i,  /*!< \brief Maximum cell size at point i (LES filter width). */
-  maxDelta_j;  /*!< \brief Maximum cell size at point j (LES filter width). */
+  maxDelta_i = 0.0,  /*!< \brief Maximum cell size at point i (LES filter width), not set by the boundary numerics. */
+  maxDelta_j = 0.0;  /*!< \brief Maximum cell size at point j (LES filter width), not set by the boundary numerics. */
   su2double
   FDDES_i, /*!< \brief Ratio of RANS to DDES lengthscale at point i (SST turbulence model). */
   FDDES_j; /*!< \brief Ratio of RANS to DDES lengthscale at point j (SST turbulence model). */
