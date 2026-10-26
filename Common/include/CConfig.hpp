@@ -1143,7 +1143,8 @@ private:
     bool besselScaleFactor;                 /*!< \brief Option for scaling the spatially-correlated random field using Bessel integral. */
     su2double StochBackscatterBoxBounds[6]; /*!< \brief Bounds of the box where the Stochastic Backscatter Model is active. */
     bool useMeanTurb;                       /*!< \brief Option for using a mean (time-averaged) turbulence quantity in the definition of the random source term. */
-    unsigned short stochSourceType;         /*!< \brief Kind of stochastic source term included in the balance equations. */
+    bool tkeStrain;                         /*!< \brief Option for estimating the subgrid kinetic energy as nu_t times the magnitude of the time-averaged strain rate (SA-based Stochastic Backscatter Model only). */
+    unsigned short stochSourceType;        /*!< \brief Kind of stochastic source term included in the balance equations. */
     bool filterStresses;                    /*!< \brief Option for high-pass filtering the modeled (subgrid) stress tensor where the LES sensor is active. Usable with any Hybrid RANS/LES method, independent of StochasticBackscatter. */
     bool dampTimeFiltering;                 /*!< \brief Option for scaling the high-pass stress filtering (filterStresses) by the modeled turbulent kinetic energy fraction (SST-based Stochastic Backscatter Model only). If false, the filtering is applied at full strength (modeled fraction = 1). */
     bool dampStochTerm;                     /*!< \brief Option for scaling the stochastic source terms (momentum and turbulence equations) by the modeled turbulent kinetic energy fraction (SST-based Stochastic Backscatter Model only). If false, the modeled fraction is 1, i.e. no damping. */
@@ -9892,6 +9893,15 @@ public:
    * \return SBS model parameters.
    */
   const CStochBackScatParam& GetSBSParam(void) const { return SBSParam; }
+
+  /*!
+   * \brief Check if the time-averaged velocity and strain rate are needed by the solver.
+   * \return True with FILTER_STRESSES or SBS_TKE_STRAIN (Hybrid RANS/LES).
+   */
+  bool GetSBS_MeanStrainNeeded(void) const {
+    return Kind_HybridRANSLES != NO_HYBRIDRANSLES &&
+           (SBSParam.filterStresses || (SBSParam.StochasticBackscatter && SBSParam.tkeStrain));
+  }
 
   /*!
    * \brief Get the DES Constant.

@@ -150,8 +150,10 @@ class CSourceBase_TurbSA : public CNumerics {
    */
   inline void AddStochSource(const CConfig* config, CSAVariables& var, su2double& prod) {
 
-    /*--- Intensity weighted by the LES sensor. ---*/
-    const su2double Cmag = config->GetSBSParam().SBS_Cmag * lesMode_i;
+    /*--- Intensity weighted by the LES sensor. The energy transfer Cmag*k*(Omega.xi) maps to nu_t through
+          dk/dnu_t: k = (nu_t/L)^2 gives (Cmag/2)*nu_t*(Omega.xi); k = nu_t*|S_mean| (SBS_TKE_STRAIN, with
+          |S_mean| frozen in time, so it cancels) gives Cmag*nu_t*(Omega.xi), hence the factor 2 below. ---*/
+    const su2double Cmag = config->GetSBSParam().SBS_Cmag * lesMode_i * (config->GetSBSParam().tkeStrain ? 2.0 : 1.0);
 
     const bool isLangevin = (config->GetSBSParam().stochSourceType == LANGEVIN);
     const su2double stochDotVor = isLangevin

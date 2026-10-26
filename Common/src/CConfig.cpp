@@ -3192,6 +3192,9 @@ void CConfig::SetConfig_Options() {
   /* DESCRIPTION: Use a mean (time-averaged) turbulence quantity in the definition of the stochastic source term. */
   addBoolOption("SBS_USE_MEAN_TURB", SBSParam.useMeanTurb, false);
 
+  /* DESCRIPTION: Estimate the subgrid kinetic energy as nu_t times the mean strain-rate magnitude (SA-based models) */
+  addBoolOption("SBS_TKE_STRAIN", SBSParam.tkeStrain, false);
+
   /* DESCRIPTION: High-pass filter the modeled stresses, weighted by the LES sensor (Hybrid RANS/LES) */
   addBoolOption("FILTER_STRESSES", SBSParam.filterStresses, false);
 
@@ -4258,7 +4261,7 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
 
   /*--- Default RESTART_AVG_FIELDS: mean TKE and mean velocity. ---*/
   if ((Wrt_Restart_Averages ||
-       (Restart_Average && Kind_HybridRANSLES != NO_HYBRIDRANSLES && SBSParam.filterStresses)) &&
+       (Restart_Average && GetSBS_MeanStrainNeeded())) &&
       nRestartAvgFields == 0) {
     static const string defaultRestartAvgFields[] = {
       "MEAN_TURB_KIN_ENERGY", "MEAN_VELOCITY-X", "MEAN_VELOCITY-Y", "MEAN_VELOCITY-Z"};
@@ -4323,6 +4326,17 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
       !(SBSParam.StochasticBackscatter && IsHybridRANSLES_SST(Kind_HybridRANSLES)))
     SU2_MPI::Error("DAMP_TIME_FILTERING and SBS_DAMP_SOURCE require the SST-based Stochastic Backscatter Model "
                    "(the modeled fraction of turbulent kinetic energy is not computed otherwise).", CURRENT_FUNCTION);
+
+  if (SBSParam.tkeStrain) {
+    if (!SBSParam.StochasticBackscatter || Kind_HybridRANSLES == NO_HYBRIDRANSLES || IsHybridRANSLES_SST(Kind_HybridRANSLES))
+      SU2_MPI::Error("SBS_TKE_STRAIN can only be activated with a SA-based Stochastic Backscatter Model.", CURRENT_FUNCTION);
+    if (SBSParam.useMeanTurb)
+      SU2_MPI::Error("SBS_TKE_STRAIN requires SBS_USE_MEAN_TURB= NO.", CURRENT_FUNCTION);
+    /*--- Otherwise the mean velocity is never populated and the forcing stays zero. ---*/
+    if (!Wrt_Restart_Averages && !Restart_Average)
+      SU2_MPI::Error("SBS_TKE_STRAIN requires WRT_RESTART_AVERAGES= YES or RESTART_AVERAGE= YES (mean strain rate).",
+                     CURRENT_FUNCTION);
+  }
 
   if (SBSParam.sbsRansConstraint && !IsHybridRANSLES_SST(Kind_HybridRANSLES))
     SU2_MPI::Error("SBS_RANS_CONSTRAINT can only be activated with a SST-based Hybrid RANS/LES model.", CURRENT_FUNCTION);
@@ -7051,6 +7065,8 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
             } else {
               cout << "| No smoothing applied to stochastic source terms in Langevin equations." << endl;
             }
+            if (SBSParam.tkeStrain)
+              cout << "| Subgrid kinetic energy estimated as nu_t times the mean strain-rate magnitude." << endl;
             if (SBSParam.stochSourceTurb)
               cout << "| Stochastic source term included in turbulence model equation." << endl;
             else

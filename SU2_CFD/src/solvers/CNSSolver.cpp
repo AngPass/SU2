@@ -83,9 +83,9 @@ void CNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, C
 
   CommonPreprocessing(geometry, solver_container, config, iMesh, iRKStep, RunTime_EqSystem, Output);
 
-  /*--- Mean strain rate from the mean velocity gradient, once per time step (FILTER_STRESSES). ---*/
+  /*--- Mean strain rate from the mean velocity gradient, once per time step (FILTER_STRESSES, SBS_TKE_STRAIN). ---*/
 
-  if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses && InnerIter == 0) {
+  if (config->GetSBS_MeanStrainNeeded() && InnerIter == 0) {
     InitiateComms(geometry, config, MPI_QUANTITIES::MEAN_VELOCITY);
     CompleteComms(geometry, config, MPI_QUANTITIES::MEAN_VELOCITY);
 

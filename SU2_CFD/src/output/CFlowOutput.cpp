@@ -2661,9 +2661,9 @@ void CFlowOutput::RestoreAveragedFields(CConfig *config, CGeometry *geometry, CS
   vector<string> fileFieldNames;
 
   /*--- Frozen mode (WRT_RESTART_AVERAGES=NO): seed the solver's mean velocity here, once. ---*/
-  /*--- The mean velocity node storage only exists with FILTER_STRESSES (see CNSVariable/CIncNSVariable). ---*/
-  const bool filterStresses = config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses;
-  CVariable* const Node_Flow = (!config->GetWrt_Restart_Averages() && filterStresses && solver_container != nullptr) ?
+  /*--- The mean velocity node storage only exists with FILTER_STRESSES or SBS_TKE_STRAIN (see CNSVariable/CIncNSVariable). ---*/
+  const bool meanStrainNeeded = config->GetSBS_MeanStrainNeeded();
+  CVariable* const Node_Flow = (!config->GetWrt_Restart_Averages() && meanStrainNeeded && solver_container != nullptr) ?
       solver_container[FLOW_SOL]->GetNodes() : nullptr;
 
   const bool found = SBSRestartToolbox::ReadMeanFields(filename, geometry, nSamples,
@@ -4354,8 +4354,8 @@ void CFlowOutput::SetTimeAveragedFields(const CConfig *config) {
       AddVolumeOutput("MODELED_REYNOLDS_STRESS_YZ", "ModeledReynoldsStress_YZ", "TIME_AVERAGE", "Modeled Reynolds stress yz-component");
     }
 
-    if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses) {
-      /*--- Mean strain rate used by FILTER_STRESSES, diagnostic only. ---*/
+    if (config->GetSBS_MeanStrainNeeded()) {
+      /*--- Mean strain rate used by FILTER_STRESSES and SBS_TKE_STRAIN, diagnostic only. ---*/
       AddVolumeOutput("MEAN_STRAIN_XX", "MeanStrainRate_XX", "TIME_AVERAGE", "Mean strain-rate tensor xx-component");
       AddVolumeOutput("MEAN_STRAIN_YY", "MeanStrainRate_YY", "TIME_AVERAGE", "Mean strain-rate tensor yy-component");
       AddVolumeOutput("MEAN_STRAIN_XY", "MeanStrainRate_XY", "TIME_AVERAGE", "Mean strain-rate tensor xy-component");
@@ -4405,9 +4405,8 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
   if (nDim == 3)
     SetAvgVolumeOutputValue("MEAN_VELOCITY-Z", iPoint, Node_Flow->GetVelocity(iPoint,2));
 
-  if (config->GetWrt_Restart_Averages() &&
-      config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses) {
-    /*--- Mean velocity back to the solver (FILTER_STRESSES), not in frozen mode. ---*/
+  if (config->GetWrt_Restart_Averages() && config->GetSBS_MeanStrainNeeded()) {
+    /*--- Mean velocity back to the solver (FILTER_STRESSES, SBS_TKE_STRAIN), not in frozen mode. ---*/
     Node_Flow->SetMeanVelocity(iPoint, 0, GetVolumeOutputValue("MEAN_VELOCITY-X", iPoint));
     Node_Flow->SetMeanVelocity(iPoint, 1, GetVolumeOutputValue("MEAN_VELOCITY-Y", iPoint));
     if (nDim == 3)
@@ -4468,7 +4467,7 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
       SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_YZ", iPoint, -nu_t*strain_yz);
     }
 
-    if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses) {
+    if (config->GetSBS_MeanStrainNeeded()) {
       /*--- MEAN_STRAIN_* is built by the solver, not averaged here. ---*/
       SetVolumeOutputValue("MEAN_STRAIN_XX", iPoint, Node_Flow->GetMeanStrainRate(iPoint, 0));
       SetVolumeOutputValue("MEAN_STRAIN_YY", iPoint, Node_Flow->GetMeanStrainRate(iPoint, 1));

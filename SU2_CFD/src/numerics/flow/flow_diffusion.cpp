@@ -183,6 +183,13 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
     su2double turbKinEn_j = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_j : turb_ke_j;
     tke_i = lesMode_i * turbKinEn_i;
     tke_j = lesMode_j * turbKinEn_j;
+  } else if (config->GetSBSParam().tkeStrain) {
+    /*--- k = nu_t*|S_mean|, |S_mean| = sqrt(2 S_ij S_ij) from the stored 2*S_ij (deviatoric). ---*/
+    auto meanStrainMag = [](const su2double* m) {
+      return sqrt(0.5*(m[0]*m[0] + m[1]*m[1] + m[2]*m[2]) + m[3]*m[3] + m[4]*m[4] + m[5]*m[5]);
+    };
+    tke_i = lesMode_i * Eddy_Viscosity_i / PrimVar_i[nDim+2] * meanStrainMag(meanStrainRate_i);
+    tke_j = lesMode_j * Eddy_Viscosity_j / PrimVar_j[nDim+2] * meanStrainMag(meanStrainRate_j);
   } else {
     su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_i : Eddy_Viscosity_i / PrimVar_i[nDim+2];
     su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_j : Eddy_Viscosity_j / PrimVar_j[nDim+2];
@@ -224,7 +231,7 @@ void CAvgGrad_Base::SetPreaccInHybridRANSLES(const CConfig* config) {
     AD::SetPreaccIn(lesMode_i);
     AD::SetPreaccIn(lesMode_j);
   }
-  if (sbs.filterStresses) {
+  if (config->GetSBS_MeanStrainNeeded()) {
     AD::SetPreaccIn(meanStrainRate_i, 6);
     AD::SetPreaccIn(meanStrainRate_j, 6);
   }
@@ -232,7 +239,7 @@ void CAvgGrad_Base::SetPreaccInHybridRANSLES(const CConfig* config) {
 
   AD::SetPreaccIn(stochVar_i, 3);
   AD::SetPreaccIn(stochVar_j, 3);
-  if (!sst) {
+  if (!sst && !sbs.tkeStrain) {
     AD::SetPreaccIn(maxDelta_i);
     AD::SetPreaccIn(maxDelta_j);
   }

@@ -521,9 +521,9 @@ CNumerics::ResidualType<> CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsign
     }
   }
 
-  /*--- Mean strain rate, for FILTER_STRESSES. ---*/
+  /*--- Mean strain rate, for FILTER_STRESSES and SBS_TKE_STRAIN. ---*/
 
-  if (hybridActive && config->GetSBSParam().filterStresses) {
+  if (hybridActive && config->GetSBS_MeanStrainNeeded()) {
     for (unsigned short iVar = 0; iVar < 6; iVar++)
       numerics->SetMeanStrainRate(iVar, nodes->GetMeanStrainRate(iPoint, iVar),
                                         nodes->GetMeanStrainRate(jPoint, iVar));
