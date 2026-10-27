@@ -400,6 +400,38 @@ protected:
   }
 
   /*!
+   * \brief Subgrid kinetic energy of the stochastic forcing, weighted by the LES sensor (as in CAvgGrad_Base::SetStochSourceMom).
+   * \param iPoint - Index of the point.
+   * \param config - Definition of the particular problem.
+   * \param node_flow - Flow solver solution.
+   * \param node_turb - Turbulence-model solver solution.
+   * \return Estimated subgrid kinetic energy.
+   */
+  inline su2double GetStochTkeEstimate(unsigned long iPoint, const CConfig *config, const CVariable *node_flow, const CVariable *node_turb) const {
+
+    const su2double lesSensor = node_flow->GetLES_Mode(iPoint);
+
+    if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
+      const su2double tke = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanTurbKinEnergy(iPoint) : node_turb->GetSolution(iPoint, 0);
+      return lesSensor * tke;
+    }
+
+    const su2double nuT = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(iPoint)
+                                                                : node_flow->GetEddyViscosity(iPoint) / node_flow->GetDensity(iPoint);
+
+    if (config->GetSBSParam().tkeStrain) {
+      /*--- k = nu_t*|S_mean|, |S_mean| = sqrt(2 S_ij S_ij) from the stored 2*S_ij (deviatoric). ---*/
+      su2double m[6];
+      for (unsigned short iVar = 0; iVar < 6; iVar++) m[iVar] = node_flow->GetMeanStrainRate(iPoint, iVar);
+      const su2double meanStrainMag = sqrt(0.5*(m[0]*m[0] + m[1]*m[1] + m[2]*m[2]) + m[3]*m[3] + m[4]*m[4] + m[5]*m[5]);
+      return lesSensor * nuT * meanStrainMag;
+    }
+
+    const su2double lengthscale = max(config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint), EPS);
+    return lesSensor * pow(nuT/lengthscale, 2);
+  }
+
+  /*!
    * \brief Power u . f of the stochastic force f = -curl(a), a = C_B rho k xi (positive = backscatter).
    * \param iPoint - Index of the point.
    * \param config - Definition of the particular problem.
@@ -414,19 +446,7 @@ protected:
 
     /*--- Forcing intensity at point i, weighted by the LES sensor ---*/
 
-    su2double tkeEstim_i = 0.0;
-    const su2double lesSensor_i = node_flow->GetLES_Mode(iPoint);
-
-    if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
-      su2double tke_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanTurbKinEnergy(iPoint) : node_turb->GetSolution(iPoint, 0);
-      tkeEstim_i = lesSensor_i * tke_i;
-    } else {
-      const su2double rho_i = node_flow->GetDensity(iPoint);
-      const su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(iPoint)
-                                                                    : node_flow->GetEddyViscosity(iPoint) / rho_i;
-      const su2double lengthscale_i = max(config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint), EPS);
-      tkeEstim_i = lesSensor_i * pow(nuT_i/lengthscale_i, 2);
-    }
+    const su2double tkeEstim_i = GetStochTkeEstimate(iPoint, config, node_flow, node_turb);
 
     su2double stochVec_i[3] = {0.0};
     unsigned short startVar = IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) ? 2 : 1;
@@ -452,19 +472,7 @@ protected:
 
       /*--- Compute forcing intensity at point j ---*/
 
-      su2double tkeEstim_j = 0.0;
-      const su2double lesSensor_j = node_flow->GetLES_Mode(jPoint);
-
-      if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
-        su2double tke_j = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanTurbKinEnergy(jPoint) : node_turb->GetSolution(jPoint, 0);
-        tkeEstim_j = lesSensor_j * tke_j;
-      } else {
-        const su2double rho_j = node_flow->GetDensity(jPoint);
-        const su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(jPoint)
-                                                                      : node_flow->GetEddyViscosity(jPoint) / rho_j;
-        const su2double lengthscale_j = max(config->GetConst_DES() * node_turb->GetDES_FilterWidth(jPoint), EPS);
-        tkeEstim_j = lesSensor_j * pow(nuT_j/lengthscale_j, 2);
-      }
+      const su2double tkeEstim_j = GetStochTkeEstimate(jPoint, config, node_flow, node_turb);
 
       su2double stochVec_j[3] = {0.0};
       for (unsigned short iDim = 0; iDim < nDim; iDim++) {
@@ -515,19 +523,7 @@ protected:
 
     /*--- Forcing intensity at point i, weighted by the LES sensor ---*/
 
-    su2double tkeEstim_i = 0.0;
-    const su2double lesSensor_i = node_flow->GetLES_Mode(iPoint);
-
-    if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
-      su2double tke_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanTurbKinEnergy(iPoint) : node_turb->GetSolution(iPoint, 0);
-      tkeEstim_i = lesSensor_i * tke_i;
-    } else {
-      const su2double rho_i = node_flow->GetDensity(iPoint);
-      const su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? node_turb->GetMeanEddyViscosity(iPoint)
-                                                                    : node_flow->GetEddyViscosity(iPoint) / rho_i;
-      const su2double lengthscale_i = max(config->GetConst_DES() * node_turb->GetDES_FilterWidth(iPoint), EPS);
-      tkeEstim_i = lesSensor_i * pow(nuT_i/lengthscale_i, 2);
-    }
+    const su2double tkeEstim_i = GetStochTkeEstimate(iPoint, config, node_flow, node_turb);
 
     su2double stochVec_i[3] = {0.0};
     unsigned short startVar = IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) ? 2 : 1;

@@ -4518,18 +4518,9 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
     }
 
     if (config->GetSBSParam().StochasticBackscatter) {
-      const su2double lesSensor = Node_Flow->GetLES_Mode(iPoint);
       const su2double mag = config->GetSBSParam().SBS_Cmag;
       /*--- Weighted by the LES sensor. ---*/
-      su2double tke_estim = 0.0;
-      if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
-        su2double tke = (config->GetSBSParam().useMeanTurb) ? Node_Turb->GetMeanTurbKinEnergy(iPoint) : Node_Turb->GetSolution(iPoint, 0);
-        tke_estim = lesSensor * tke;
-      } else {
-        const su2double lengthscale = max(config->GetConst_DES() * Node_Turb->GetDES_FilterWidth(iPoint), EPS);
-        const su2double nutScale = (config->GetSBSParam().useMeanTurb) ? Node_Turb->GetMeanEddyViscosity(iPoint) : nu_t;
-        tke_estim = lesSensor * pow(nutScale/lengthscale, 2);
-      }
+      su2double tke_estim = GetStochTkeEstimate(iPoint, config, Node_Flow, Node_Turb);
       su2double csi_x, csi_y, csi_z;
       if (config->GetSBSParam().stochSourceType == LANGEVIN) {
         unsigned short startVar = IsHybridRANSLES_SST(config->GetKind_HybridRANSLES()) ? 1 : 0;
