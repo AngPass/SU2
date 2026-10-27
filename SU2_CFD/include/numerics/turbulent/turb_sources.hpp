@@ -115,14 +115,17 @@ class CSourceBase_TurbSA : public CNumerics {
   /*!
    * \brief Include source-term residuals for Langevin equations (Stochastic Backscatter Model) 
    */
-  inline void ResidualStochEquations(bool meanTurb, su2double timeStep, const su2double ct, su2double delta,
+  inline void ResidualStochEquations(bool meanTurb, bool tkeStrain, su2double timeStep, const su2double ct, su2double delta,
                                      su2double wallDist, const CSAVariables& var, TIME_MARCHING time_marching) {
 
     const su2double& nue = ScalarVar_i[0];
     const su2double nut = (meanTurb) ? max(avg_eddy_visc_i, 1e-10) : max(nue*var.fv1, 1e-10);
 
+    /*--- tLES = ct*delta/sqrt(k): k = (nu_t/delta)^2 gives ct*delta^2/nu_t, k = nu_t*|S_mean| with SBS_TKE_STRAIN,
+          capped by the former so that it does not diverge where |S_mean| -> 0. ---*/
     su2double tRANS = min(wallDist*wallDist/nut, 10.0*timeStep);
     su2double tLES = ct*delta*delta/nut;
+    if (tkeStrain) tLES = min(tLES, ct*delta/sqrt(max(nut*MeanStrainMag(meanStrainRate_i), 1e-10)));
     su2double tBlended = lesMode_i*tLES + (1.0-lesMode_i)*tRANS;
     su2double tRat = timeStep / tBlended;
     
@@ -271,6 +274,7 @@ class CSourceBase_TurbSA : public CNumerics {
         AD::SetPreaccIn(maxDelta_i);
         AD::SetPreaccIn(wallDist_i);
         if (config->GetSBSParam().useMeanTurb) AD::SetPreaccIn(avg_eddy_visc_i, nuTildeTimeN_i);
+        if (config->GetSBSParam().tkeStrain) AD::SetPreaccIn(meanStrainRate_i, 6);
       }
     }
 
@@ -400,8 +404,8 @@ class CSourceBase_TurbSA : public CNumerics {
       /*--- Compute residual for Langevin equations (Stochastic Backscatter Model). ---*/
 
       if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
-        ResidualStochEquations(config->GetSBSParam().useMeanTurb, config->GetDelta_UnstTimeND(), config->GetSBSParam().SBS_Ctau, maxDelta_i, wallDist_i,
-                               var, config->GetTime_Marching());
+        ResidualStochEquations(config->GetSBSParam().useMeanTurb, config->GetSBSParam().tkeStrain, config->GetDelta_UnstTimeND(),
+                               config->GetSBSParam().SBS_Ctau, maxDelta_i, wallDist_i, var, config->GetTime_Marching());
       }
     }
 

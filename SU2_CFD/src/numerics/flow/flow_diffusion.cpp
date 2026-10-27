@@ -184,14 +184,11 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
     tke_i = lesMode_i * turbKinEn_i;
     tke_j = lesMode_j * turbKinEn_j;
   } else if (config->GetSBSParam().tkeStrain) {
-    /*--- k = nu_t*|S_mean|, |S_mean| = sqrt(2 S_ij S_ij) from the stored 2*S_ij (deviatoric). ---*/
-    auto meanStrainMag = [](const su2double* m) {
-      return sqrt(0.5*(m[0]*m[0] + m[1]*m[1] + m[2]*m[2]) + m[3]*m[3] + m[4]*m[4] + m[5]*m[5]);
-    };
+    /*--- k = nu_t*|S_mean|. ---*/
     su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_i : Eddy_Viscosity_i / PrimVar_i[nDim+2];
     su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_j : Eddy_Viscosity_j / PrimVar_j[nDim+2];
-    tke_i = lesMode_i * nuT_i * meanStrainMag(meanStrainRate_i);
-    tke_j = lesMode_j * nuT_j * meanStrainMag(meanStrainRate_j);
+    tke_i = lesMode_i * nuT_i * MeanStrainMag(meanStrainRate_i);
+    tke_j = lesMode_j * nuT_j * MeanStrainMag(meanStrainRate_j);
   } else {
     su2double nuT_i = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_i : Eddy_Viscosity_i / PrimVar_i[nDim+2];
     su2double nuT_j = (config->GetSBSParam().useMeanTurb) ? avg_eddy_visc_j : Eddy_Viscosity_j / PrimVar_j[nDim+2];

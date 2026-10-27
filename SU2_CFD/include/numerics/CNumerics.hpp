@@ -942,6 +942,14 @@ public:
   }
 
   /*!
+   * \brief Magnitude |S_mean| = sqrt(2 S_ij S_ij) of the mean strain rate, from the stored 2*S_ij (deviatoric).
+   * \param[in] m - The 6 components, in the order of SetMeanStrainRate.
+   */
+  static inline su2double MeanStrainMag(const su2double* m) {
+    return sqrt(0.5*(m[0]*m[0] + m[1]*m[1] + m[2]*m[2]) + m[3]*m[3] + m[4]*m[4] + m[5]*m[5]);
+  }
+
+  /*!
    * \brief Set the LES sensor for hybrid RANS-LES methods.
    * \param[in] val_lesMode_i - Value of the LES sensor at point i.
    * \param[in] val_lesMode_j - Value of the LES sensor at point j.

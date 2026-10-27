@@ -517,6 +517,12 @@ void CTurbSASolver::Source_Residual(CGeometry *geometry, CSolver **solver_contai
           numerics->SetAvgEddyViscosity(nodes->GetMeanEddyViscosity(iPoint), 0.0);
           numerics->SetNuTildeTimeN(dualTime ? nodes->GetSolution_time_n(iPoint, 0) : nodes->GetSolution(iPoint, 0));
         }
+
+        /*--- Mean strain rate, for the time scale of the Langevin equations (SBS_TKE_STRAIN). ---*/
+        if (config->GetSBSParam().tkeStrain) {
+          for (unsigned short iVar = 0; iVar < 6; iVar++)
+            numerics->SetMeanStrainRate(iVar, flowNodes->GetMeanStrainRate(iPoint, iVar), 0.0);
+        }
       }
 
     }
@@ -1406,6 +1412,7 @@ void CTurbSASolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeomet
 
   /*--- Same time scale as the Langevin equations (ResidualStochEquations). ---*/
   const bool useMeanTurb = config->GetSBSParam().useMeanTurb;
+  const bool tkeStrain = config->GetSBSParam().tkeStrain;
 
   SU2_OMP_FOR_STAT(omp_chunk_size)
   for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
@@ -1415,6 +1422,12 @@ void CTurbSASolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeomet
                                 : nodes->GetmuT(iPoint) / flowNodes->GetDensity(iPoint);
     nuT = max(nuT, 1e-10);
     su2double timeLES = config->GetSBSParam().SBS_Ctau * maxDelta*maxDelta / nuT;
+    if (tkeStrain) {
+      su2double meanStrain[6];
+      for (unsigned short iVar = 0; iVar < 6; iVar++) meanStrain[iVar] = flowNodes->GetMeanStrainRate(iPoint, iVar);
+      timeLES = min(timeLES, config->GetSBSParam().SBS_Ctau * maxDelta /
+                             sqrt(max(nuT * CNumerics::MeanStrainMag(meanStrain), 1e-10)));
+    }
     su2double timeRANS = min(wallDist*wallDist / nuT, 10.0*timeStep);
     su2double lesMode = nodes->GetLES_Mode(iPoint);
     su2double turbTime = timeRANS * (1.0-lesMode) + timeLES * lesMode;
