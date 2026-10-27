@@ -152,7 +152,8 @@ class CSourceBase_TurbSA : public CNumerics {
 
     /*--- Intensity weighted by the LES sensor. The energy transfer Cmag*k*(Omega.xi) maps to nu_t through
           dk/dnu_t: k = (nu_t/L)^2 gives (Cmag/2)*nu_t*(Omega.xi); k = nu_t*|S_mean| (SBS_TKE_STRAIN, with
-          |S_mean| frozen in time, so it cancels) gives Cmag*nu_t*(Omega.xi), hence the factor 2 below. ---*/
+          |S_mean| frozen in time, so it cancels) gives Cmag*nu_t*(Omega.xi), hence the factor 2 below.
+          Same with the mean nu_t (SBS_USE_MEAN_TURB). ---*/
     const su2double Cmag = config->GetSBSParam().SBS_Cmag * lesMode_i * (config->GetSBSParam().tkeStrain ? 2.0 : 1.0);
 
     const bool isLangevin = (config->GetSBSParam().stochSourceType == LANGEVIN);

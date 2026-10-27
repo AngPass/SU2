@@ -1740,8 +1740,7 @@ void COutput::PreprocessVolumeOutput(CConfig *config){
       }
     }
 
-    /*--- Also in frozen mode (RESTART_AVERAGE=YES, WRT_RESTART_AVERAGES=NO). ---*/
-    if (config->GetSBS_MeanStrainNeeded() && (config->GetWrt_Restart_Averages() || config->GetRestart_Average())) {
+    if (config->GetSBS_MeanStrainNeeded()) {
       requiredAvgFields.emplace_back("MEAN_VELOCITY-X");
       requiredAvgFields.emplace_back("MEAN_VELOCITY-Y");
       if (nDim == 3) requiredAvgFields.emplace_back("MEAN_VELOCITY-Z");

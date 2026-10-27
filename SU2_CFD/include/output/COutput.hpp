@@ -1113,7 +1113,7 @@ protected:
    * \brief Restore the averaged volume output fields from the companion file (RESTART_AVERAGE).
    * \param[in] config - Definition of the particular problem per zone.
    * \param[in] geometry - Geometrical definition of the problem.
-   * \param[in] solver_container - The container holding all solution data (frozen mode).
+   * \param[in] solver_container - The container holding all solution data (to seed the solver's mean velocity).
    */
   inline virtual void RestoreAveragedFields(CConfig *config, CGeometry* geometry, CSolver** solver_container){}
 

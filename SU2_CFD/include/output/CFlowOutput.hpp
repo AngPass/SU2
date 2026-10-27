@@ -345,7 +345,7 @@ protected:
   void WriteAveragedFields(CConfig *config, CGeometry *geometry) override;
 
   /*!
-   * \brief Restore the averaged volume output fields (and, in frozen mode, the solver's mean velocity).
+   * \brief Restore the averaged volume output fields and seed the solver's mean velocity.
    * \param[in] config - Definition of the particular problem per zone.
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] solver_container - The container holding all solution data.

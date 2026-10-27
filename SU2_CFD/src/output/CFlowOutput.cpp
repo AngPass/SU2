@@ -2660,10 +2660,11 @@ void CFlowOutput::RestoreAveragedFields(CConfig *config, CGeometry *geometry, CS
   unsigned long nSamples = 0;
   vector<string> fileFieldNames;
 
-  /*--- Frozen mode (WRT_RESTART_AVERAGES=NO): seed the solver's mean velocity here, once. ---*/
+  /*--- Seed the solver's mean velocity, so that the first time step already uses the restored mean
+        (it is then updated by LoadTimeAveragedData). ---*/
   /*--- The mean velocity node storage only exists with FILTER_STRESSES or SBS_TKE_STRAIN (see CNSVariable/CIncNSVariable). ---*/
   const bool meanStrainNeeded = config->GetSBS_MeanStrainNeeded();
-  CVariable* const Node_Flow = (!config->GetWrt_Restart_Averages() && meanStrainNeeded && solver_container != nullptr) ?
+  CVariable* const Node_Flow = (meanStrainNeeded && solver_container != nullptr) ?
       solver_container[FLOW_SOL]->GetNodes() : nullptr;
 
   const bool found = SBSRestartToolbox::ReadMeanFields(filename, geometry, nSamples,
@@ -2683,9 +2684,7 @@ void CFlowOutput::RestoreAveragedFields(CConfig *config, CGeometry *geometry, CS
   if (!found) {
     if (rank == MASTER_NODE) {
       cout << "Warning: RESTART_AVERAGE= YES but the time-averaged fields file " << filename
-           << " was not found (check RESTART_ITER_AVERAGE): the running averages start from zero";
-      if (Node_Flow != nullptr) cout << " and the frozen mean velocity used by FILTER_STRESSES is zero";
-      cout << "." << endl;
+           << " was not found (check RESTART_ITER_AVERAGE): the running averages start from zero." << endl;
     }
     return;
   }
@@ -2693,10 +2692,6 @@ void CFlowOutput::RestoreAveragedFields(CConfig *config, CGeometry *geometry, CS
   priorAvgSamples = nSamples;
   if (rank == MASTER_NODE) {
     cout << "Restored time-averaged fields from " << filename << " (" << nSamples << " prior samples)." << endl;
-    if (Node_Flow != nullptr) {
-      cout << "WRT_RESTART_AVERAGES=NO: the restored mean velocity is frozen -- FILTER_STRESSES will use it "
-              "as-is and it will not be updated internally for the rest of this run." << endl;
-    }
   }
 
   /*--- Warn about any field this run expects to continue (RESTART_AVG_FIELDS) that is missing from
@@ -4405,8 +4400,9 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
   if (nDim == 3)
     SetAvgVolumeOutputValue("MEAN_VELOCITY-Z", iPoint, Node_Flow->GetVelocity(iPoint,2));
 
-  if (config->GetWrt_Restart_Averages() && config->GetSBS_MeanStrainNeeded()) {
-    /*--- Mean velocity back to the solver (FILTER_STRESSES, SBS_TKE_STRAIN), not in frozen mode. ---*/
+  if (config->GetSBS_MeanStrainNeeded()) {
+    /*--- Running mean velocity back to the solver (FILTER_STRESSES, SBS_TKE_STRAIN).
+          Without RESTART_AVERAGE it starts from the current run. ---*/
     Node_Flow->SetMeanVelocity(iPoint, 0, GetVolumeOutputValue("MEAN_VELOCITY-X", iPoint));
     Node_Flow->SetMeanVelocity(iPoint, 1, GetVolumeOutputValue("MEAN_VELOCITY-Y", iPoint));
     if (nDim == 3)

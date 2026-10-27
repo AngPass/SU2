@@ -4259,13 +4259,14 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     Restart_Iter_Average = (Restart_Iter > 0) ? Restart_Iter - 1 : 0;
   }
 
-  /*--- Default RESTART_AVG_FIELDS: mean TKE and mean velocity. ---*/
+  /*--- Default RESTART_AVG_FIELDS: mean TKE (SST), mean eddy viscosity (SA) and mean velocity.
+        Fields that are not part of the volume output are skipped. ---*/
   if ((Wrt_Restart_Averages ||
        (Restart_Average && GetSBS_MeanStrainNeeded())) &&
       nRestartAvgFields == 0) {
     static const string defaultRestartAvgFields[] = {
-      "MEAN_TURB_KIN_ENERGY", "MEAN_VELOCITY-X", "MEAN_VELOCITY-Y", "MEAN_VELOCITY-Z"};
-    nRestartAvgFields = 4;
+      "MEAN_TURB_KIN_ENERGY", "MEAN_EDDY_VISCOSITY", "MEAN_VELOCITY-X", "MEAN_VELOCITY-Y", "MEAN_VELOCITY-Z"};
+    nRestartAvgFields = 5;
     RestartAvgFields = new string[nRestartAvgFields];
     for (unsigned short iField = 0; iField < nRestartAvgFields; iField++)
       RestartAvgFields[iField] = defaultRestartAvgFields[iField];
@@ -4330,12 +4331,6 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
   if (SBSParam.tkeStrain) {
     if (!SBSParam.StochasticBackscatter || Kind_HybridRANSLES == NO_HYBRIDRANSLES || IsHybridRANSLES_SST(Kind_HybridRANSLES))
       SU2_MPI::Error("SBS_TKE_STRAIN can only be activated with a SA-based Stochastic Backscatter Model.", CURRENT_FUNCTION);
-    if (SBSParam.useMeanTurb)
-      SU2_MPI::Error("SBS_TKE_STRAIN requires SBS_USE_MEAN_TURB= NO.", CURRENT_FUNCTION);
-    /*--- Otherwise the mean velocity is never populated and the forcing stays zero. ---*/
-    if (!Wrt_Restart_Averages && !Restart_Average)
-      SU2_MPI::Error("SBS_TKE_STRAIN requires WRT_RESTART_AVERAGES= YES or RESTART_AVERAGE= YES (mean strain rate).",
-                     CURRENT_FUNCTION);
   }
 
   if (SBSParam.sbsRansConstraint && !IsHybridRANSLES_SST(Kind_HybridRANSLES))
@@ -7030,12 +7025,6 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
           if (LES_FilterWidth > 0.0) cout << "User-specified LES filter width: " << LES_FilterWidth << endl;
           if (SBSParam.filterStresses) {
             cout << "| Modeled stress tensor high-pass filtered, weighted by the LES sensor (shielding function)." << endl;
-            if (!Wrt_Restart_Averages && !Restart_Average) {
-              cout << "| Warning: FILTER_STRESSES is active but both WRT_RESTART_AVERAGES and RESTART_AVERAGE are NO, "
-                      "so the mean velocity it filters against is never populated (stays zero): FILTER_STRESSES has no "
-                      "effect. Set WRT_RESTART_AVERAGES=YES to accumulate the mean internally, or RESTART_AVERAGE=YES "
-                      "to read it once from an existing companion restart-average file." << endl;
-            }
           }
           cout << "Stochastic Backscatter: ";
           if (SBSParam.StochasticBackscatter) {
@@ -7066,7 +7055,8 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
               cout << "| No smoothing applied to stochastic source terms in Langevin equations." << endl;
             }
             if (SBSParam.tkeStrain)
-              cout << "| Subgrid kinetic energy estimated as nu_t times the mean strain-rate magnitude." << endl;
+              cout << "| Subgrid kinetic energy estimated as " << (SBSParam.useMeanTurb ? "the mean nu_t" : "nu_t")
+                   << " times the mean strain-rate magnitude." << endl;
             if (SBSParam.stochSourceTurb)
               cout << "| Stochastic source term included in turbulence model equation." << endl;
             else
