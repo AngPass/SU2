@@ -752,7 +752,7 @@ private:
   Read_Binary_Restart,                /*!< \brief Read binary SU2 native restart files.*/
   Wrt_Restart_Overwrite,              /*!< \brief Overwrite restart files or append iteration number.*/
   Wrt_Restart_Averages,               /*!< \brief Persist TIME_AVERAGE/BACKSCATTER volume output fields in a companion file and restore them on restart. */
-  Restart_Average,                    /*!< \brief Restore the WRT_RESTART_AVERAGES companion file on restart. Defaults to RESTART_SOL. */
+  Restart_Average,                    /*!< \brief Restore the WRT_RESTART_AVERAGES companion file on restart (unsteady simulations only). */
   Wrt_Surface_Overwrite,              /*!< \brief Overwrite surface output files or append iteration number.*/
   Wrt_Volume_Overwrite,               /*!< \brief Overwrite volume output files or append iteration number.*/
   PyCustomSource,                     /*!< \brief Use a user-defined custom source term .*/

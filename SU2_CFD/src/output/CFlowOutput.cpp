@@ -4445,19 +4445,38 @@ void CFlowOutput::LoadTimeAveragedData(unsigned long iPoint, CVariable *Node_Flo
   if (config->GetKind_Turb_Model() != TURB_MODEL::NONE) {
     const su2double rho = Node_Flow->GetDensity(iPoint);
     const su2double nu_t = Node_Flow->GetEddyViscosity(iPoint) / rho;
+
     const auto vel_grad = Node_Flow->GetVelocityGradient(iPoint);
     const su2double vel_div = vel_grad(0,0) + vel_grad(1,1) + (nDim ==3 ? vel_grad(2,2) : 0.0);
-    const su2double strain_xx = 2*vel_grad(0,0) - (2.0/3.0)*vel_div;
-    const su2double strain_yy = 2*vel_grad(1,1) - (2.0/3.0)*vel_div;
-    const su2double strain_xy = vel_grad(0,1) + vel_grad(1,0);
-    SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_XX", iPoint, -nu_t*strain_xx);
-    SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_YY", iPoint, -nu_t*strain_yy);
-    SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_XY", iPoint, -nu_t*strain_xy);
+    su2double strain_xx = 2*vel_grad(0,0) - (2.0/3.0)*vel_div;
+    su2double strain_yy = 2*vel_grad(1,1) - (2.0/3.0)*vel_div;
+    su2double strain_xy = vel_grad(0,1) + vel_grad(1,0);
     su2double strain_zz = 0.0, strain_xz = 0.0, strain_yz = 0.0;
     if (nDim == 3){
       strain_zz = 2*vel_grad(2,2) - (2.0/3.0)*vel_div;
       strain_xz = vel_grad(0,2) + vel_grad(2,0);
       strain_yz = vel_grad(1,2) + vel_grad(2,1);
+    }
+
+    /*--- FILTER_STRESSES: subtract the filtered part, LES sensor times the mean strain rate,
+          scaled by the modeled fraction with DAMP_TIME_FILTERING (as in CAvgGrad_Base). ---*/
+    if (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES && config->GetSBSParam().filterStresses) {
+      const su2double filterWeight = Node_Flow->GetLES_Mode(iPoint) *
+        (config->GetSBSParam().dampTimeFiltering ? Node_Turb->GetModeledFraction(iPoint) : 1.0);
+      strain_xx -= filterWeight * Node_Flow->GetMeanStrainRate(iPoint, 0);
+      strain_yy -= filterWeight * Node_Flow->GetMeanStrainRate(iPoint, 1);
+      strain_xy -= filterWeight * Node_Flow->GetMeanStrainRate(iPoint, 3);
+      if (nDim == 3){
+        strain_zz -= filterWeight * Node_Flow->GetMeanStrainRate(iPoint, 2);
+        strain_xz -= filterWeight * Node_Flow->GetMeanStrainRate(iPoint, 4);
+        strain_yz -= filterWeight * Node_Flow->GetMeanStrainRate(iPoint, 5);
+      }
+    }
+
+    SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_XX", iPoint, -nu_t*strain_xx);
+    SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_YY", iPoint, -nu_t*strain_yy);
+    SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_XY", iPoint, -nu_t*strain_xy);
+    if (nDim == 3){
       SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_ZZ", iPoint, -nu_t*strain_zz);
       SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_XZ", iPoint, -nu_t*strain_xz);
       SetAvgVolumeOutputValue("MODELED_REYNOLDS_STRESS_YZ", iPoint, -nu_t*strain_yz);
