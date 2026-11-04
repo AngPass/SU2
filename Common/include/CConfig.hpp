@@ -1134,6 +1134,7 @@ private:
     su2double SBS_Cdelta;                   /*!< \brief Stochastic Backscatter Model lengthscale coefficient. */
     unsigned short SBS_maxIterSmooth;       /*!< \brief Maximum number of smoothing iterations for the SBS model. */
     su2double SBS_Ctau;                     /*!< \brief Stochastic Backscatter Model timescale coefficient. */
+    su2double SBS_TauConvMax;               /*!< \brief Upper bound of t_LES in units of Delta/|u| (0 = no bound). */
     su2double SBS_Cmag;                     /*!< \brief Stochastic Backscatter Model intensity coefficient. */
     su2double SBS_Kappa4;                   /*!< \brief 4th order artificial dissipation coefficient of the Langevin equations (Stochastic Backscatter Model), 0 for none. */
     bool stochSourceTurb;                   /*!< \brief Option for including stochastic source term in turbulence model equation (Stochastic Backscatter Model). */

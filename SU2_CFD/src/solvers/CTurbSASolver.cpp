@@ -1428,6 +1428,11 @@ void CTurbSASolver::ComputeOU_Process(CSolver **solver, CConfig *config, CGeomet
       timeLES = min(timeLES, config->GetSBSParam().SBS_Ctau * maxDelta /
                              sqrt(max(nuT * CNumerics::MeanStrainMag(meanStrain), 1e-10)));
     }
+    if (config->GetSBSParam().SBS_TauConvMax > 0.0) {
+      su2double vel2 = 0.0;
+      for (unsigned short iDim = 0; iDim < nDim; iDim++) vel2 += pow(flowNodes->GetVelocity(iPoint, iDim), 2);
+      timeLES = min(timeLES, config->GetSBSParam().SBS_TauConvMax * maxDelta / max(sqrt(vel2), 1e-10));
+    }
     su2double timeRANS = min(wallDist*wallDist / nuT, 10.0*timeStep);
     su2double lesMode = nodes->GetLES_Mode(iPoint);
     su2double turbTime = timeRANS * (1.0-lesMode) + timeLES * lesMode;

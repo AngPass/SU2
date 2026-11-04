@@ -116,7 +116,8 @@ class CSourceBase_TurbSA : public CNumerics {
    * \brief Include source-term residuals for Langevin equations (Stochastic Backscatter Model) 
    */
   inline void ResidualStochEquations(bool meanTurb, bool tkeStrain, su2double timeStep, const su2double ct, su2double delta,
-                                     su2double wallDist, const CSAVariables& var, TIME_MARCHING time_marching) {
+                                     su2double wallDist, const CSAVariables& var, TIME_MARCHING time_marching,
+                                     su2double tauConvMax = 0.0) {
 
     const su2double& nue = ScalarVar_i[0];
     const su2double nut = (meanTurb) ? max(avg_eddy_visc_i, 1e-10) : max(nue*var.fv1, 1e-10);
@@ -126,6 +127,11 @@ class CSourceBase_TurbSA : public CNumerics {
     su2double tRANS = min(wallDist*wallDist/nut, 10.0*timeStep);
     su2double tLES = ct*delta*delta/nut;
     if (tkeStrain) tLES = min(tLES, ct*delta/sqrt(max(nut*MeanStrainMag(meanStrainRate_i), 1e-10)));
+    if (tauConvMax > 0.0) {
+      su2double vel2 = 0.0;
+      for (unsigned short iDim = 0; iDim < nDim; iDim++) vel2 += pow(V_i[idx.Velocity()+iDim], 2);
+      tLES = min(tLES, tauConvMax*delta/max(sqrt(vel2), 1e-10));
+    }
     su2double tBlended = lesMode_i*tLES + (1.0-lesMode_i)*tRANS;
     su2double tRat = timeStep / tBlended;
     
@@ -405,7 +411,8 @@ class CSourceBase_TurbSA : public CNumerics {
 
       if (config->GetSBSParam().StochasticBackscatter && config->GetSBSParam().stochSourceType == LANGEVIN) {
         ResidualStochEquations(config->GetSBSParam().useMeanTurb, config->GetSBSParam().tkeStrain, config->GetDelta_UnstTimeND(),
-                               config->GetSBSParam().SBS_Ctau, maxDelta_i, wallDist_i, var, config->GetTime_Marching());
+                               config->GetSBSParam().SBS_Ctau, maxDelta_i, wallDist_i, var, config->GetTime_Marching(),
+                               config->GetSBSParam().SBS_TauConvMax);
       }
     }
 

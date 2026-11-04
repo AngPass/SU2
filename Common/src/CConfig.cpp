@@ -3149,6 +3149,8 @@ void CConfig::SetConfig_Options() {
 
   /* DESCRIPTION: SBS timescale coefficient */
   addDoubleOption("SBS_TIMESCALE_COEFF", SBSParam.SBS_Ctau, 0.05);
+  /* DESCRIPTION: Upper bound of the LES time scale of the Langevin equations, in units of Delta/|u| (0 = no bound) */
+  addDoubleOption("SBS_TIMESCALE_CONV_MAX", SBSParam.SBS_TauConvMax, 0.0);
 
   /* DESCRIPTION: SBS intensity coefficient */
   addDoubleOption("SBS_INTENSITY_COEFF", SBSParam.SBS_Cmag, 1.0);
