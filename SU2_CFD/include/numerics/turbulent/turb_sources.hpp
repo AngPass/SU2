@@ -281,6 +281,7 @@ class CSourceBase_TurbSA : public CNumerics {
         AD::SetPreaccIn(wallDist_i);
         if (config->GetSBSParam().useMeanTurb) AD::SetPreaccIn(avg_eddy_visc_i, nuTildeTimeN_i);
         if (config->GetSBSParam().tkeStrain) AD::SetPreaccIn(meanStrainRate_i, 6);
+        if (config->GetSBSParam().SBS_TauConvMax > 0.0) AD::SetPreaccIn(V_i + idx.Velocity(), nDim);
       }
     }
 
