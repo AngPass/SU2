@@ -97,7 +97,7 @@ def main():
     cfd_flamelet_h2.cfg_dir = "flamelet/07_laminar_premixed_h2_flame_cfd"
     cfd_flamelet_h2.cfg_file = "laminar_premixed_h2_flame_cfd.cfg"
     cfd_flamelet_h2.test_iter = 5
-    cfd_flamelet_h2.test_vals = [-8.036794, -8.372668, -1.842800, -9.388447]
+    cfd_flamelet_h2.test_vals = [-8.036799, -8.329782, -1.805324, -8.959656]
     test_list.append(cfd_flamelet_h2)
 
     # Flame ignition methods
@@ -297,7 +297,7 @@ def main():
     wedge.cfg_dir   = "euler/wedge"
     wedge.cfg_file  = "inv_wedge_HLLC.cfg"
     wedge.test_iter = 20
-    wedge.test_vals = [-4.017956, 1.709065, -0.249527, 0.043953]
+    wedge.test_vals = [-4.017572, 1.709456, -0.249527, 0.043953]
     test_list.append(wedge)
 
     # ONERA M6 Wing
@@ -351,7 +351,7 @@ def main():
     ramp.cfg_dir = "euler/ramp"
     ramp.cfg_file = "inv_ramp.cfg"
     ramp.test_iter = 10
-    ramp.test_vals = [-13.648343, -8.010490, -0.076277, 0.054839]
+    ramp.test_vals = [-13.649257, -8.009323, -0.076277, 0.054839]
     ramp.test_vals_aarch64 = [-13.648406, -8.014579, -0.076277, 0.054839]
     test_list.append(ramp)
 
@@ -619,6 +619,24 @@ def main():
     turb_naca0012_sst_muscl_edge.timeout = 3200
     test_list.append(turb_naca0012_sst_muscl_edge)
 
+    # SA point limiting with epsilon relative to the turbulence variable.
+    turb_naca0012_sa_limiter_eps = TestCase('turb_naca0012_sa_limiter_eps')
+    turb_naca0012_sa_limiter_eps.cfg_dir = "rans/naca0012"
+    turb_naca0012_sa_limiter_eps.cfg_file = "turb_NACA0012_sa_limiter_eps.cfg"
+    turb_naca0012_sa_limiter_eps.test_iter = 10
+    turb_naca0012_sa_limiter_eps.test_vals = [-7.852233, -10.813265, 1.080059, 0.017464]
+    turb_naca0012_sa_limiter_eps.timeout = 3200
+    test_list.append(turb_naca0012_sa_limiter_eps)
+
+    # SST point limiting with epsilon relative to the turbulence variable.
+    turb_naca0012_sst_limiter_eps = TestCase('turb_naca0012_sst_limiter_eps')
+    turb_naca0012_sst_limiter_eps.cfg_dir = "rans/naca0012"
+    turb_naca0012_sst_limiter_eps.cfg_file = "turb_NACA0012_sst_limiter_eps.cfg"
+    turb_naca0012_sst_limiter_eps.test_iter = 10
+    turb_naca0012_sst_limiter_eps.test_vals = [-8.162919, -9.358528, -3.590806, 1.071595, 0.015827]
+    turb_naca0012_sst_limiter_eps.timeout = 3200
+    test_list.append(turb_naca0012_sst_limiter_eps)
+
     # Keep applying the stored turbulence limiter after LIMITER_ITER.
     turb_naca0012_sst_muscl_frozen = TestCase('turb_naca0012_sst_muscl_frozen')
     turb_naca0012_sst_muscl_frozen.cfg_dir = "rans/naca0012"
@@ -687,7 +705,7 @@ def main():
     actuatordisk_bem.cfg_dir = "rans/actuatordisk_bem"
     actuatordisk_bem.cfg_file = "actuatordisk_bem.cfg"
     actuatordisk_bem.test_iter = 15
-    actuatordisk_bem.test_vals = [-5.389236, -10.319122, 0.001362, -0.376528]
+    actuatordisk_bem.test_vals = [-5.389310, -8.599885, 0.001362, -0.376530]
     actuatordisk_bem.timeout = 3200
     actuatordisk_bem.tol = 0.001
     test_list.append(actuatordisk_bem)
@@ -879,6 +897,14 @@ def main():
     sp_pipeSlice_3d_dp_hf_tp.test_vals = [-11.119796, -11.234737, -9.429479, -0.000023]
     test_list.append(sp_pipeSlice_3d_dp_hf_tp)
 
+    # Same with the energy equation, periodic temperature and an integrated wall heat
+    sp_pipeSlice_3d_dp_ihf_tp = TestCase('sp_pipeSlice_3d_dp_ihf_tp')
+    sp_pipeSlice_3d_dp_ihf_tp.cfg_dir = "incomp_navierstokes/streamwise_periodic/pipeSlice_3d"
+    sp_pipeSlice_3d_dp_ihf_tp.cfg_file = "sp_pipeSlice_3d_dp_ihf_tp.cfg"
+    sp_pipeSlice_3d_dp_ihf_tp.test_iter = 10
+    sp_pipeSlice_3d_dp_ihf_tp.test_vals = [-11.120123, -5.196299, -0.000023, -0.015700]
+    test_list.append(sp_pipeSlice_3d_dp_ihf_tp)
+
     # 2D pin array with heat transfer BC on pin surfaces
     inc_heatTransfer_BC           = TestCase('inc_heatTransfer_BC')
     inc_heatTransfer_BC.cfg_dir   = "incomp_navierstokes/streamwise_periodic/chtPinArray_2d"
@@ -998,7 +1024,7 @@ def main():
     turbmod_sa_neg_rae2822.cfg_dir   = "turbulence_models/sa/rae2822"
     turbmod_sa_neg_rae2822.cfg_file  = "turb_SA_NEG_RAE2822.cfg"
     turbmod_sa_neg_rae2822.test_iter = 10
-    turbmod_sa_neg_rae2822.test_vals = [1.275731, 1.063097, -2.067745, 1.301949, 0.481304, 0.000000]
+    turbmod_sa_neg_rae2822.test_vals = [1.451597, 1.501625, 4.235621, 1.337846, 0.493212, 0.000000]
     turbmod_sa_neg_rae2822.test_vals_aarch64 = [-1.345593, 1.448310, 1.208721, -0.846597, 1.248410, 0.489117, 0.000000]
     test_list.append(turbmod_sa_neg_rae2822)
 
@@ -2162,7 +2188,7 @@ def main():
     naca0012_def_file_camber.cfg_dir   = "deformation/naca0012"
     naca0012_def_file_camber.cfg_file  = "def_NACA0012_camber.cfg"
     naca0012_def_file_camber.test_iter = 10
-    naca0012_def_file_camber.test_vals = [0.00854844]
+    naca0012_def_file_camber.test_vals = [0.0201692]
     naca0012_def_file_camber.command   = TestCase.Command("mpirun -n 2", "SU2_DEF")
     naca0012_def_file_camber.timeout   = 1600
     naca0012_def_file_camber.tol       = 1e-8

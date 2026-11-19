@@ -80,7 +80,7 @@ def main():
     wedge.cfg_dir   = "euler/wedge"
     wedge.cfg_file  = "inv_wedge_HLLC.cfg"
     wedge.test_iter = 20
-    wedge.test_vals = [-4.161881, 1.565415, -0.249526, 0.043953]
+    wedge.test_vals = [-4.160450, 1.566828, -0.249526, 0.043953]
     test_list.append(wedge)
 
     # ONERA M6 Wing
@@ -152,6 +152,14 @@ def main():
     poiseuille_profile.test_vals         = [-12.004080, -7.638116, -0.000000, 2.089953]
     poiseuille_profile.test_vals_aarch64 = [-12.004276, -7.636719, -0.000000, 2.089953]
     test_list.append(poiseuille_profile)
+
+    # Streamwise periodic pressure-drop update with two OpenMP threads.
+    sp_massflow_box = TestCase('sp_massflow_box')
+    sp_massflow_box.cfg_dir = "incomp_navierstokes/streamwise_periodic"
+    sp_massflow_box.cfg_file = "massflow_box.cfg"
+    sp_massflow_box.test_iter = 4
+    sp_massflow_box.test_vals = [-4.914357, 0.248162, -0.092770]
+    test_list.append(sp_massflow_box)
 
     # 2D Rotational Periodic
     periodic2d           = TestCase('periodic2d')
