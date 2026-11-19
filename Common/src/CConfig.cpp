@@ -7668,12 +7668,23 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
         }
         else if (Kind_Centered_Flow == CENTERED::LD2) {
           cout << "Low-Dissipation Low-Dispersion (LD2) scheme for the flow inviscid terms." << endl;
-          if (!(Kind_Solver==MAIN_SOLVER::INC_EULER || Kind_Solver==MAIN_SOLVER::INC_NAVIER_STOKES || Kind_Solver==MAIN_SOLVER::INC_RANS))
-            SU2_MPI::Error("LD2 scheme not yet implemented for the compressible flow solver.", CURRENT_FUNCTION);
-          if (Kind_FluidModel != CONSTANT_DENSITY)
-            SU2_MPI::Error("LD2 scheme available for constant density flows only.", CURRENT_FUNCTION);
-          if (Energy_Equation)
-            cout << "WARNING: Current implementation of the LD2 scheme not compatible with the energy equation. JST employed in energy equation instead." << endl;
+          const bool ld2_incompressible = (Kind_Solver==MAIN_SOLVER::INC_EULER ||
+                                           Kind_Solver==MAIN_SOLVER::INC_NAVIER_STOKES ||
+                                           Kind_Solver==MAIN_SOLVER::INC_RANS);
+          const bool ld2_nemo = (Kind_Solver==MAIN_SOLVER::NEMO_EULER || Kind_Solver==MAIN_SOLVER::NEMO_NAVIER_STOKES);
+          if (ld2_nemo)
+            SU2_MPI::Error("LD2 scheme not implemented for the NEMO solver.", CURRENT_FUNCTION);
+          if (ld2_incompressible) {
+            if (Kind_FluidModel != CONSTANT_DENSITY)
+              SU2_MPI::Error("LD2 scheme available for constant density flows only.", CURRENT_FUNCTION);
+            if (Energy_Equation)
+              cout << "WARNING: Current implementation of the LD2 scheme not compatible with the energy equation. JST employed in energy equation instead." << endl;
+          }
+          else {
+            if (Kind_FluidModel != STANDARD_AIR && Kind_FluidModel != IDEAL_GAS)
+              SU2_MPI::Error("LD2 scheme available for ideal gas (STANDARD_AIR, IDEAL_GAS) compressible flows only.", CURRENT_FUNCTION);
+            cout << "Kinetic-energy preserving central flux (Kok) with gradient extrapolation of velocity and pressure." << endl;
+          }
           cout << "LD2 coefficient: " << LD2_Coeff << ".\n";
         }
         else {

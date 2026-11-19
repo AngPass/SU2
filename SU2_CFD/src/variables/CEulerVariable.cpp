@@ -30,7 +30,10 @@
 
 unsigned long EulerNPrimVarGrad(const CConfig *config, unsigned long ndim) {
   if (config->GetContinuous_Adjoint()) return ndim + 4;
-  if (config->GetKind_ConvNumScheme_Flow() == SPACE_CENTERED) return ndim + 1;
+  if (config->GetKind_ConvNumScheme_Flow() == SPACE_CENTERED) {
+    /*--- The LD2 scheme also extrapolates pressure, hence needs its gradient. ---*/
+    return (config->GetKind_Centered_Flow() == CENTERED::LD2) ? ndim + 2 : ndim + 1;
+  }
 
   const bool ideal_gas = config->GetKind_FluidModel() == STANDARD_AIR ||
                          config->GetKind_FluidModel() == IDEAL_GAS;

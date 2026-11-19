@@ -82,8 +82,11 @@ CNumericsSIMD* createCenteredNumerics(const CConfig& config, int iMesh, const CV
     case CENTERED::JST_MAT:
       obj = new CJSTmatScheme<ViscousDecorator>(config, iMesh, turbVars);
       break;
-    case CENTERED::LD2: case CENTERED::CDS:
-      /*--- CDS and LD2 implemented only in the incompressible solver. ---*/
+    case CENTERED::LD2:
+      obj = new CLD2Scheme<ViscousDecorator>(config, iMesh, turbVars);
+      break;
+    case CENTERED::CDS:
+      /*--- CDS implemented only in the incompressible solver. ---*/
       break;
   }
   return obj;

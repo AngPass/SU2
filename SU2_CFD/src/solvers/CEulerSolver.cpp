@@ -1611,7 +1611,9 @@ void CEulerSolver::CommonPreprocessing(CGeometry *geometry, CSolver **solver_con
   bool disc_adjoint     = config->GetDiscrete_Adjoint();
   bool implicit         = (config->GetKind_TimeIntScheme() == EULER_IMPLICIT);
   bool center           = (config->GetKind_ConvNumScheme_Flow() == SPACE_CENTERED);
-  bool center_jst       = (config->GetKind_Centered_Flow() == CENTERED::JST) && (iMesh == MESH_0);
+  /*--- LD2 uses the JST dissipation, hence the same sensor and undivided Laplacian. ---*/
+  bool center_jst       = (config->GetKind_Centered_Flow() == CENTERED::JST ||
+                           config->GetKind_Centered_Flow() == CENTERED::LD2) && (iMesh == MESH_0);
   bool center_jst_ke    = (config->GetKind_Centered_Flow() == CENTERED::JST_KE) && (iMesh == MESH_0);
   bool center_jst_mat   = (config->GetKind_Centered_Flow() == CENTERED::JST_MAT) && (iMesh == MESH_0);
   bool engine           = ((config->GetnMarker_EngineInflow() != 0) || (config->GetnMarker_EngineExhaust() != 0));
@@ -1724,6 +1726,22 @@ void CEulerSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container
     /*--- Limiter computation ---*/
 
     if (limiter && !van_albada) SetPrimitive_Limiter(geometry, config);
+  }
+
+  /*--- Gradient of the primitive variables (velocity and pressure), required by the LD2
+        centered scheme. CNSSolver::Preprocessing computes it unconditionally. ---*/
+
+  const bool ld2_scheme = center && (config->GetKind_Centered_Flow() == CENTERED::LD2) && (iMesh == MESH_0);
+
+  if (!Output && ld2_scheme) {
+    switch (config->GetKind_Gradient_Method()) {
+      case GREEN_GAUSS:
+        SetPrimitive_Gradient_GG(geometry, config); break;
+      case LEAST_SQUARES:
+      case WEIGHTED_LEAST_SQUARES:
+        SetPrimitive_Gradient_LS(geometry, config); break;
+      default: break;
+    }
   }
 }
 

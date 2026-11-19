@@ -76,7 +76,75 @@ protected:
     return geometry.nodes->GetnNeighbor(idx);
   }
 
+  /*!
+   * \brief Scalar JST dissipation (2nd and 4th order), shared by the JST and LD2 schemes.
+   */
+  template<class PrimVarType>
+  FORCEINLINE void addJSTDissipation(const su2double& kappa2,
+                                     const su2double& kappa4,
+                                     VectorDbl<nVar>& flux,
+                                     MatrixDbl<nVar>& jac_i,
+                                     MatrixDbl<nVar>& jac_j,
+                                     const bool implicit,
+                                     const Double& area,
+                                     const Double& projVel,
+                                     const PrimVarType& avgV,
+                                     const CPair<PrimVarType>& V,
+                                     const VectorDbl<nVar>& diffU,
+                                     const Int& iPoint,
+                                     const Int& jPoint,
+                                     const CGeometry& geometry,
+                                     const CEulerVariable& solution) const {
+
+    Double lambda = abs(projVel) + avgV.speedSound()*area;
+    lambda = correctedSpectralRadius(iPoint, jPoint, lambda, stretchParam, solution);
+
+    /*--- Compute dissipation coefficients. ---*/
+
+    const auto ni = numNeighbor(iPoint, geometry);
+    const auto nj = numNeighbor(jPoint, geometry);
+    const Double sc2 = 3 * (ni+nj) / (ni*nj);
+    const Double sc4 = 0.25*pow(sc2, 2);
+
+    const auto si = gatherVariables(iPoint, solution.GetSensor());
+    const auto sj = gatherVariables(jPoint, solution.GetSensor());
+    const Double eps2 = kappa2 * 0.5*(si+sj) * sc2;
+    const Double eps4 = fmax(0.0, kappa4-eps2) * sc4;
+
+    /*--- Update flux and Jacobians with dissipation terms. ---*/
+
+    const auto lapl_i = gatherVariables<nVar>(iPoint, solution.GetUndivided_Laplacian());
+    const auto lapl_j = gatherVariables<nVar>(jPoint, solution.GetUndivided_Laplacian());
+
+    for (size_t iVar = 0; iVar < nVar; ++iVar) {
+      flux(iVar) += (eps2*diffU(iVar) - eps4*(lapl_i(iVar)-lapl_j(iVar))) * lambda;
+    }
+
+    if (implicit) {
+      const Double dissip_i = fixFactor * (eps2 + eps4*(ni+1)) * lambda;
+      const Double dissip_j = -fixFactor * (eps2 + eps4*(nj+1)) * lambda;
+      scalarDissipationJacobian(V.i, gamma, dissip_i, jac_i);
+      scalarDissipationJacobian(V.j, gamma, dissip_j, jac_j);
+    }
+  }
+
 public:
+  /*!
+   * \brief Default central (non-dissipative) flux: flux of the arithmetically averaged state.
+   * \note Derived classes may hide this method to use a different central flux (static polymorphism).
+   */
+  template<class PrimVarType, class ConsVarType>
+  FORCEINLINE VectorDbl<nVar> centralFlux(const Int&,
+                                          const Int&,
+                                          const CPair<PrimVarType>&,
+                                          const PrimVarType& avgV,
+                                          const ConsVarType& avgU,
+                                          const VectorDbl<nDim>& normal,
+                                          const CGeometry&,
+                                          const CEulerVariable&) const {
+    return inviscidProjFlux(avgV, avgU, normal);
+  }
+
   /*!
    * \brief Implementation of the base centered flux.
    */
@@ -134,9 +202,13 @@ public:
     }
     diffU(nVar-1) = V.i.density()*V.i.enthalpy() - V.j.density()*V.j.enthalpy();
 
+    /*--- Pointer on which to call the "compile-time virtual" methods. ---*/
+
+    const auto derived = static_cast<const Derived*>(this);
+
     /*--- Inviscid fluxes and Jacobians. ---*/
 
-    auto flux = inviscidProjFlux(avgV, avgU, normal);
+    auto flux = derived->centralFlux(iPoint, jPoint, V, avgV, avgU, normal, geometry, solution);
 
     MatrixDbl<nVar> jac_i, jac_j;
     if (implicit) {
@@ -164,8 +236,6 @@ public:
     const Double projVel = dot(avgV.velocity(), normal) - projGridVel;
 
     /*--- Finalize in derived class (static polymorphism). ---*/
-
-    const auto derived = static_cast<const Derived*>(this);
 
     derived->finalizeFlux(flux, jac_i, jac_j, implicit, area, projVel, avgV, V,
                           diffU, iPoint, jPoint, geometry, solution, unitNormal);
@@ -237,36 +307,144 @@ public:
                                 const CEulerVariable& solution,
                                 Ts&...) const {
 
-    Double lambda = abs(projVel) + avgV.speedSound()*area;
-    lambda = correctedSpectralRadius(iPoint, jPoint, lambda, stretchParam, solution);
+    Base::addJSTDissipation(kappa2, kappa4, flux, jac_i, jac_j, implicit, area, projVel,
+                            avgV, V, diffU, iPoint, jPoint, geometry, solution);
+  }
+};
 
-    /*--- Compute dissipation coefficients. ---*/
+/*!
+ * \class CLD2Scheme
+ * \ingroup ConvDiscr
+ * \brief Low-Dissipation Low-Dispersion (LD2) second order scheme with scalar JST dissipation.
+ * \note Löwe, Probst, Knopp, Kessler, AIAA J. 54(10), 2016, doi:10.2514/1.J054956.
+ *       The central flux is the kinetic-energy preserving skew-symmetric form of Kok
+ *       (JCP 228, 2009), Eqs. 11-13 of the reference, in which the face values of velocity
+ *       and pressure are extrapolated with the (Green-Gauss or least-squares) gradients,
+ *       Eqs. 14-15, while density and speed of sound are not (alpha_rho = alpha_c = 0).
+ *       Ideal gas only (internal energy from c^2 / (gamma (gamma-1))).
+ */
+template<class Decorator>
+class CLD2Scheme : public CCenteredBase<CLD2Scheme<Decorator>,Decorator> {
+private:
+  using Base = CCenteredBase<CLD2Scheme<Decorator>,Decorator>;
+  using Base::nDim;
+  using Base::nVar;
+  using Base::gamma;
+  const su2double kappa2;
+  const su2double kappa4;
+  const su2double alpha;
 
-    const auto ni = Base::numNeighbor(iPoint, geometry);
-    const auto nj = Base::numNeighbor(jPoint, geometry);
-    const Double sc2 = 3 * (ni+nj) / (ni*nj);
-    const Double sc4 = 0.25*pow(sc2, 2);
+  /*!
+   * \brief 1 for edges with both nodes on a periodic boundary, where the extrapolation is
+   *        switched off (consistently with the incompressible implementation).
+   */
+  template<class T, size_t N>
+  FORCEINLINE static Double periodicEdge(const simd::Array<T,N>& iPoint, const simd::Array<T,N>& jPoint,
+                                         const CGeometry& geometry) {
+    Double mask;
+    for (size_t k=0; k<N; ++k) {
+      mask[k] = geometry.nodes->GetPeriodicBoundary(iPoint[k]) && geometry.nodes->GetPeriodicBoundary(jPoint[k]);
+    }
+    return mask;
+  }
+  FORCEINLINE static Double periodicEdge(unsigned long iPoint, unsigned long jPoint, const CGeometry& geometry) {
+    return geometry.nodes->GetPeriodicBoundary(iPoint) && geometry.nodes->GetPeriodicBoundary(jPoint);
+  }
 
-    const auto si = gatherVariables(iPoint, solution.GetSensor());
-    const auto sj = gatherVariables(jPoint, solution.GetSensor());
-    const Double eps2 = kappa2 * 0.5*(si+sj) * sc2;
-    const Double eps4 = fmax(0.0, kappa4-eps2) * sc4;
+public:
+  /*!
+   * \brief Constructor, forward everything to base.
+   */
+  template<class... Ts>
+  CLD2Scheme(const CConfig& config, Ts&... args) : Base(config, args...),
+    kappa2(config.GetKappa_2nd_Flow()),
+    kappa4(config.GetKappa_4th_Flow()),
+    alpha(config.GetLD2_Coeff()) {
+  }
 
-    /*--- Update flux and Jacobians with dissipation terms. ---*/
+  /*!
+   * \brief Kok's skew-symmetric central flux with LD2 extrapolation of velocity and pressure.
+   */
+  template<class PrimVarType, class ConsVarType>
+  FORCEINLINE VectorDbl<nVar> centralFlux(const Int& iPoint,
+                                          const Int& jPoint,
+                                          const CPair<PrimVarType>& V,
+                                          const PrimVarType&,
+                                          const ConsVarType&,
+                                          const VectorDbl<nDim>& normal,
+                                          const CGeometry& geometry,
+                                          const CEulerVariable& solution) const {
 
-    const auto lapl_i = gatherVariables<nVar>(iPoint, solution.GetUndivided_Laplacian());
-    const auto lapl_j = gatherVariables<nVar>(jPoint, solution.GetUndivided_Laplacian());
+    /*--- Distance vector, zeroed on periodic edges to switch off the extrapolation. ---*/
 
-    for (size_t iVar = 0; iVar < nVar; ++iVar) {
-      flux(iVar) += (eps2*diffU(iVar) - eps4*(lapl_i(iVar)-lapl_j(iVar))) * lambda;
+    auto d_ij = distanceVector<nDim>(iPoint, jPoint, geometry.nodes->GetCoord());
+    const Double scale = alpha * (1 - periodicEdge(iPoint, jPoint, geometry));
+    for (size_t iDim = 0; iDim < nDim; ++iDim) d_ij(iDim) *= scale;
+
+    /*--- Gradients of velocity and pressure (primitive rows 1 to nDim+1). ---*/
+
+    const auto& gradient = solution.GetGradient_Primitive();
+    const auto grad_i = gatherVariables<nDim+1,nDim>(iPoint, gradient, 1);
+    const auto grad_j = gatherVariables<nDim+1,nDim>(jPoint, gradient, 1);
+
+    /*--- Left/right states, Eqs. 14-15: phi_L = phi_i + a grad_i.d_ij, phi_R = phi_j - a grad_j.d_ij. ---*/
+
+    VectorDbl<nDim+1> qL, qR;  // velocity components, then pressure
+    for (size_t iVar = 0; iVar < nDim+1; ++iVar) {
+      Double proj_i = 0.0, proj_j = 0.0;
+      for (size_t iDim = 0; iDim < nDim; ++iDim) {
+        proj_i += grad_i(iVar,iDim) * d_ij(iDim);
+        proj_j += grad_j(iVar,iDim) * d_ij(iDim);
+      }
+      qL(iVar) = V.i.all(iVar+1) + proj_i;
+      qR(iVar) = V.j.all(iVar+1) - proj_j;
+    }
+    const Double& pL = qL(nDim);
+    const Double& pR = qR(nDim);
+
+    /*--- Kok's skew-symmetric flux, Eqs. 11-13. ---*/
+
+    Double projVelL = 0.0, projVelR = 0.0, velLdotR = 0.0;
+    for (size_t iDim = 0; iDim < nDim; ++iDim) {
+      projVelL += qL(iDim) * normal(iDim);
+      projVelR += qR(iDim) * normal(iDim);
+      velLdotR += qL(iDim) * qR(iDim);
     }
 
-    if (implicit) {
-      const Double dissip_i = fixFactor * (eps2 + eps4*(ni+1)) * lambda;
-      const Double dissip_j = -fixFactor * (eps2 + eps4*(nj+1)) * lambda;
-      scalarDissipationJacobian(V.i, gamma, dissip_i, jac_i);
-      scalarDissipationJacobian(V.j, gamma, dissip_j, jac_j);
+    const Double mdot = 0.5 * (V.i.density()*projVelL + V.j.density()*projVelR);
+    const Double intEnergy = V.i.speedSound() * V.j.speedSound() / (gamma*(gamma-1));
+
+    VectorDbl<nVar> flux;
+    flux(0) = mdot;
+    for (size_t iDim = 0; iDim < nDim; ++iDim) {
+      flux(iDim+1) = mdot * 0.5*(qL(iDim)+qR(iDim)) + 0.5*(pL+pR) * normal(iDim);
     }
+    flux(nDim+1) = mdot * (0.5*velLdotR + intEnergy) + 0.5*(projVelL*pR + projVelR*pL);
+
+    return flux;
+  }
+
+  /*!
+   * \brief Updates flux and Jacobians with scalar JST dissipation.
+   */
+  template<class PrimVarType, class... Ts>
+  FORCEINLINE void finalizeFlux(VectorDbl<nVar>& flux,
+                                MatrixDbl<nVar>& jac_i,
+                                MatrixDbl<nVar>& jac_j,
+                                const bool implicit,
+                                const Double& area,
+                                const Double& projVel,
+                                const PrimVarType& avgV,
+                                const CPair<PrimVarType>& V,
+                                const VectorDbl<nVar>& diffU,
+                                const Int& iPoint,
+                                const Int& jPoint,
+                                const CGeometry& geometry,
+                                const CEulerVariable& solution,
+                                Ts&...) const {
+
+    Base::addJSTDissipation(kappa2, kappa4, flux, jac_i, jac_j, implicit, area, projVel,
+                            avgV, V, diffU, iPoint, jPoint, geometry, solution);
   }
 };
 
