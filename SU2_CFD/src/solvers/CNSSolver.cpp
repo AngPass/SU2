@@ -55,6 +55,10 @@ CNSSolver::CNSSolver(CGeometry *geometry, CConfig *config, unsigned short iMesh)
   Prandtl_Turb    = config->GetPrandtl_Turb();
   Tke_Inf         = config->GetTke_FreeStreamND();
 
+  /*--- Finite volume LES closures: SGS model and LES wall model (collective). ---*/
+
+  InitLES(geometry, config, iMesh);
+
   /*--- Initialize the seed values for forward mode differentiation. ---*/
 
   switch(config->GetDirectDiff()) {
@@ -142,6 +146,10 @@ void CNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, C
 
   if (Output) ompMasterAssignBarrier(nPrimVarGrad, nPrimVarGrad_bak);
 
+  /*--- LES subgrid scale eddy viscosity, from the velocity gradient just computed. ---*/
+
+  if (SGSModel) ComputeSGS_EddyViscosity(geometry, config);
+
   /*--- Compute the limiters ---*/
 
   if (muscl && !center && limiter && !van_albada && !Output) {
@@ -155,7 +163,8 @@ void CNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, C
   /*--- Compute the TauWall from the wall functions ---*/
 
   if (wall_functions) {
-    SetTau_Wall_WF(geometry, solver_container, config);
+    if (config->GetLES_FVM()) SetTau_Wall_LES(geometry, config);
+    else SetTau_Wall_WF(geometry, solver_container, config);
   }
 
 }
@@ -190,6 +199,11 @@ unsigned long CNSSolver::SetPrimitive_Variables(CSolver **solver_container, cons
         nodes->SetLES_Mode(iPoint, LES_Mode);
       }
     }
+
+    /*--- LES: SGS eddy viscosity of the previous evaluation, it is updated in Preprocessing
+     *    once the velocity gradient is available. ---*/
+
+    if (SGSModel) eddy_visc = SGS_EddyViscosity(iPoint);
 
     /*--- Compressible flow, primitive variables nDim+5, (T, vx, vy, vz, P, rho, h, c, lamMu, eddyMu, ThCond, Cp) ---*/
 
@@ -677,6 +691,12 @@ void CNSSolver::BC_Isothermal_Wall_Generic(CGeometry *geometry, CSolver **solver
     Twall = config->GetIsothermal_Temperature(Marker_Tag) / Temperature_Ref;
   }
 
+  /*--- LES wall model with modeled heat flux (computed in SetTau_Wall_LES for plain isothermal walls). ---*/
+
+  const bool les_wall_model = config->GetLES_FVM() && !cht_mode && !config->GetMarker_All_PyCustom(val_marker) &&
+                              (config->GetWallFunction_Treatment(Marker_Tag) == WALL_FUNCTIONS::LOGARITHMIC_MODEL) &&
+                              !WM_HeatFlux.empty();
+
 //  Wall_Function = config->GetWallFunction_Treatment(Marker_Tag);
 //  if (Wall_Function != WALL_FUNCTION::NONE) {
 //    SU2_MPI::Error("Wall function treatment not implemented yet", CURRENT_FUNCTION);
@@ -762,6 +782,11 @@ void CNSSolver::BC_Isothermal_Wall_Generic(CGeometry *geometry, CSolver **solver
 
     su2double Res_Conv = 0.0;
     su2double Res_Visc = thermal_conductivity * dTdn * Area;
+
+    /*--- LES wall model: the wall heat flux (into the fluid) comes from Kader's law evaluated at the exchange
+     *    location (the Jacobian of the resolved flux is kept, as an approximation that adds diagonal weight). ---*/
+
+    if (les_wall_model) Res_Visc = WM_HeatFlux[val_marker][iVertex] * Area;
 
     /*--- Calculate Jacobian for implicit time stepping ---*/
 

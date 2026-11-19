@@ -67,6 +67,10 @@ CIncNSSolver::CIncNSSolver(CGeometry *geometry, CConfig *config, unsigned short 
     // Note during restarts, the flow.meta is read first. But that sets the cfg-value so we are good here.
     SPvals.Streamwise_Periodic_PressureDrop = config->GetStreamwise_Periodic_PressureDrop();
 
+  /*--- Finite volume LES closures: SGS model and LES wall model (collective). ---*/
+
+  InitLES(geometry, config, iMesh);
+
 }
 
 void CIncNSSolver::ApplySpark(CGeometry* geometry, CSolver** solver_container, const CConfig* config) {
@@ -164,6 +168,10 @@ void CIncNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container
     SetPrimitive_Gradient_LS(geometry, config);
   }
 
+  /*--- LES subgrid scale eddy viscosity, from the velocity gradient just computed. ---*/
+
+  if (SGSModel) ComputeSGS_EddyViscosity(geometry, config);
+
   /*--- Compute the limiters ---*/
 
   if (muscl && !center && limiter && !van_albada && !Output) {
@@ -175,7 +183,11 @@ void CIncNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container
   /*--- Compute the TauWall from the wall functions ---*/
 
   if (wall_functions) {
-    SU2_OMP_SAFE_GLOBAL_ACCESS(SetTau_Wall_WF(geometry, solver_container, config);)
+    if (config->GetINC_LES()) {
+      SetTau_Wall_LES(geometry, config);
+    } else {
+      SU2_OMP_SAFE_GLOBAL_ACCESS(SetTau_Wall_WF(geometry, solver_container, config);)
+    }
   }
 
   /*--- Compute recovered pressure and temperature for streamwise periodic flow ---*/
@@ -465,6 +477,11 @@ unsigned long CIncNSSolver::SetPrimitive_Variables(CSolver **solver_container, c
         LES_Mode = solver_container[TURB_SOL]->GetNodes()->GetLES_Mode(iPoint);
       }
     }
+
+    /*--- LES: SGS eddy viscosity of the previous evaluation, it is updated in Preprocessing
+     *    once the velocity gradient is available. ---*/
+
+    if (SGSModel) eddy_visc = SGS_EddyViscosity(iPoint);
 
     /*--- Retrieve scalar values (if needed) ---*/
     if (species_model != SPECIES_MODEL::NONE && solver_container[SPECIES_SOL] != nullptr) {

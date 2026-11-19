@@ -630,6 +630,8 @@ private:
   TURB_MODEL Kind_Turb_Model;       /*!< \brief Turbulent model definition. */
   SPECIES_MODEL Kind_Species_Model; /*!< \brief Species model definition. */
   TURB_SGS_MODEL Kind_SGS_Model;    /*!< \brief LES SGS model definition. */
+  bool Inc_LES = false;             /*!< \brief SOLVER= INC_LES (stored internally as INC_NAVIER_STOKES). */
+  bool Comp_LES = false;            /*!< \brief SOLVER= LES (stored internally as NAVIER_STOKES). */
   TURB_TRANS_MODEL Kind_Trans_Model;  /*!< \brief Transition model definition. */
   TURB_TRANS_CORRELATION Kind_Trans_Correlation;  /*!< \brief Transition correlation model definition. */
   su2double hRoughness;             /*!< \brief RMS roughness for Transition model. */
@@ -4828,6 +4830,29 @@ public:
    * \return Kind of the subgrid scale model.
    */
   TURB_SGS_MODEL GetKind_SGS_Model(void) const { return Kind_SGS_Model; }
+
+  /*!
+   * \brief Whether the problem is an incompressible finite volume LES (SOLVER= INC_LES).
+   * \note Kind_Solver is INC_NAVIER_STOKES in this case, the LES is identified by this flag.
+   */
+  bool GetINC_LES(void) const { return Inc_LES; }
+
+  /*!
+   * \brief Whether the problem is a finite volume LES, compressible (SOLVER= LES) or incompressible (INC_LES).
+   * \note Kind_Solver is NAVIER_STOKES or INC_NAVIER_STOKES in these cases, the LES is identified by this flag.
+   */
+  bool GetLES_FVM(void) const { return Inc_LES || Comp_LES; }
+
+  /*!
+   * \brief Whether an explicit SGS model is used by the finite volume solver.
+   * \return <code>TRUE</code> for SOLVER= LES or INC_LES with an explicit eddy-viscosity SGS model.
+   */
+  bool GetFVM_SGS_Model(void) const {
+    const bool solver = (Inc_LES && (Kind_Solver == MAIN_SOLVER::INC_NAVIER_STOKES)) ||
+                        (Comp_LES && (Kind_Solver == MAIN_SOLVER::NAVIER_STOKES));
+    return solver && (Kind_SGS_Model == TURB_SGS_MODEL::SMAGORINSKY || Kind_SGS_Model == TURB_SGS_MODEL::WALE ||
+                      Kind_SGS_Model == TURB_SGS_MODEL::VREMAN);
+  }
 
   /*!
    * \brief Get the kind of time integration method.

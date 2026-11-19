@@ -120,6 +120,7 @@ CIteration* CIterationFactory::CreateIteration(MAIN_SOLVER kindSolver, const CCo
       break;
 
     case MAIN_SOLVER::NONE: case MAIN_SOLVER::TEMPLATE_SOLVER: case MAIN_SOLVER::MULTIPHYSICS: case MAIN_SOLVER::POISSON_EQUATION:
+    case MAIN_SOLVER::INC_LES: case MAIN_SOLVER::LES:  // input only, CConfig converts them to (INC_)NAVIER_STOKES
       SU2_MPI::Error("No iteration found for specified solver.", CURRENT_FUNCTION);
       break;
   }

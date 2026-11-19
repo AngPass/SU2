@@ -28,7 +28,10 @@
 
 #include "../../../Common/include/parallelization/omp_structure.hpp"
 #include "../../../Common/include/toolboxes/geometry_toolbox.hpp"
+#include "../sgs_model.hpp"
 #include "CSolver.hpp"
+
+#include <memory>
 
 class CNumericsSIMD;
 
@@ -192,6 +195,75 @@ class CFVMFlowSolverBase : public CSolver {
   vector<vector<su2double> > YPlus;             /*!< \brief Yplus for each boundary and vertex. */
   vector<vector<su2double> > UTau;                 /*!< \brief UTau for each boundary and vertex. */
   vector<vector<su2double> > EddyViscWall;         /*!< \brief Eddy viscosuty at the wall for each boundary and vertex. */
+
+  /*--- Finite volume LES (SOLVER= LES / INC_LES): explicit SGS model and LES wall model. Implemented in
+   *    CFVMFlowSolverBase_LES.inl, used by CNSSolver and CIncNSSolver. ---*/
+
+  std::unique_ptr<CSGSModel> SGSModel;  /*!< \brief Explicit LES subgrid scale model (nullptr if not used). */
+  su2activevector SGS_EddyViscosity;    /*!< \brief SGS dynamic eddy viscosity at each point. */
+
+  /*!
+   * \brief Data of the donor element of a wall model exchange location.
+   */
+  struct CWMDonor {
+    unsigned short nNodes = 0;    /*!< \brief Number of nodes of the donor element (0: no local donor). */
+    unsigned long node[8] = {0};  /*!< \brief Local indices of the donor element nodes. */
+    su2double weight[8] = {0.0};  /*!< \brief Interpolation weights of the exchange location. */
+  };
+  bool WM_Exchange = false;                  /*!< \brief Whether some marker uses an exchange height h_wm > 0. */
+  vector<su2double> WM_Height;               /*!< \brief h_wm per marker (<= 0: first node off the wall). */
+  vector<vector<long> > WM_Index;            /*!< \brief [iMarker][iVertex] -> exchange location, -1 if none. */
+  vector<CWMDonor> WM_LocalDonor;            /*!< \brief Local donor of each exchange location (nNodes = 0: remote). */
+  vector<long> WM_RecvSlot;                  /*!< \brief Receive slot of each remote exchange location (-1: local). */
+  vector<CWMDonor> WM_Serve;                 /*!< \brief Donors evaluated on this rank for other ranks. */
+  vector<int> WM_SendCounts, WM_SendDispls, WM_RecvCounts, WM_RecvDispls; /*!< \brief Alltoallv layout. */
+  vector<su2double> WM_ExchangeVar;          /*!< \brief Velocity and temperature at the exchange locations. */
+  vector<vector<su2double> > WM_HeatFlux;    /*!< \brief Modeled wall heat flux (isothermal walls, compressible). */
+
+  /*!
+   * \brief Number of variables interpolated at the wall model exchange locations (velocity, temperature).
+   */
+  inline unsigned short WM_nVar() const { return nDim + 1; }
+
+  /*!
+   * \brief Initialize the finite volume LES closures: SGS model, wall model data and exchange locations.
+   * \note Collective (the exchange locations may be searched on other ranks), call from the constructor.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   * \param[in] iMesh - Index of the mesh in multigrid computations.
+   */
+  void InitLES(const CGeometry *geometry, const CConfig *config, unsigned short iMesh);
+
+  /*!
+   * \brief Compute the SGS eddy viscosity from the current velocity gradient and set it in the primitives.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   */
+  void ComputeSGS_EddyViscosity(const CGeometry *geometry, const CConfig *config);
+
+  /*!
+   * \brief Locate the exchange locations at h_wm and build the communication pattern (collective, once).
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   */
+  void SetupWallModelExchange(const CGeometry *geometry, const CConfig *config);
+
+  /*!
+   * \brief Interpolate velocity and temperature at the exchange locations, communicating the remote ones
+   *        (collective, to be called by one thread).
+   */
+  void UpdateWallModelExchange();
+
+  /*!
+   * \brief LES wall model (LOGARITHMIC_WALL_MODEL): wall shear stress from Reichardt's law and, on isothermal
+   *        walls of the compressible solver, wall heat flux from Kader's law, both evaluated with the
+   *        instantaneous solution at the exchange location (at h_wm, or at the first node off the wall).
+   *        The shear stress is stored in Tau_Wall, imposed by the viscous flux on wall-normal edges; the
+   *        heat flux in WM_HeatFlux, imposed by the isothermal wall boundary condition.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   */
+  void SetTau_Wall_LES(const CGeometry *geometry, const CConfig *config);
 
   bool space_centered;       /*!< \brief True if space centered scheme used. */
   bool euler_implicit;       /*!< \brief True if euler implicit scheme used. */

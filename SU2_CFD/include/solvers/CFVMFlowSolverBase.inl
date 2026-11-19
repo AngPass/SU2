@@ -2642,9 +2642,10 @@ void CFVMFlowSolverBase<V, FlowRegime>::Friction_Forces(const CGeometry* geometr
       WallShearStress[iMarker][iVertex] = GeometryToolbox::Norm(int(MAXNDIM), TauTangent);
 
       /*--- For wall functions, the wall stresses need to be scaled by the wallfunction stress Tau_Wall---*/
-      if (wallfunctions && (YPlus[iMarker][iVertex] > minYPlus)){
+      /*--- The LES wall model (LES, INC_LES) has no y+ switch-off, its Tau_Wall is always the imposed one. ---*/
+      if (wallfunctions && (config->GetLES_FVM() || (YPlus[iMarker][iVertex] > minYPlus))){
         const su2double Tau_Wall = nodes->GetTau_Wall(iPoint);
-        const su2double scale = Tau_Wall / WallShearStress[iMarker][iVertex];
+        const su2double scale = Tau_Wall / fmax(WallShearStress[iMarker][iVertex], EPS);
         for (unsigned short iDim = 0; iDim < nDim; iDim++) {
           TauTangent[iDim] *= scale;
           TauElem[iDim] *= scale;
@@ -2686,6 +2687,12 @@ void CFVMFlowSolverBase<V, FlowRegime>::Friction_Forces(const CGeometry* geometr
           const su2double dist_ij = GeometryToolbox::NormalDistance(nDim, UnitNormal, Coord, Coord_Normal);
           const su2double There = nodes->GetTemperature(iPointNormal);
           HeatFlux[iMarker][iVertex] = thermal_conductivity * (There - Twall_local) / dist_ij * RefHeatFlux;
+
+          /*--- LES wall model (compressible): the modeled heat flux (into the fluid) is the imposed one. ---*/
+          if ((FlowRegime == ENUM_REGIME::COMPRESSIBLE) && wallfunctions && config->GetLES_FVM() && !py_custom &&
+              !WM_HeatFlux.empty()) {
+            HeatFlux[iMarker][iVertex] = -WM_HeatFlux[iMarker][iVertex] * RefHeatFlux;
+          }
         } else {
           su2double dTdn = GeometryToolbox::DotProduct(nDim, Grad_Temp, UnitNormal);
           if (FlowRegime == ENUM_REGIME::INCOMPRESSIBLE && !energy) dTdn = 0.0;
@@ -3053,3 +3060,6 @@ void CFVMFlowSolverBase<V, FlowRegime>::MultigridProjectEulerWall(CGeometry* geo
     END_SU2_OMP_FOR
   }
 }
+
+/*--- Finite volume LES closures (SGS model, LES wall model). ---*/
+#include "CFVMFlowSolverBase_LES.inl"

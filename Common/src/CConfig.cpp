@@ -3879,6 +3879,27 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     SU2_MPI::Error("TIME_AVG_EXP_CONST must be in (0, 1] when TIME_AVG_METHOD= EXPONENTIAL.", CURRENT_FUNCTION);
   }
 
+  /*--- SOLVER= LES / INC_LES are the compressible / incompressible finite volume Navier-Stokes solvers with an
+   LES closure. They are stored as NAVIER_STOKES / INC_NAVIER_STOKES (all the solver, iteration and output
+   machinery is the same) plus a flag. ---*/
+
+  if (Kind_Solver == MAIN_SOLVER::INC_LES || Kind_Solver == MAIN_SOLVER::LES) {
+    const string key = (Kind_Solver == MAIN_SOLVER::LES) ? "LES" : "INC_LES";
+    if (Kind_Turb_Model != TURB_MODEL::NONE)
+      SU2_MPI::Error("KIND_TURB_MODEL must be NONE if SOLVER= " + key, CURRENT_FUNCTION);
+    if (Kind_SGS_Model == TURB_SGS_MODEL::NONE)
+      SU2_MPI::Error("KIND_SGS_MODEL (IMPLICIT_LES, SMAGORINSKY, WALE, VREMAN) must be specified if SOLVER= " + key,
+                     CURRENT_FUNCTION);
+    if (Kind_Solver == MAIN_SOLVER::LES) {
+      Kind_Solver = MAIN_SOLVER::NAVIER_STOKES;
+      Comp_LES = true;
+    } else {
+      Kind_Solver = MAIN_SOLVER::INC_NAVIER_STOKES;
+      Inc_LES = true;
+    }
+  }
+  const bool les_fvm = Inc_LES || Comp_LES;
+
   if (Kind_Solver == MAIN_SOLVER::NAVIER_STOKES && Kind_Turb_Model != TURB_MODEL::NONE){
     SU2_MPI::Error("KIND_TURB_MODEL must be NONE if SOLVER= NAVIER_STOKES", CURRENT_FUNCTION);
   }
@@ -3933,6 +3954,21 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     }
   }
 
+  /*--- SGS models are used only by FEM_LES and by the finite volume LES / INC_LES (primal only). ---*/
+
+  const bool fvm_flow_solver = (Kind_Solver == MAIN_SOLVER::EULER || Kind_Solver == MAIN_SOLVER::NAVIER_STOKES ||
+                                Kind_Solver == MAIN_SOLVER::RANS || Kind_Solver == MAIN_SOLVER::INC_EULER ||
+                                Kind_Solver == MAIN_SOLVER::INC_NAVIER_STOKES || Kind_Solver == MAIN_SOLVER::INC_RANS);
+  if (fvm_flow_solver && Kind_SGS_Model != TURB_SGS_MODEL::NONE && !les_fvm) {
+    SU2_MPI::Error("KIND_SGS_MODEL in the finite volume solver requires SOLVER= LES or INC_LES.", CURRENT_FUNCTION);
+  }
+  if (les_fvm) {
+    if (DiscreteAdjoint)
+      SU2_MPI::Error("SOLVER= LES / INC_LES is not available for the discrete adjoint.", CURRENT_FUNCTION);
+    if (TimeMarching == TIME_MARCHING::STEADY && rank == MASTER_NODE)
+      cout << "WARNING: SOLVER= LES / INC_LES with a steady simulation, LES requires TIME_DOMAIN= YES." << endl;
+  }
+
   /*--- Set the boolean Wall_Functions equal to true if there is a
    definition for the wall founctions ---*/
 
@@ -3952,6 +3988,27 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
           SU2_MPI::Error(string("Wall model STANDARD_FUNCTION only available for RANS or INC_RANS.\n"), CURRENT_FUNCTION);
         if (nRough_Wall != 0)
           SU2_MPI::Error(string("Wall model STANDARD_FUNCTION and WALL_ROUGHNESS migh not be compatible. Checking required!\n"), CURRENT_FUNCTION);
+      }
+
+      /*--- LES wall models in the finite volume solver (LES, INC_LES): only the logarithmic (Reichardt, plus
+       *    Kader for the heat flux) law, with the exchange location at h_wm from the wall, or at the first node
+       *    off the wall (h_wm <= 0). ---*/
+
+      if (fvm_flow_solver && Kind_WallFunctions[iMarker] != WALL_FUNCTIONS::NONE) {
+        const bool les_wm = (Kind_WallFunctions[iMarker] == WALL_FUNCTIONS::LOGARITHMIC_MODEL ||
+                             Kind_WallFunctions[iMarker] == WALL_FUNCTIONS::EQUILIBRIUM_MODEL);
+        if (les_fvm && !(Kind_WallFunctions[iMarker] == WALL_FUNCTIONS::LOGARITHMIC_MODEL))
+          SU2_MPI::Error("SOLVER= LES / INC_LES supports only LOGARITHMIC_WALL_MODEL in MARKER_WALL_FUNCTIONS (marker " +
+                         Marker_WallFunctions[iMarker] + ").", CURRENT_FUNCTION);
+        if (!les_fvm && les_wm)
+          SU2_MPI::Error("LES wall models (LOGARITHMIC_WALL_MODEL, EQUILIBRIUM_WALL_MODEL) in the finite volume "
+                         "solver require SOLVER= LES or INC_LES (marker " + Marker_WallFunctions[iMarker] + ").",
+                         CURRENT_FUNCTION);
+        if (Inc_LES) {
+          if (Energy_Equation && rank == MASTER_NODE)
+            cout << "WARNING: INC_LES wall model, marker " << Marker_WallFunctions[iMarker]
+                 << ": only the wall shear stress is modeled, the wall heat flux uses the resolved gradient." << endl;
+        }
       }
 
     }
@@ -6924,8 +6981,28 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
       case MAIN_SOLVER::NAVIER_STOKES:     case MAIN_SOLVER::DISC_ADJ_NAVIER_STOKES:
       case MAIN_SOLVER::INC_NAVIER_STOKES: case MAIN_SOLVER::DISC_ADJ_INC_NAVIER_STOKES:
       case MAIN_SOLVER::FEM_NAVIER_STOKES: case MAIN_SOLVER::DISC_ADJ_FEM_NS:
-        if (Kind_Regime == ENUM_REGIME::COMPRESSIBLE) cout << "Compressible Laminar Navier-Stokes' equations." << endl;
-        if (Kind_Regime == ENUM_REGIME::INCOMPRESSIBLE) cout << "Incompressible Laminar Navier-Stokes' equations." << endl;
+        if (Kind_Regime == ENUM_REGIME::COMPRESSIBLE) {
+          if (Comp_LES) cout << "Compressible LES equations (finite volume)." << endl;
+          else cout << "Compressible Laminar Navier-Stokes' equations." << endl;
+        }
+        if (Kind_Regime == ENUM_REGIME::INCOMPRESSIBLE) {
+          if (Inc_LES) cout << "Incompressible LES equations (finite volume)." << endl;
+          else cout << "Incompressible Laminar Navier-Stokes' equations." << endl;
+        }
+        if (Inc_LES || Comp_LES) {
+          switch (Kind_SGS_Model) {
+            case TURB_SGS_MODEL::IMPLICIT_LES: cout << "LES Subgrid Scale model: Implicit LES (no SGS model)." << endl; break;
+            case TURB_SGS_MODEL::SMAGORINSKY: cout << "LES Subgrid Scale model: Smagorinsky (C_s = 0.1)." << endl; break;
+            case TURB_SGS_MODEL::WALE:        cout << "LES Subgrid Scale model: WALE (C_w = 0.325)." << endl; break;
+            case TURB_SGS_MODEL::VREMAN:      cout << "LES Subgrid Scale model: Vreman (c = 0.07)." << endl; break;
+            default: break;
+          }
+          if (Kind_SGS_Model == TURB_SGS_MODEL::SMAGORINSKY || Kind_SGS_Model == TURB_SGS_MODEL::WALE ||
+              Kind_SGS_Model == TURB_SGS_MODEL::VREMAN) {
+            if (LES_FilterWidth > 0.0) cout << "User-specified LES filter width: " << LES_FilterWidth << endl;
+            else cout << "LES filter width: cube root of the dual control volume (square root of the area in 2D)." << endl;
+          }
+        }
         break;
       case MAIN_SOLVER::RANS:     case MAIN_SOLVER::DISC_ADJ_RANS:
       case MAIN_SOLVER::INC_RANS: case MAIN_SOLVER::DISC_ADJ_INC_RANS:

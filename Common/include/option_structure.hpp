@@ -340,6 +340,10 @@ enum class MAIN_SOLVER {
   POISSON_EQUATION,            /*!< \brief Definition of the Poisson equation solver. */
   NEMO_EULER,                  /*!< \brief Definition of the NEMO Euler solver. */
   NEMO_NAVIER_STOKES,          /*!< \brief Definition of the NEMO NS solver. */
+  INC_LES,                     /*!< \brief Incompressible finite volume LES. Input only: CConfig converts it to
+                                           INC_NAVIER_STOKES and sets the LES flag (see CConfig::GetINC_LES). */
+  LES,                         /*!< \brief Compressible finite volume LES. Input only: CConfig converts it to
+                                           NAVIER_STOKES and sets the LES flag (see CConfig::GetLES_FVM). */
 };
 static const MapType<std::string, MAIN_SOLVER> Solver_Map = {
   MakePair("NONE", MAIN_SOLVER::NONE)
@@ -349,6 +353,8 @@ static const MapType<std::string, MAIN_SOLVER> Solver_Map = {
   MakePair("INC_EULER", MAIN_SOLVER::INC_EULER)
   MakePair("INC_NAVIER_STOKES", MAIN_SOLVER::INC_NAVIER_STOKES)
   MakePair("INC_RANS", MAIN_SOLVER::INC_RANS)
+  MakePair("INC_LES", MAIN_SOLVER::INC_LES)
+  MakePair("LES", MAIN_SOLVER::LES)
   MakePair("FEM_EULER", MAIN_SOLVER::FEM_EULER)
   MakePair("FEM_NAVIER_STOKES", MAIN_SOLVER::FEM_NAVIER_STOKES)
   MakePair("FEM_RANS", MAIN_SOLVER::FEM_RANS)
