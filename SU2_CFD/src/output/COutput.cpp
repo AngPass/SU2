@@ -64,6 +64,7 @@ void signalHandler(int signum) {
 /*--- Creating this file in the working directory stops the solver and saves the files. ---*/
 constexpr char STOP_FILE_NAME[] = "su2_stop";
 bool STOP_FILE_FOUND = false;
+bool STOP_FILE_DELAYED = false;
 
 /*--- Local (non-collective) check, only the master rank accesses the file system. ---*/
 bool LocalStopFileCheck() {
@@ -76,15 +77,27 @@ bool LocalStopFileCheck() {
 }
 }
 
-bool COutput::CheckStopFile() {
+bool COutput::CheckStopFile(bool delayOneStep) {
   const unsigned short local = LocalStopFileCheck();
   unsigned short global = 0;
   SU2_MPI::Allreduce(&local, &global, 1, MPI_UNSIGNED_SHORT, MPI_MAX, SU2_MPI::GetComm());
   STOP_FILE_FOUND = global > 0;
-  return STOP_FILE_FOUND;
+  if (!STOP_FILE_FOUND) return false;
+
+  /*--- First detection with a delayed stop: write the restart of this step and stop after the next one. ---*/
+  if (delayOneStep && !STOP_FILE_DELAYED) {
+    STOP_FILE_DELAYED = true;
+    if (SU2_MPI::GetRank() == MASTER_NODE)
+      std::cout << "Second order dual time stepping: the solver will exit after the next time iteration, "
+                   "so that both solutions required for the restart are saved.\n";
+    return false;
+  }
+  return true;
 }
 
 bool COutput::GetStopFileFound() { return STOP_FILE_FOUND; }
+
+bool COutput::GetStopFileDelayed() { return STOP_FILE_DELAYED; }
 
 COutput::COutput(const CConfig *config, unsigned short ndim, bool fem_output):
   rank(SU2_MPI::GetRank()),

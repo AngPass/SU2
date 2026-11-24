@@ -677,7 +677,13 @@ bool CMultizoneDriver::Monitor(unsigned long TimeIter) {
 
   const bool FinalTimeReached = (CurTime >= MaxTime);
   const bool MaxIterationsReached = (TimeIter+1 >= nTimeIter);
-  const bool StopFileFound = COutput::CheckStopFile();
+  /*--- Second order dual time restarts need two consecutive solutions, hence the stop is delayed by one step. ---*/
+  bool DelayStop = false;
+  for (iZone = 0; iZone < nZone; iZone++) {
+    DelayStop |= (config_container[iZone]->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND) &&
+                 !config_container[iZone]->GetDiscrete_Adjoint();
+  }
+  const bool StopFileFound = COutput::CheckStopFile(DelayStop);
 
   if ((TimeConvergence || FinalTimeReached || MaxIterationsReached || StopFileFound) && (rank == MASTER_NODE)){
     cout << "\n----------------------------- Solver Exit -------------------------------";

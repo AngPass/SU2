@@ -298,7 +298,10 @@ bool CSinglezoneDriver::Monitor(unsigned long TimeIter){
 
     FinalTimeReached = CurTime >= MaxTime;
     MaxIterationsReached = TimeIter+1 >= nTimeIter;
-    const bool StopFileFound = COutput::CheckStopFile();
+    /*--- Second order dual time restarts need two consecutive solutions, hence the stop is delayed by one step. ---*/
+    const bool DelayStop = (config_container[ZONE_0]->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND) &&
+                           !config_container[ZONE_0]->GetDiscrete_Adjoint();
+    const bool StopFileFound = COutput::CheckStopFile(DelayStop);
 
     if ((FinalTimeReached || MaxIterationsReached || TimeConvergence || StopFileFound) && (rank == MASTER_NODE)){
       cout << "\n----------------------------- Solver Exit -------------------------------";

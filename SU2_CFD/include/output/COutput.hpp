@@ -618,14 +618,24 @@ public:
    * \brief Check whether a stop file ("su2_stop") exists in the working directory. If found, the file
    *        is removed and the request is remembered, i.e. subsequent calls also return true.
    * \note Collective call, must be called by all ranks.
-   * \return Boolean indicating whether a stop was requested via the stop file.
+   * \param[in] delayOneStep - Postpone the stop by one call after the file is found. Used for second order
+   *            dual time stepping, whose restart needs the solutions of two consecutive time steps: the step
+   *            at which the file is found is written as restart (see GetStopFileDelayed) and the solver
+   *            stops after the next one.
+   * \return Boolean indicating whether the solver should stop now because of the stop file.
    */
-  static bool CheckStopFile();
+  static bool CheckStopFile(bool delayOneStep = false);
 
   /*!
    * \brief Get whether a stop file was found by a previous check (no file system access, not collective).
    */
   static bool GetStopFileFound();
+
+  /*!
+   * \brief Get whether a stop file was found and the stop was postponed by one time step, in which case
+   *        the restart files of the current time step must be written (no file system access, not collective).
+   */
+  static bool GetStopFileDelayed();
 
   /*!
    * \brief Set the value of the convergence flag.

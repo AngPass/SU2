@@ -4305,7 +4305,8 @@ bool CFlowOutput::WriteVolumeOutput(CConfig *config, unsigned long Iter, bool fo
     if ((config->GetTime_Marching() == TIME_MARCHING::DT_STEPPING_2ND) &&
       ((Iter == 0) || (Iter % config->GetVolumeOutputFrequency(iFile) == 0) ||
       (((Iter+1) % config->GetVolumeOutputFrequency(iFile) == 0) && writeRestart) || // Restarts need 2 old solutions.
-      (((Iter+2) == config->GetnTime_Iter()) && writeRestart))){      // The last timestep is written anyway but one needs the step before for restarts.
+      (((Iter+2) == config->GetnTime_Iter()) && writeRestart) ||      // The last timestep is written anyway but one needs the step before for restarts.
+      (GetStopFileDelayed() && writeRestart))){                       // Same for a stop requested via the stop file.
       return true;
     }
   } else {
