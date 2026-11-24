@@ -2203,6 +2203,10 @@ void CConfig::SetConfig_Options() {
   addDoubleOption("LAX_SENSOR_COEFF", Kappa_1st_Flow, 0.15);
   /*!\brief LD2_COEFF \n DESCRIPTION: Gradient extrapolation coefficient (alpha) of the LD2 scheme. \ingroup Config*/
   addDoubleOption("LD2_COEFF", LD2_Coeff, 0.36);
+  /*!\brief KEEP_DUCROS \n DESCRIPTION: Ducros shock sensor switching on Roe dissipation in the KEEP scheme \ingroup Config*/
+  addBoolOption("KEEP_DUCROS", KEEP_Ducros, false);
+  /*!\brief KEEP_DUCROS_THRESHOLD \n DESCRIPTION: Ducros sensor value above which the KEEP scheme adds Roe dissipation \ingroup Config*/
+  addDoubleOption("KEEP_DUCROS_THRESHOLD", KEEP_Ducros_Threshold, 0.65);
   /*!\brief USE_ACCURATE_FLUX_JACOBIANS \n DESCRIPTION: Use numerically computed Jacobians for AUSM+up(2) and SLAU(2) \ingroup Config*/
   addBoolOption("USE_ACCURATE_FLUX_JACOBIANS", Use_Accurate_Jacobians, false);
   /*!\brief USE_EXACT_HLLC_JACOBIANS \n DESCRIPTION: Exact HLLC Jacobians with wave speeds held fixed \ingroup Config*/
@@ -5366,6 +5370,14 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
     Kappa_4th_Flow = 0.002;
   }
 
+  /*--- KEEP is a non-dissipative scheme: unless JST_SENSOR_COEFF is set explicitly, no
+        artificial dissipation is added (pure scheme of Kuya et al., JCP 2023). ---*/
+
+  if ((Kind_Centered_Flow == CENTERED::KEEP) && all_options.count("JST_SENSOR_COEFF")) {
+    Kappa_2nd_Flow = 0.0;
+    Kappa_4th_Flow = 0.0;
+  }
+
   /*--- Fill MG smooth vectors to size nMGLevels+1.
    Use parsed values (truncating or extending by repeat) or defaults if not set. ---*/
 
@@ -7819,6 +7831,15 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
             cout << "Kinetic-energy preserving central flux (Kok) with gradient extrapolation of velocity and pressure." << endl;
           }
           cout << "LD2 coefficient: " << LD2_Coeff << ".\n";
+        }
+        else if (Kind_Centered_Flow == CENTERED::KEEP) {
+          cout << "Kinetic Energy and Entropy Preserving (KEEP) central scheme for the flow inviscid terms." << endl;
+          if (Kappa_2nd_Flow == 0.0 && Kappa_4th_Flow == 0.0)
+            cout << "No artificial dissipation (non-dissipative scheme)." << endl;
+          else
+            cout << "Scalar JST dissipation added to the KEEP flux." << endl;
+          if (KEEP_Ducros)
+            cout << "Ducros shock sensor: Roe dissipation where sensor > " << KEEP_Ducros_Threshold << "." << endl;
         }
         else {
             cout << "Jameson-Schmidt-Turkel scheme (2nd order in space) for the flow inviscid terms.\n";

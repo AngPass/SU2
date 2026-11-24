@@ -85,6 +85,9 @@ CNumericsSIMD* createCenteredNumerics(const CConfig& config, int iMesh, const CV
     case CENTERED::LD2:
       obj = new CLD2Scheme<ViscousDecorator>(config, iMesh, turbVars);
       break;
+    case CENTERED::KEEP:
+      obj = new CKEEPScheme<ViscousDecorator>(config, iMesh, turbVars);
+      break;
     case CENTERED::CDS:
       /*--- CDS implemented only in the incompressible solver. ---*/
       break;

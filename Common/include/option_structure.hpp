@@ -956,6 +956,7 @@ enum class CENTERED {
   JST_MAT,        /*!< \brief JST with matrix dissipation. */
   JST_KE,         /*!< \brief Kinetic Energy preserving Jameson-Smith-Turkel centered numerical method. */
   LD2,            /*!< \brief Low-Dissipation Low-Dispersion (LD2) centered scheme. */
+  KEEP,           /*!< \brief Kinetic Energy and Entropy Preserving centered scheme (Kuya et al., JCP 2023). */
   CDS             /*!< \brief Central Difference Scheme used for pressure based solver. */
 };
 static const MapType<std::string, CENTERED> Centered_Map = {
@@ -965,6 +966,7 @@ static const MapType<std::string, CENTERED> Centered_Map = {
   MakePair("JST_MAT", CENTERED::JST_MAT)
   MakePair("LAX-FRIEDRICH", CENTERED::LAX)
   MakePair("LD2", CENTERED::LD2)
+  MakePair("KEEP", CENTERED::KEEP)
   MakePair("CDS", CENTERED::CDS)
 };
 

@@ -596,6 +596,7 @@ private:
   INCOMP_SYSTEM Kind_Incomp_System;      /*< \brief Kind of incompressible solver. */
 
   bool MUSCL,              /*!< \brief MUSCL scheme (for the runtime eq. system). */
+  KEEP_Ducros,             /*!< \brief Ducros shock sensor switching on Roe dissipation in the KEEP scheme. */
   MUSCL_Flow,              /*!< \brief MUSCL scheme for the flow equations.*/
   MUSCL_Turb,              /*!< \brief MUSCL scheme for the turbulence equations.*/
   MUSCL_Heat,              /*!< \brief MUSCL scheme for the (fvm) heat equation.*/
@@ -691,6 +692,7 @@ private:
   Kappa_2nd_Flow,           /*!< \brief JST 2nd order dissipation coefficient for flow equations. */
   Kappa_4th_Flow,           /*!< \brief JST 4th order dissipation coefficient for flow equations. */
   LD2_Coeff,                /*!< \brief Gradient extrapolation coefficient (alpha) of the LD2 scheme. */
+  KEEP_Ducros_Threshold,    /*!< \brief Ducros sensor threshold above which the KEEP scheme adds Roe dissipation. */
   Cent_Jac_Fix_Factor,              /*!< \brief Multiply the dissipation contribution to the Jacobian of central schemes
                                                 by this factor to make the global matrix more diagonal dominant. */
   Cent_Inc_Jac_Fix_Factor;          /*!< \brief Multiply the dissipation contribution to the Jacobian of incompressible central schemes */
@@ -5161,6 +5163,16 @@ public:
    * \return LD2 coefficient (1/3 recovers 4th order on uniform grids).
    */
   su2double GetLD2_Coeff(void) const { return LD2_Coeff; }
+
+  /*!
+   * \brief Whether the KEEP scheme uses the Ducros shock sensor to switch on upwind (Roe) dissipation.
+   */
+  bool GetKEEP_Ducros(void) const { return KEEP_Ducros; }
+
+  /*!
+   * \brief Ducros sensor threshold of the KEEP scheme (upwind dissipation where sensor > threshold).
+   */
+  su2double GetKEEP_Ducros_Threshold(void) const { return KEEP_Ducros_Threshold; }
 
   /*!
    * \brief Factor by which to multiply the dissipation contribution to Jacobians of central schemes.

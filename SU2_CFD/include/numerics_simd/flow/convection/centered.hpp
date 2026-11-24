@@ -449,6 +449,209 @@ public:
 };
 
 /*!
+ * \class CKEEPScheme
+ * \ingroup ConvDiscr
+ * \brief Kinetic Energy and Entropy Preserving (KEEP) central scheme with optional scalar JST dissipation.
+ * \note Kuya, Okumura, Sawada, JCP 494 (2023) 112521, doi:10.1016/j.jcp.2023.112521, Eq. 18.
+ *       The fluxes of mass (C), momentum (M + G), kinetic energy (K), internal energy (I) and
+ *       pressure diffusion (P) are built from arithmetic averages of the nodal primitives, so that
+ *       the discrete fluxes reproduce the analytical relations Eqs. 9-11 (KE from mass and momentum,
+ *       KE and IE convected by the same mass flux, pressure diffusion split into pressure work and
+ *       pressure dilatation). With the vertex-based (median-dual) discretization of SU2 the fluxes
+ *       are evaluated at edge midpoints, which is the configuration recommended in the reference.
+ *       The scheme is non-dissipative; JST_SENSOR_COEFF = (0, 0) (the default for KEEP) gives the
+ *       pure scheme, non-zero values add the scalar JST dissipation (e.g. shock capturing).
+ *       With KEEP_DUCROS = YES, first order Roe dissipation, 1/2 |A_roe| (U_j - U_i), is added on
+ *       the edges where the Ducros sensor (Ducros et al., JCP 152, 1999)
+ *       phi = (div u)^2 / ((div u)^2 + |curl u|^2 + eps), maximum of the two nodes, exceeds
+ *       KEEP_DUCROS_THRESHOLD (binary switch), as done with SLAU in Sec. 3.5 of the reference.
+ *       Ideal gas only (internal energy p / (rho (gamma-1))).
+ */
+template<class Decorator>
+class CKEEPScheme : public CCenteredBase<CKEEPScheme<Decorator>,Decorator> {
+private:
+  using Base = CCenteredBase<CKEEPScheme<Decorator>,Decorator>;
+  using Base::nDim;
+  using Base::nVar;
+  using Base::gamma;
+  const su2double kappa2;
+  const su2double kappa4;
+  const bool dissipation;
+  const bool ducros;
+  const passivedouble ducrosThreshold;
+  const su2double entropyFix;
+
+  /*!
+   * \brief Ducros sensor at a node from the velocity gradient (primitive rows 1 to nDim).
+   */
+  template<class IdxType>
+  FORCEINLINE Double ducrosSensor(const IdxType& iPoint, const CEulerVariable& solution) const {
+    const auto grad = gatherVariables<nDim,nDim>(iPoint, solution.GetGradient_Primitive(), 1);
+
+    Double div = 0.0;
+    for (size_t iDim = 0; iDim < nDim; ++iDim) div += grad(iDim,iDim);
+
+    Double omega2 = pow(grad(1,0) - grad(0,1), 2);
+    if constexpr (nDim == 3) {
+      omega2 += pow(grad(2,1) - grad(1,2), 2) + pow(grad(0,2) - grad(2,0), 2);
+    }
+    const Double div2 = pow(div, 2);
+    return div2 / (div2 + omega2 + 1e-20);
+  }
+
+  /*!
+   * \brief Adds w * 1/2 |A_roe| (U_i - U_j) to the flux (w = 0/1 Ducros switch).
+   */
+  template<class PrimVarType>
+  FORCEINLINE void addDucrosRoeDissipation(VectorDbl<nVar>& flux,
+                                           MatrixDbl<nVar>& jac_i,
+                                           MatrixDbl<nVar>& jac_j,
+                                           const bool implicit,
+                                           const Double& area,
+                                           const Double& projVel,
+                                           const PrimVarType& avgV,
+                                           const CPair<PrimVarType>& V,
+                                           const Int& iPoint,
+                                           const Int& jPoint,
+                                           const CEulerVariable& solution,
+                                           const VectorDbl<nDim>& unitNormal) const {
+
+    const Double phi = fmax(ducrosSensor(iPoint, solution), ducrosSensor(jPoint, solution));
+    const Double active = phi > ducrosThreshold;
+
+    /*--- Skip the (expensive) Roe matrix when the switch is off in all SIMD lanes. ---*/
+    bool any = false;
+    for (size_t k = 0; k < Double::Size; ++k) any |= (active[k] > 0.0);
+    if (!any) return;
+
+    const auto roeAvg = roeAveragedVariables(gamma, V, unitNormal);
+
+    /*--- Grid velocity (normal component), recovered from the projected velocity. ---*/
+    const Double projGridVel = dot(avgV.velocity(), unitNormal) - projVel / area;
+    const Double roeProjVel = roeAvg.projVel - projGridVel;
+
+    VectorDbl<nVar> lambda;
+    for (size_t iDim = 0; iDim < nDim; ++iDim) lambda(iDim) = roeProjVel;
+    lambda(nDim) = roeProjVel + roeAvg.speedSound;
+    lambda(nDim+1) = roeProjVel - roeAvg.speedSound;
+
+    const Double lambdaMin = entropyFix * (abs(roeProjVel) + roeAvg.speedSound);
+    for (size_t iVar = 0; iVar < nVar; ++iVar) lambda(iVar) = fmax(abs(lambda(iVar)), lambdaMin);
+
+    const auto pMat = pMatrix(gamma, roeAvg.density, roeAvg.velocity,
+                              roeAvg.projVel, roeAvg.speedSound, unitNormal);
+    const auto pMatInv = pMatrixInv(gamma, roeAvg.density, roeAvg.velocity,
+                                    roeAvg.projVel, roeAvg.speedSound, unitNormal);
+
+    /*--- Conservative differences (the diffU of the base uses rho*H for energy). ---*/
+    const auto U_i = compressibleConservatives(V.i);
+    const auto U_j = compressibleConservatives(V.j);
+    VectorDbl<nVar> deltaU;
+    for (size_t iVar = 0; iVar < nVar; ++iVar) deltaU(iVar) = U_j.all(iVar) - U_i.all(iVar);
+
+    const Double scale = 0.5 * area * active;
+
+    for (size_t iVar = 0; iVar < nVar; ++iVar) {
+      for (size_t jVar = 0; jVar < nVar; ++jVar) {
+        Double absA = 0.0;
+        for (size_t kVar = 0; kVar < nVar; ++kVar) {
+          absA += pMat(iVar,kVar) * lambda(kVar) * pMatInv(kVar,jVar);
+        }
+        const Double dDdU = scale * absA;
+        flux(iVar) -= dDdU * deltaU(jVar);
+        if (implicit) {
+          jac_i(iVar,jVar) += dDdU;
+          jac_j(iVar,jVar) -= dDdU;
+        }
+      }
+    }
+  }
+
+public:
+  /*!
+   * \brief Constructor, forward everything to base.
+   */
+  template<class... Ts>
+  CKEEPScheme(const CConfig& config, Ts&... args) : Base(config, args...),
+    kappa2(config.GetKappa_2nd_Flow()),
+    kappa4(config.GetKappa_4th_Flow()),
+    dissipation((config.GetKappa_2nd_Flow() > 0.0) || (config.GetKappa_4th_Flow() > 0.0)),
+    ducros(config.GetKEEP_Ducros()),
+    ducrosThreshold(SU2_TYPE::GetValue(config.GetKEEP_Ducros_Threshold())),
+    entropyFix(config.GetEntropyFix_Coeff()) {
+  }
+
+  /*!
+   * \brief KEEP central flux, Eq. 18 of the reference.
+   */
+  template<class PrimVarType, class ConsVarType>
+  FORCEINLINE VectorDbl<nVar> centralFlux(const Int&,
+                                          const Int&,
+                                          const CPair<PrimVarType>& V,
+                                          const PrimVarType&,
+                                          const ConsVarType&,
+                                          const VectorDbl<nDim>& normal,
+                                          const CGeometry&,
+                                          const CEulerVariable&) const {
+
+    const Double projVel_i = dot(V.i.velocity(), normal);
+    const Double projVel_j = dot(V.j.velocity(), normal);
+
+    /*--- Mass flux C = <rho> <u.S>. ---*/
+    const Double mdot = 0.25 * (V.i.density() + V.j.density()) * (projVel_i + projVel_j);
+
+    /*--- Momentum M + G = C <u> + <p> S. ---*/
+    VectorDbl<nVar> flux;
+    flux(0) = mdot;
+    const Double avgP = 0.5 * (V.i.pressure() + V.j.pressure());
+    Double velIdotJ = 0.0;
+    for (size_t iDim = 0; iDim < nDim; ++iDim) {
+      flux(iDim+1) = mdot * 0.5*(V.i.velocity(iDim) + V.j.velocity(iDim)) + avgP * normal(iDim);
+      velIdotJ += V.i.velocity(iDim) * V.j.velocity(iDim);
+    }
+
+    /*--- Energy: K = C (u_i.u_j)/2, I = C <p/rho>/(gamma-1), P = (u_i.S p_j + u_j.S p_i)/2. ---*/
+    const Double kinEnergy = 0.5 * velIdotJ;
+    const Double intEnergy = 0.5 * (V.i.pressure()/V.i.density() + V.j.pressure()/V.j.density()) / (gamma-1);
+    const Double pressDiff = 0.5 * (projVel_i*V.j.pressure() + projVel_j*V.i.pressure());
+
+    flux(nDim+1) = mdot * (kinEnergy + intEnergy) + pressDiff;
+
+    return flux;
+  }
+
+  /*!
+   * \brief Optionally adds the scalar JST dissipation (inactive when both coefficients are zero)
+   *        and the Ducros-switched Roe dissipation.
+   */
+  template<class PrimVarType, class... Ts>
+  FORCEINLINE void finalizeFlux(VectorDbl<nVar>& flux,
+                                MatrixDbl<nVar>& jac_i,
+                                MatrixDbl<nVar>& jac_j,
+                                const bool implicit,
+                                const Double& area,
+                                const Double& projVel,
+                                const PrimVarType& avgV,
+                                const CPair<PrimVarType>& V,
+                                const VectorDbl<nVar>& diffU,
+                                const Int& iPoint,
+                                const Int& jPoint,
+                                const CGeometry& geometry,
+                                const CEulerVariable& solution,
+                                const VectorDbl<nDim>& unitNormal,
+                                Ts&...) const {
+    if (dissipation) {
+      Base::addJSTDissipation(kappa2, kappa4, flux, jac_i, jac_j, implicit, area, projVel,
+                              avgV, V, diffU, iPoint, jPoint, geometry, solution);
+    }
+    if (ducros) {
+      addDucrosRoeDissipation(flux, jac_i, jac_j, implicit, area, projVel, avgV, V,
+                              iPoint, jPoint, solution, unitNormal);
+    }
+  }
+};
+
+/*!
  * \class CJSTmatScheme
  * \ingroup ConvDiscr
  * \brief JST scheme with matrix dissipation.

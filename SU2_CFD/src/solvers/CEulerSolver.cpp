@@ -1554,9 +1554,12 @@ void CEulerSolver::CommonPreprocessing(CGeometry *geometry, CSolver **solver_con
   bool disc_adjoint     = config->GetDiscrete_Adjoint();
   bool implicit         = (config->GetKind_TimeIntScheme() == EULER_IMPLICIT);
   bool center           = (config->GetKind_ConvNumScheme_Flow() == SPACE_CENTERED);
-  /*--- LD2 uses the JST dissipation, hence the same sensor and undivided Laplacian. ---*/
+  /*--- LD2 and KEEP (when its dissipation is active) use the JST dissipation,
+   *    hence the same sensor and undivided Laplacian. ---*/
+  const bool keep_dissip = (config->GetKind_Centered_Flow() == CENTERED::KEEP) &&
+                           ((config->GetKappa_2nd_Flow() > 0.0) || (config->GetKappa_4th_Flow() > 0.0));
   bool center_jst       = (config->GetKind_Centered_Flow() == CENTERED::JST ||
-                           config->GetKind_Centered_Flow() == CENTERED::LD2) && (iMesh == MESH_0);
+                           config->GetKind_Centered_Flow() == CENTERED::LD2 || keep_dissip) && (iMesh == MESH_0);
   bool center_jst_ke    = (config->GetKind_Centered_Flow() == CENTERED::JST_KE) && (iMesh == MESH_0);
   bool center_jst_mat   = (config->GetKind_Centered_Flow() == CENTERED::JST_MAT) && (iMesh == MESH_0);
   bool engine           = ((config->GetnMarker_EngineInflow() != 0) || (config->GetnMarker_EngineExhaust() != 0));
@@ -1676,7 +1679,11 @@ void CEulerSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container
 
   const bool ld2_scheme = center && (config->GetKind_Centered_Flow() == CENTERED::LD2) && (iMesh == MESH_0);
 
-  if (!Output && ld2_scheme) {
+  /*--- The Ducros sensor of the KEEP scheme needs the velocity gradient. ---*/
+  const bool keep_ducros = center && (config->GetKind_Centered_Flow() == CENTERED::KEEP) &&
+                           config->GetKEEP_Ducros() && (iMesh == MESH_0);
+
+  if (!Output && (ld2_scheme || keep_ducros)) {
     switch (config->GetKind_Gradient_Method()) {
       case GREEN_GAUSS:
         SetPrimitive_Gradient_GG(geometry, config); break;
