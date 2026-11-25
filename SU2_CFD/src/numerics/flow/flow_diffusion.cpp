@@ -178,7 +178,11 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
 
   /*--- Intensity weighted by the LES sensor. ---*/
 
-  if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
+  if (config->GetLES_FVM()) {
+    /*--- Finite volume LES (Leith, 1990): stochVar already holds the vector potential per unit
+          intensity coefficient, nu_sgs |S| (|S| dt)^(-1/2) xi (see CFVMFlowSolverBase::SetLES_Backscatter). ---*/
+    tke_i = tke_j = 1.0;
+  } else if (IsHybridRANSLES_SST(config->GetKind_HybridRANSLES())) {
     su2double turbKinEn_i = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_i : turb_ke_i;
     su2double turbKinEn_j = (config->GetSBSParam().useMeanTurb) ? avg_turb_ke_j : turb_ke_j;
     tke_i = lesMode_i * turbKinEn_i;
@@ -221,6 +225,11 @@ void CAvgGrad_Base::SetStochSourceMom(const CConfig* config) {
 }
 
 void CAvgGrad_Base::SetPreaccInHybridRANSLES(const CConfig* config) {
+  if (config->GetLES_FVM() && config->GetSBSParam().StochasticBackscatter) {
+    AD::SetPreaccIn(stochVar_i, 3);
+    AD::SetPreaccIn(stochVar_j, 3);
+    return;
+  }
   if (config->GetKind_HybridRANSLES() == NO_HYBRIDRANSLES) return;
 
   const auto& sbs = config->GetSBSParam();

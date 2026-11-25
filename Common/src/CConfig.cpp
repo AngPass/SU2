@@ -4371,15 +4371,36 @@ void CConfig::SetPostprocessing(SU2_COMPONENT val_software, unsigned short val_i
       SU2_MPI::Error("HYBRID_RANSLES= SA_* requires KIND_TURB_MODEL= SA.", CURRENT_FUNCTION);
   }
 
-  if (SBSParam.StochasticBackscatter) {
+  if (SBSParam.StochasticBackscatter && les_fvm) {
+    /*--- Finite volume LES (SOLVER= LES / INC_LES): Leith's (1990) white-in-time backscatter, no transport
+          equations. Only the options that make sense without a turbulence solver are accepted. ---*/
+    if (SBSParam.stochSourceType != WHITE_NOISE)
+      SU2_MPI::Error("STOCHASTIC_BACKSCATTER with SOLVER= LES / INC_LES requires SBS_SOURCE_TYPE= WHITE_NOISE "
+                     "(Leith's model).", CURRENT_FUNCTION);
+    if (Kind_SGS_Model == TURB_SGS_MODEL::IMPLICIT_LES)
+      SU2_MPI::Error("STOCHASTIC_BACKSCATTER with SOLVER= LES / INC_LES requires an explicit SGS model "
+                     "(the backscatter intensity scales with the SGS eddy viscosity).", CURRENT_FUNCTION);
+    if (SBSParam.tkeStrain || SBSParam.useMeanTurb || SBSParam.filterStresses)
+      SU2_MPI::Error("SBS_TKE_STRAIN, SBS_USE_MEAN_TURB and FILTER_STRESSES are not available with "
+                     "SOLVER= LES / INC_LES.", CURRENT_FUNCTION);
+    if (Comp_LES && UseVectorization)
+      SU2_MPI::Error("STOCHASTIC_BACKSCATTER with SOLVER= LES is not available with USE_VECTORIZATION= YES "
+                     "(the vectorized viscous fluxes do not include the stochastic stress).", CURRENT_FUNCTION);
+  }
+
+  if (SBSParam.StochasticBackscatter && !les_fvm) {
     if (Kind_HybridRANSLES == NO_HYBRIDRANSLES)
-      SU2_MPI::Error("Stochastic Backscatter can only be activated with Hybrid RANS/LES.", CURRENT_FUNCTION);
+      SU2_MPI::Error("Stochastic Backscatter can only be activated with Hybrid RANS/LES or SOLVER= LES / INC_LES.",
+                     CURRENT_FUNCTION);
 
     /*--- The smoothing matrix needs a solution-independent filter width (no ZDES/EDDES/IDDES). ---*/
     if (Kind_HybridRANSLES != SA_DES && Kind_HybridRANSLES != SA_DDES &&
         Kind_HybridRANSLES != SST_DES && Kind_HybridRANSLES != SST_DDES)
       SU2_MPI::Error("Stochastic Backscatter is only available with HYBRID_RANSLES= SA_DES, SA_DDES, SST_DES or SST_DDES.",
                      CURRENT_FUNCTION);
+  }
+
+  if (SBSParam.StochasticBackscatter) {
 
     if (!Time_Domain)
       SU2_MPI::Error("Stochastic Backscatter requires an unsteady simulation (TIME_DOMAIN= YES).", CURRENT_FUNCTION);
@@ -7069,6 +7090,17 @@ void CConfig::SetOutput(SU2_COMPONENT val_software, unsigned short val_izone) {
               Kind_SGS_Model == TURB_SGS_MODEL::VREMAN) {
             if (LES_FilterWidth > 0.0) cout << "User-specified LES filter width: " << LES_FilterWidth << endl;
             else cout << "LES filter width: cube root of the dual control volume (square root of the area in 2D)." << endl;
+          }
+          if (SBSParam.StochasticBackscatter) {
+            cout << "Stochastic Backscatter: ON, Leith (1990), white in time." << endl;
+            cout << "| Vector potential C_b nu_sgs |S| (|S| dt)^(-1/2) xi, C_b = SBS_INTENSITY_COEFF = "
+                 << SBSParam.SBS_Cmag << endl;
+            cout << "| xi: unit Gaussian noise, smoothed once over the nearest neighbours (unit variance)." << endl;
+            if (SBSParam.StochBackscatterInBox) {
+              const auto* b = SBSParam.StochBackscatterBoxBounds;
+              cout << "| Active only in the box x [" << b[0] << ", " << b[1] << "], y [" << b[2] << ", " << b[3]
+                   << "], z [" << b[4] << ", " << b[5] << "]." << endl;
+            }
           }
         }
         break;

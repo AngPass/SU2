@@ -1,7 +1,8 @@
 /*!
  * \file CFVMFlowSolverBase_LES.inl
- * \brief Finite volume LES closures (SOLVER= LES / INC_LES): explicit SGS model and LES wall model,
- *        with the wall model exchange location at the first node off the wall or at a height h_wm.
+ * \brief Finite volume LES closures (SOLVER= LES / INC_LES): explicit SGS model, stochastic backscatter
+ *        (Leith) and LES wall model, with the wall model exchange location at the first node off the wall
+ *        or at a height h_wm.
  * \note Included by CFVMFlowSolverBase.inl.
  * \version 8.6.0 "Harrier"
  *
@@ -29,6 +30,7 @@
 #pragma once
 
 #include "../../../Common/include/adt/CADTElemClass.hpp"
+#include "../../../Common/include/toolboxes/random_toolbox.hpp"
 
 template <class V, ENUM_REGIME FlowRegime>
 void CFVMFlowSolverBase<V, FlowRegime>::InitLES(const CGeometry* geometry, const CConfig* config,
@@ -58,6 +60,14 @@ void CFVMFlowSolverBase<V, FlowRegime>::InitLES(const CGeometry* geometry, const
     }
   }
   if (SGSModel) SGS_EddyViscosity.resize(nPoint) = su2double(0.0);
+
+  /*--- Stochastic backscatter (Leith), validated in CConfig (WHITE_NOISE, explicit SGS model). ---*/
+
+  if (config->GetLES_FVM() && config->GetSBSParam().StochasticBackscatter && iMesh == MESH_0) {
+    if (nDim < 3)
+      SU2_MPI::Error("The stochastic backscatter of SOLVER= LES / INC_LES is available in 3D only.", CURRENT_FUNCTION);
+    nodes->AllocateLES_Backscatter();
+  }
 
   /*--- LES wall model: modeled heat flux storage, exchange locations at h_wm > 0 (collective: the
    *    conditions are global). ---*/
@@ -110,6 +120,121 @@ void CFVMFlowSolverBase<V, FlowRegime>::ComputeSGS_EddyViscosity(const CGeometry
     nodes->SetEddyViscosity(iPoint, muT);
   }
   END_SU2_OMP_FOR
+}
+
+template <class V, ENUM_REGIME FlowRegime>
+void CFVMFlowSolverBase<V, FlowRegime>::SetLES_Backscatter(CGeometry* geometry, const CConfig* config) {
+  SU2_ZONE_SCOPED
+
+  const unsigned long timeIter = config->GetTimeIter();
+  const su2double dt = config->GetDelta_UnstTimeND();
+  const unsigned short nPeriodic = config->GetnMarker_Periodic() / 2;
+  const bool inBox = config->GetSBSParam().StochBackscatterInBox;
+  const auto* boxBounds = config->GetSBSParam().StochBackscatterBoxBounds;
+
+  auto PeriodicComm = [&](unsigned short commType) {
+    for (unsigned short iPeriodic = 1; iPeriodic <= nPeriodic; iPeriodic++) {
+      InitiatePeriodicComms(geometry, config, iPeriodic, commType);
+      CompletePeriodicComms(geometry, config, iPeriodic, commType);
+    }
+  };
+
+  /*--- 1) Unit Gaussian noise, white in space and time. The seed depends on the global index (independent of
+   *       the partitioning); the passive periodic face takes the noise of the master face. ---*/
+
+  SU2_OMP_FOR_STAT(omp_chunk_size)
+  for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+    const unsigned long iPointGlobal = geometry->nodes->GetGlobalIndex(iPoint);
+    for (unsigned short iDim = 0; iDim < 3; iDim++)
+      nodes->SetSBSPeriodicBuf(iPoint, iDim, RandomToolbox::GetNormal(iPointGlobal, iDim, timeIter));
+  }
+  END_SU2_OMP_FOR
+
+  PeriodicComm(PERIODIC_SBS_COPY);
+
+  SU2_OMP_FOR_STAT(omp_chunk_size)
+  for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++)
+    for (unsigned short iDim = 0; iDim < 3; iDim++)
+      nodes->SetLangevinSourceTerms(iPoint, iDim, nodes->GetSBSPeriodicBuf(iPoint, iDim));
+  END_SU2_OMP_FOR
+
+  InitiateComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
+  CompleteComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
+
+  /*--- 2) Smoothing filter over the nearest neighbours (Leith's 2 dx filter): xi_i + sum_j xi_j, partial sums
+   *       completed at periodic points. ---*/
+
+  SU2_OMP_FOR_STAT(omp_chunk_size)
+  for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+    su2double sum[3] = {0.0, 0.0, 0.0};
+    const auto nNeigh = geometry->nodes->GetnPoint(iPoint);
+    for (unsigned short iNeigh = 0; iNeigh < nNeigh; iNeigh++) {
+      const auto jPoint = geometry->nodes->GetPoint(iPoint, iNeigh);
+      for (unsigned short iDim = 0; iDim < 3; iDim++) sum[iDim] += nodes->GetLangevinSourceTerms(jPoint, iDim);
+    }
+    for (unsigned short iDim = 0; iDim < 3; iDim++) nodes->SetSBSPeriodicBuf(iPoint, iDim, sum[iDim]);
+    nodes->SetSBSPeriodicBuf(iPoint, 3, su2double(nNeigh));
+  }
+  END_SU2_OMP_FOR
+
+  PeriodicComm(PERIODIC_SBS_SUM);
+
+  /*--- 3) Vector potential phi = nu_sgs sqrt(|S|/dt) xi, with xi = (xi_i + sum_j xi_j) / sqrt(1 + n), of unit
+   *       variance (exactly, away from periodic faces, the samples being independent). This is Leith's
+   *       C_b |S dt|^(3/2) (lambda/dt)^2 with the Smagorinsky estimate (C_s lambda)^2 |S| replaced by the SGS eddy
+   *       viscosity, so that the forcing vanishes with nu_sgs at the walls (WALE, Vreman). ---*/
+
+  SU2_OMP_FOR_STAT(omp_chunk_size)
+  for (unsigned long iPoint = 0; iPoint < nPointDomain; iPoint++) {
+    const auto grad = nodes->GetVelocityGradient(iPoint);
+    su2double div = 0.0;
+    for (unsigned short iDim = 0; iDim < nDim; iDim++) div += grad(iDim, iDim);
+    su2double S2 = 0.0;
+    for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+      for (unsigned short jDim = 0; jDim < nDim; jDim++) {
+        const su2double s_ij = 0.5 * (grad(iDim, jDim) + grad(jDim, iDim)) - ((iDim == jDim) ? div / 3.0 : 0.0);
+        S2 += 2.0 * s_ij * s_ij;
+      }
+    }
+    const su2double nuSGS = SGS_EddyViscosity(iPoint) / nodes->GetDensity(iPoint);
+    su2double amplitude = nuSGS * sqrt(sqrt(S2) / dt);
+
+    /*--- SBS_IN_BOX: sharp mask on the smoothed field (unit variance up to the box faces), evaluated at every
+     *    time step to follow a moving grid. ---*/
+
+    if (inBox) {
+      const auto coord = geometry->nodes->GetCoord(iPoint);
+      for (unsigned short iDim = 0; iDim < 3; iDim++)
+        if (coord[iDim] < boxBounds[2*iDim] || coord[iDim] > boxBounds[2*iDim+1]) amplitude = 0.0;
+    }
+    const su2double norm = 1.0 / sqrt(1.0 + nodes->GetSBSPeriodicBuf(iPoint, 3));
+
+    for (unsigned short iDim = 0; iDim < 3; iDim++) {
+      const su2double xi = (nodes->GetLangevinSourceTerms(iPoint, iDim) + nodes->GetSBSPeriodicBuf(iPoint, iDim)) * norm;
+      nodes->SetLangevinSourceTerms(iPoint, iDim, amplitude * xi);
+    }
+  }
+  END_SU2_OMP_FOR
+
+  /*--- 4) No forcing on the physical boundaries. ---*/
+
+  for (unsigned short iMarker = 0; iMarker < config->GetnMarker_All(); iMarker++) {
+    const auto kindBC = config->GetMarker_All_KindBC(iMarker);
+    if (kindBC == SEND_RECEIVE || kindBC == PERIODIC_BOUNDARY || kindBC == INTERNAL_BOUNDARY ||
+        kindBC == NEARFIELD_BOUNDARY || kindBC == FLUID_INTERFACE) continue;
+
+    SU2_OMP_FOR_STAT(OMP_MIN_SIZE)
+    for (unsigned long iVertex = 0; iVertex < geometry->nVertex[iMarker]; iVertex++) {
+      const auto iPoint = geometry->vertex[iMarker][iVertex]->GetNode();
+      for (unsigned short iDim = 0; iDim < 3; iDim++) nodes->SetLangevinSourceTerms(iPoint, iDim, 0.0);
+    }
+    END_SU2_OMP_FOR
+  }
+
+  /*--- Halo values, read by the viscous residual. ---*/
+
+  InitiateComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
+  CompleteComms(geometry, config, MPI_QUANTITIES::STOCH_SOURCE_LANG);
 }
 
 template <class V, ENUM_REGIME FlowRegime>

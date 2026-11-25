@@ -55,6 +55,10 @@ class CFlowVariable : public CVariable {
   MatrixType Vorticity; /*!< \brief Vorticity of the flow field. */
   VectorType StrainMag; /*!< \brief Magnitude of rate of strain tensor. */
 
+  /*--- Stochastic backscatter of the finite volume LES (Leith, 1990), allocated on demand. ---*/
+  MatrixType LES_StochPotential; /*!< \brief Random vector potential (noise, then nu_sgs |S| (|S| dt)^(-1/2) xi). */
+  MatrixType LES_SBSPeriodicBuf; /*!< \brief Work buffer exchanged between matching periodic points. */
+
   /*!
    * \brief Constructor of the class.
    * \note This class is not meant to be instantiated directly, it is only a building block.
@@ -69,6 +73,32 @@ class CFlowVariable : public CVariable {
                 unsigned long nprimvargrad, const CConfig* config);
 
  public:
+  /*!
+   * \brief Allocate the storage of the finite volume LES stochastic backscatter (SOLVER= LES / INC_LES).
+   * \note Shares the MPI (STOCH_SOURCE_LANG) and periodic (PERIODIC_SBS_*) communications of the hybrid
+   *       RANS/LES model, through the virtual accessors below.
+   */
+  inline void AllocateLES_Backscatter() {
+    LES_StochPotential.resize(nPoint, 3) = su2double(0.0);
+    LES_SBSPeriodicBuf.resize(nPoint, SBS_PERIODIC_NBUF) = su2double(0.0);
+  }
+
+  inline su2double GetLangevinSourceTerms(unsigned long iPoint, unsigned short iDim) const override {
+    return LES_StochPotential.size() ? LES_StochPotential(iPoint, iDim) : su2double(0.0);
+  }
+  inline void SetLangevinSourceTerms(unsigned long iPoint, unsigned short iDim, su2double val) override {
+    LES_StochPotential(iPoint, iDim) = val;
+  }
+  inline su2double GetSBSPeriodicBuf(unsigned long iPoint, unsigned short iVar) const override {
+    return LES_SBSPeriodicBuf(iPoint, iVar);
+  }
+  inline void SetSBSPeriodicBuf(unsigned long iPoint, unsigned short iVar, su2double val) override {
+    LES_SBSPeriodicBuf(iPoint, iVar) = val;
+  }
+  inline void AddSBSPeriodicBuf(unsigned long iPoint, unsigned short iVar, su2double val) override {
+    LES_SBSPeriodicBuf(iPoint, iVar) += val;
+  }
+
   mutable su2vector<int8_t> NonPhysicalEdgeCounter;  /*!< \brief Non-physical reconstruction counter for each edge. */
   /*!
    * \brief Updates the non-physical counter of an edge.

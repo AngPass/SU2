@@ -242,6 +242,18 @@ class CFVMFlowSolverBase : public CSolver {
   void ComputeSGS_EddyViscosity(const CGeometry *geometry, const CConfig *config);
 
   /*!
+   * \brief Stochastic backscatter of the finite volume LES (Leith, Phys. Fluids A 2, 1990), once per time step.
+   *        Random vector potential phi = nu_sgs sqrt(|S|/dt) xi (times C_b = SBS_INTENSITY_COEFF, applied by the
+   *        viscous numerics), with xi a unit Gaussian noise, white in space and time, smoothed once over the
+   *        nearest neighbours and rescaled to unit variance. The numerics add the antisymmetric stress
+   *        rho eps_ijk phi_k, whose divergence is the solenoidal random acceleration curl(phi).
+   * \note Uses the SGS eddy viscosity and the velocity gradient of the current (first inner) iteration.
+   * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+   */
+  void SetLES_Backscatter(CGeometry *geometry, const CConfig *config);
+
+  /*!
    * \brief Locate the exchange locations at h_wm and build the communication pattern (collective, once).
    * \param[in] geometry - Geometrical definition of the problem.
    * \param[in] config - Definition of the particular problem.

@@ -150,6 +150,12 @@ void CNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, C
 
   if (SGSModel) ComputeSGS_EddyViscosity(geometry, config);
 
+  /*--- LES stochastic backscatter (Leith), white in time: once per physical time step. ---*/
+
+  if (config->GetLES_FVM() && config->GetSBSParam().StochasticBackscatter && iMesh == MESH_0 &&
+      InnerIter == 0 && !Output)
+    SetLES_Backscatter(geometry, config);
+
   /*--- Compute the limiters ---*/
 
   if (muscl && !center && limiter && !van_albada && !Output) {

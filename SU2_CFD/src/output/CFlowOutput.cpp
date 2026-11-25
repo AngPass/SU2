@@ -1682,6 +1682,13 @@ void CFlowOutput::SetVolumeOutputFieldsScalarMisc(const CConfig* config) {
     }
   }
 
+  // Finite volume LES stochastic backscatter (Leith)
+  if (config->GetLES_FVM() && config->GetSBSParam().StochasticBackscatter) {
+    AddVolumeOutput("STOCH_POTENTIAL_X", "StochPotential_x", "BACKSCATTER", "x-component of the random vector potential nu_sgs sqrt(|S|/dt) xi (without C_b)");
+    AddVolumeOutput("STOCH_POTENTIAL_Y", "StochPotential_y", "BACKSCATTER", "y-component of the random vector potential nu_sgs sqrt(|S|/dt) xi (without C_b)");
+    AddVolumeOutput("STOCH_POTENTIAL_Z", "StochPotential_z", "BACKSCATTER", "z-component of the random vector potential nu_sgs sqrt(|S|/dt) xi (without C_b)");
+  }
+
   if (config->GetViscous()) {
     if (nDim == 3) {
       AddVolumeOutput("VORTICITY_X", "Vorticity_x", "VORTEX_IDENTIFICATION", "x-component of the vorticity vector");
@@ -1801,6 +1808,12 @@ void CFlowOutput::LoadVolumeDataScalar(const CConfig* config, const CSolver* con
       SetVolumeOutputValue("STOCHSOURCE_Y", iPoint, Node_Turb->GetLangevinSourceTerms(iPoint, 1));
       SetVolumeOutputValue("STOCHSOURCE_Z", iPoint, Node_Turb->GetLangevinSourceTerms(iPoint, 2));
     }
+  }
+
+  if (config->GetLES_FVM() && config->GetSBSParam().StochasticBackscatter) {
+    SetVolumeOutputValue("STOCH_POTENTIAL_X", iPoint, Node_Flow->GetLangevinSourceTerms(iPoint, 0));
+    SetVolumeOutputValue("STOCH_POTENTIAL_Y", iPoint, Node_Flow->GetLangevinSourceTerms(iPoint, 1));
+    SetVolumeOutputValue("STOCH_POTENTIAL_Z", iPoint, Node_Flow->GetLangevinSourceTerms(iPoint, 2));
   }
 
   switch (config->GetKind_Species_Model()) {

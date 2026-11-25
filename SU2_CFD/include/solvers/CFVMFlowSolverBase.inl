@@ -443,13 +443,22 @@ CNumerics::ResidualType<> CFVMFlowSolverBase<V, R>::Viscous_Residual_impl(unsign
   SU2_ZONE_SCOPED
 
   const bool tkeNeeded = (config->GetKind_Turb_Model() == TURB_MODEL::SST);
-  const bool backscatter = config->GetSBSParam().StochasticBackscatter;
+  const bool lesBackscatter = config->GetLES_FVM() && config->GetSBSParam().StochasticBackscatter;
+  const bool backscatter = config->GetSBSParam().StochasticBackscatter && !lesBackscatter;
   const bool hybridActive = (config->GetKind_HybridRANSLES() != NO_HYBRIDRANSLES);
   const bool ideal_gas = (config->GetKind_FluidModel() == STANDARD_AIR) ||
                          (config->GetKind_FluidModel() == IDEAL_GAS);
 
   CVariable* turbNodes = nullptr;
   if (tkeNeeded || backscatter) turbNodes = solver_container[TURB_SOL]->GetNodes();
+
+  /*--- Finite volume LES backscatter (Leith): vector potential stored by the flow solver. ---*/
+
+  if (lesBackscatter) {
+    for (unsigned short iDim = 0; iDim < 3; iDim++)
+      numerics->SetStochVar(iDim, nodes->GetLangevinSourceTerms(geometry->edges->GetNode(iEdge,0), iDim),
+                                  nodes->GetLangevinSourceTerms(geometry->edges->GetNode(iEdge,1), iDim));
+  }
 
   /*--- Points, coordinates and normal vector in edge ---*/
 
